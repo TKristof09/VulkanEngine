@@ -12,7 +12,13 @@ int main()
     Renderer renderer(window);
     std::cout << "Hello from main" << std::endl;
     run();
-
+    // TODO
+    GLFWwindow* w = window->GetWindow();
+    while(!glfwWindowShouldClose(w))
+    {
+        glfwPollEvents();
+    }
+    glfwTerminate();
     std::cin.get();
     return 0;
 }

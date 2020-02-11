@@ -12,6 +12,9 @@ public:
 
 private:
     void CreateInstance();
+    void CreateSurface();
+    void CreateDevice();
+
     void SetupDebugMessenger();
 
 
@@ -20,6 +23,7 @@ private:
     vk::Instance            m_instance;
     vk::PhysicalDevice      m_gpu;
     vk::Device              m_device;
+    vk::SurfaceKHR          m_surface;
 
     vk::DebugUtilsMessengerEXT  m_messenger;
 };

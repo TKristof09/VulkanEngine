@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.ml": "ocaml",
         "algorithm": "cpp",
         "array": "cpp",
         "chrono": "cpp",
@@ -50,6 +51,10 @@
         "xstddef": "cpp",
         "xstring": "cpp",
         "xtr1common": "cpp",
-        "xutility": "cpp"
+        "xutility": "cpp",
+        "map": "cpp",
+        "optional": "cpp",
+        "set": "cpp",
+        "xtree": "cpp"
     }
 }

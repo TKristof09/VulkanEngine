@@ -9,6 +9,7 @@ m_width(width), m_height(height), m_title(title)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     m_window = glfwCreateWindow(width, height, title.data(), nullptr, nullptr);
+
 }
 
 Window::~Window()
