@@ -3,6 +3,9 @@
 #include <optional>
 #include <set>
 #include <map>
+#include <limits>
+
+#include "Shader.hpp"
 
 struct QueueFamilyIndices
 {
@@ -13,9 +16,9 @@ struct QueueFamilyIndices
         return graphicsFamily.has_value() && presentationFamily.has_value();
     }
 };
-struct SwapChainSupportDetails
+struct SwapchainSupportDetails
 {
-    VkSurfaceCapabilitiesKHR            capabilities;
+    vk::SurfaceCapabilitiesKHR            capabilities;
     std::vector<vk::SurfaceFormatKHR>     formats;
     std::vector<vk::PresentModeKHR>       presentModes;
 };
@@ -24,7 +27,10 @@ std::vector<const char *> GetExtensions();
 vk::PhysicalDevice PickDevice(const std::vector<vk::PhysicalDevice>& devices, vk::SurfaceKHR surface, const std::vector<const char*>& deviceExtensions);
 int RateDevice(vk::PhysicalDevice device, vk::SurfaceKHR surface, const std::vector<const char*>& deviceExtensions);
 QueueFamilyIndices FindQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface);
-SwapChainSupportDetails QuerySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface);
+SwapchainSupportDetails QuerySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface);
+vk::SurfaceFormatKHR ChooseSwapchainFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats);
+vk::PresentModeKHR ChooseSwapchainPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes);
+vk::Extent2D ChooseSwapchainExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GLFWwindow* window);
 
 VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                                          VkDebugUtilsMessengerCallbackDataEXT const * pCallbackData, void * /*pUserData*/);
@@ -144,7 +150,145 @@ void Renderer::CreateDevice()
 
 
     m_device = m_gpu.createDevice(createInfo);
+    m_graphicsQueue = m_device.getQueue(families.graphicsFamily.value(), 0);
+    m_presentQueue  = m_device.getQueue(families.presentationFamily.value(), 0);
+
 }
+
+void Renderer::CreateSwapchain()
+{
+    SwapchainSupportDetails details = QuerySwapChainSupport(m_gpu, m_surface);
+
+    auto surfaceFormat = ChooseSwapchainFormat(details.formats);
+    auto extent = ChooseSwapchainExtent(details.capabilities, m_window->GetWindow());
+    auto presentMode = ChooseSwapchainPresentMode(details.presentModes);
+
+    vk::SwapchainCreateInfoKHR createInfo;
+    createInfo.surface          = m_surface;
+    createInfo.imageFormat      = surfaceFormat.format;
+    createInfo.minImageCount    = details.capabilities.minImageCount + 1;
+    createInfo.imageColorSpace  = surfaceFormat.colorSpace;
+    createInfo.imageExtent      = extent;
+    createInfo.presentMode      = presentMode;
+    createInfo.imageUsage       = vk::ImageUsageFlagBits::eColorAttachment;
+
+    QueueFamilyIndices indices        = FindQueueFamilies(m_gpu, m_surface);
+    uint32_t queueFamilyIndices[]       = {indices.graphicsFamily.value(), indices.presentationFamily.value()};
+
+    if (indices.graphicsFamily != indices.presentationFamily)
+    {
+        createInfo.imageSharingMode         = vk::SharingMode::eConcurrent; // if the two queues are different then we need to share between them
+        createInfo.queueFamilyIndexCount    = 2;
+        createInfo.pQueueFamilyIndices      = queueFamilyIndices;
+    }
+    else
+    {
+        createInfo.imageSharingMode         = vk::SharingMode::eExclusive; // this is the better performance
+        createInfo.queueFamilyIndexCount    = 0; // Optional
+        createInfo.pQueueFamilyIndices      = nullptr; // Optional
+    }
+    createInfo.preTransform = details.capabilities.currentTransform;
+    createInfo.clipped      = VK_TRUE;
+
+    m_swapchain = m_device.createSwapchainKHR(createInfo);
+
+    m_swapchainImages = m_device.getSwapchainImagesKHR(m_swapchain);
+    m_swapchainExtent = extent;
+    m_swapchainImageFormat = surfaceFormat.format;
+
+
+    m_swapchainImageViews.resize(m_swapchainImages.size());
+
+    for (size_t i = 0; i < m_swapchainImageViews.size(); i++)
+    {
+        vk::ImageViewCreateInfo createInfo;
+        createInfo.image    = m_swapchainImages[i];
+        createInfo.format   = m_swapchainImageFormat;
+        createInfo.viewType = vk::ImageViewType::e2D;
+        createInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        createInfo.subresourceRange.baseMipLevel    = 0;
+        createInfo.subresourceRange.levelCount      = 1;
+        createInfo.subresourceRange.baseArrayLayer  = 0;
+        createInfo.subresourceRange.layerCount      = 1;
+
+
+        m_swapchainImageViews[i] = m_device.createImageView(createInfo);
+    }
+}
+
+void Renderer::CreateRenderPass()
+{
+    vk::AttachmentDescription colorAttachment;
+    colorAttachment.format      = m_swapchainImageFormat;
+    colorAttachment.loadOp      = vk::AttachmentLoadOp::eClear;
+    colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+    vk::AttachmentReference colorRef;
+    colorRef.attachment = 0;
+    colorRef.layout     = vk::ImageLayout::eColorAttachmentOptimal;
+
+
+    vk::SubpassDescription subpass;
+    subpass.colorAttachmentCount = 1;
+    subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    subpass.pColorAttachments = &colorRef;
+
+    vk::RenderPassCreateInfo createInfo;
+    createInfo.attachmentCount  = 1;
+    createInfo.pAttachments     = &colorAttachment;
+    createInfo.subpassCount     = 1;
+    createInfo.pSubpasses       = &subpass;
+
+
+    m_renderPass = m_device.createRenderPass(createInfo);
+}
+
+void Renderer::CreatePipeline()
+{
+    Shader vs("shaders/vert.spv");
+    Shader fs("shaders/frag.spv");
+
+    auto vsModule = vs.GetShaderModule(m_device);
+    auto fsModule = fs.GetShaderModule(m_device);
+
+    vk::PipelineShaderStageCreateInfo vertex;
+    vertex.stage    = vk::ShaderStageFlagBits::eVertex;
+    vertex.pName    = "main";
+    vertex.module   = vsModule;
+
+    vk::PipelineShaderStageCreateInfo fragment;
+    fragment.stage    = vk::ShaderStageFlagBits::eFragment;
+    fragment.pName    = "main";
+    fragment.module   = fsModule;
+
+    vk::PipelineShaderStageCreateInfo stages[] = {vertex, fragment};
+
+    vk::PipelineVertexInputStateCreateInfo vertexInput; // vertex info hardcoded for the moment
+
+    vk::PipelineInputAssemblyStateCreateInfo assembly;
+    assembly.topology = vk::PrimitiveTopology::eTriangleList;
+
+    vk::Viewport viewport;
+    viewport.width = m_swapchainExtent.width;
+    viewport.height = m_swapchainExtent.height;
+    viewport.x = 0.f;
+    viewport.y = 0.f;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    vk::Rect2D scissor({0,0}, m_swapchainExtent);
+
+    vk::PipelineViewportStateCreateInfo viewportState;
+    viewportState.pViewports = &viewport;
+    viewportState.viewportCount = 1;
+    viewportState.pScissors = &scissor;
+    viewportState.scissorCount = 1;
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer;
+    rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+
+}
+
 
 // #################################################################################
 
@@ -191,7 +335,7 @@ int RateDevice(vk::PhysicalDevice device, vk::SurfaceKHR surface, const std::vec
     if(requiredExtensions.empty())
     {
 
-        SwapChainSupportDetails details = QuerySwapChainSupport(device, surface);
+        SwapchainSupportDetails details = QuerySwapChainSupport(device, surface);
         swapChainGood = !details.formats.empty() && !details.presentModes.empty();
 
     }
@@ -243,9 +387,9 @@ QueueFamilyIndices FindQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR s
     return indices;
 }
 
-SwapChainSupportDetails QuerySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface)
+SwapchainSupportDetails QuerySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface)
 {
-    SwapChainSupportDetails details;
+    SwapchainSupportDetails details;
 
     details.capabilities = device.getSurfaceCapabilitiesKHR(surface);
 
@@ -255,6 +399,61 @@ SwapChainSupportDetails QuerySwapChainSupport(vk::PhysicalDevice device, vk::Sur
 
     return details;
 }
+
+
+vk::SurfaceFormatKHR ChooseSwapchainFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats)
+{
+
+    // if the surface has no preferred format vulkan returns one entity of Vk_FORMAT_UNDEFINED
+    // we can then chose whatever we want
+    if (availableFormats.size() == 1 && availableFormats[0].format == vk::Format::eUndefined)
+    {
+        vk::SurfaceFormatKHR format;
+        format.colorSpace   = vk::ColorSpaceKHR::eSrgbNonlinear;
+        format.format       = vk::Format::eB8G8R8A8Unorm;
+        return format;
+    }
+    for(const auto& format : availableFormats)
+    {
+        if(format.format == vk::Format::eB8G8R8A8Unorm && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
+            return format;
+    }
+
+    // if we can't find one that we like we could rank them based on how good they are
+    // but we will just settle for the first one(apparently in most cases it's okay)
+    return availableFormats[0];
+}
+
+vk::PresentModeKHR ChooseSwapchainPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes)
+{
+    for(const auto& presentMode : availablePresentModes)
+    {
+        if(presentMode == vk::PresentModeKHR::eMailbox)
+            return presentMode;
+    }
+
+    // FIFO is guaranteed to be available
+    return vk::PresentModeKHR::eFifo;
+}
+vk::Extent2D ChooseSwapchainExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GLFWwindow* window)
+{
+    // swap extent is the resolution of the swapchain images
+
+    // if we can set an extent manually the width and height values will be uint32t max
+    // else we can't set it so just return it
+    if(capabilities.currentExtent.width != (std::numeric_limits<uint32_t>::max)()) // () around max to prevent macro expansion by windows.h max macro
+        return capabilities.currentExtent;
+
+    // choose an extent within the minImageExtent and maxImageExtent bounds
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+    actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+    return actualExtent;
+}
+
 
 /*
 VKAPI_ATTR vk::Bool32 VKAPI_CALL
