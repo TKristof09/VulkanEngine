@@ -17,6 +17,7 @@ int main()
     while(!glfwWindowShouldClose(w))
     {
         glfwPollEvents();
+		renderer.DrawFrame();
     }
     glfwTerminate();
     std::cin.get();

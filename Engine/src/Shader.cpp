@@ -4,7 +4,8 @@
 
 Shader::Shader(const std::string& filename)
 {
-    std::ifstream file("../../../" + filename, std::ios::ate | std::ios::binary);
+	// TODO make this work better(not hardcodign file path)
+    std::ifstream file("./" + filename, std::ios::ate | std::ios::binary);
     if(!file.is_open())
         throw std::runtime_error("Failed to open file " + filename);
 
@@ -15,14 +16,16 @@ Shader::Shader(const std::string& filename)
     file.close();
 }
 
-vk::ShaderModule Shader::GetShaderModule(vk::Device device)
+VkShaderModule Shader::GetShaderModule(VkDevice device)
 {
-    vk::ShaderModuleCreateInfo createInfo;
+    VkShaderModuleCreateInfo createInfo = {};
+	createInfo.sType					= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize                 = m_data.size();
     createInfo.pCode                    = reinterpret_cast<const uint32_t*>(m_data.data());
 
-    return device.createShaderModule(createInfo);
-
+	VkShaderModule shaderModule;
+    VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule), "Failed to create shader module");
+	return shaderModule;
     //could deallocate the data vector here
     //std::vector<char> tempVector;
     //m_data.swap(tempVector);

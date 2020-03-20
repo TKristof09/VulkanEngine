@@ -1,6 +1,9 @@
 #pragma once
-#include <vulkan/vulkan.hpp>
-#include <Window.hpp>
+#include <memory>
+#include <vector>
+#include <vulkan/vulkan.h>
+#include "Window.hpp"
+#include "CommandBuffer.hpp"
 
 class Renderer
 {
@@ -8,6 +11,7 @@ public:
     Renderer(std::shared_ptr<Window> window);
     ~Renderer();
 
+	void DrawFrame();
 
 private:
     void CreateInstance();
@@ -16,28 +20,50 @@ private:
     void CreateSwapchain();
     void CreateRenderPass();
     void CreatePipeline();
+	void CreateFramebuffers();
+	void CreateCommandPool();
+	void CreateCommandBuffers();
+	void CreateSyncObjects();
+
+
 
     void SetupDebugMessenger();
 
 
     std::shared_ptr<Window> m_window;
 
-    vk::Instance            m_instance;
-    vk::PhysicalDevice      m_gpu;
-    vk::Device              m_device;
+    VkInstance				m_instance;
+    VkPhysicalDevice		m_gpu;
+    VkDevice				m_device;
 
-    vk::Queue               m_graphicsQueue;
-    vk::Queue               m_presentQueue;
+    VkQueue					m_graphicsQueue;
+    VkQueue					m_presentQueue;
 
-    vk::SurfaceKHR          m_surface;
+    VkSurfaceKHR			m_surface;
 
-    vk::SwapchainKHR        m_swapchain;
-    std::vector<vk::Image>  m_swapchainImages;
-    std::vector<vk::ImageView> m_swapchainImageViews;
-    vk::Format              m_swapchainImageFormat;
-    vk::Extent2D            m_swapchainExtent;
+    VkSwapchainKHR			m_swapchain;
+    std::vector<VkImage>	m_swapchainImages;
+    std::vector<VkImageView> m_swapchainImageViews;
+    VkFormat				m_swapchainImageFormat;
+    VkExtent2D				m_swapchainExtent;
+	std::vector<VkFramebuffer> m_swapchainFramebuffers;
 
-    vk::RenderPass          m_renderPass;
+    VkRenderPass			m_renderPass;
 
-    vk::DebugUtilsMessengerEXT  m_messenger;
+	VkPipelineLayout		m_pipelineLayout;
+	VkPipeline				m_graphicsPipeline;
+
+	VkCommandPool			m_commandPool;
+
+	std::vector<std::unique_ptr<CommandBuffer>> m_commandBuffers;
+
+	std::vector<VkSemaphore> m_imageAvailable;
+	std::vector<VkSemaphore> m_renderFinished;
+	std::vector<VkFence>     m_inFlightFences;
+	std::vector<VkFence>     m_imagesInFlight;
+
+	size_t m_currentFrame = 0;
+
+	VkDebugUtilsMessengerEXT  m_messenger;
+
 };

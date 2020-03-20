@@ -1,11 +1,11 @@
 #pragma once
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 class Shader
 {
 public:
     Shader(const std::string& filename);
-    vk::ShaderModule GetShaderModule(vk::Device device);
+    VkShaderModule GetShaderModule(VkDevice device);
 
 private:
     std::vector<char> m_data;
