@@ -1,6 +1,17 @@
+# build files
 build/
-.vscode/
 compile_commands.json
-*.spv
+
+# clagnd cache
 .clangd/
+
+# renderdoc settings
 *.cap
+
+# ignore compiled shader binaries
+*.vert
+*.frag
+*.spv
+
+
+.vscode/
