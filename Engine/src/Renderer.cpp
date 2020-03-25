@@ -255,13 +255,7 @@ void Renderer::CreateInstance()
 
 	VK_CHECK(vkCreateInstance(&createInfo, nullptr, &m_instance), "Failed to create instance");
 
-    VkSurfaceKHR tmpSurface = {};
-    if (glfwCreateWindowSurface(m_instance, m_window->GetWindow(), nullptr, &tmpSurface) != VK_SUCCESS) {
-
-    std::runtime_error("failed ot create window surface!");
-
-    }
-    m_surface = VkSurfaceKHR(tmpSurface);
+    VK_CHECK(glfwCreateWindowSurface(m_instance, m_window->GetWindow(), nullptr, &m_surface), "Failed ot create window surface!");
 
 }
 
@@ -366,9 +360,9 @@ void Renderer::CreateSwapchain()
 	VK_CHECK(vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain), "Failed to create swapchain");
    
 	uint32_t imageCount;
-	vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr);
+	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr), "Failed to get swapchain images");
 	m_swapchainImages.resize(imageCount);
-	vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, m_swapchainImages.data());
+	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, m_swapchainImages.data()), "Failed to get swapchain images");
     m_swapchainExtent = extent;
     m_swapchainImageFormat = surfaceFormat.format;
 
@@ -389,7 +383,7 @@ void Renderer::CreateSwapchain()
         createInfo.subresourceRange.layerCount      = 1;
 
 
-		VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapchainImageViews[i]), "Failed to create image views");
+		VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapchainImageViews[i]), "Failed to create swapchain image views");
     }
 }
 
@@ -758,7 +752,7 @@ void Renderer::DrawFrame()
 	m_imagesInFlight[imageIndex] = m_inFlightFences[m_currentFrame];
 
 
-	vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
+	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
 	
 	UpdateUniformBuffers(imageIndex);

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 
+#ifdef VDEBUG
 // using int instead of VkResult enum beacuse i don't want to include vulkan here so this is just a dirty fix
 inline void VK_CHECK(int result, const std::string& error_message)
 {
@@ -13,4 +14,10 @@ inline void VK_CHECK(int result, const std::string& error_message)
         throw std::runtime_error(error_message);
 }
 
+#else
+inline void VK_CHECK(int result, const std::string& error_message)
+{
+	return;
+}
+#endif
 //#include <Windows.h> // fckin vulkan needed otherwise vulkan.hpp throws error (its a bug in their code)
