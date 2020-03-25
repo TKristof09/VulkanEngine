@@ -1,17 +1,73 @@
 #include "Renderer.hpp"
+#include <memory>
 #include <sstream>
 #include <optional>
 #include <set>
 #include <map>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
+
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 
 #include "Shader.hpp"
 
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
+
+
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+	static VkVertexInputBindingDescription GetBindingDescription()
+	{
+		VkVertexInputBindingDescription bindingDescription = {};
+		bindingDescription.binding = 0;
+		bindingDescription.stride  = sizeof(Vertex);
+		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		return bindingDescription;
+	}
+
+	static std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions()
+	{	
+		std::array<VkVertexInputAttributeDescription, 2> attribDescriptions = {};
+		
+		attribDescriptions[0].binding = 0;
+		attribDescriptions[0].location = 0;
+		attribDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+		attribDescriptions[0].offset = offsetof(Vertex, pos);
+
+		attribDescriptions[1].binding = 0;
+		attribDescriptions[1].location = 1;
+		attribDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attribDescriptions[1].offset = offsetof(Vertex, color);
+
+		return attribDescriptions;
+	}
+};
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+const std::vector<Vertex> vertices = {
+    {{-0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+const std::vector<uint16_t> indices = {
+    0, 1, 2, 2, 3, 0
+};
+
+
 
 struct QueueFamilyIndices
 {
@@ -54,9 +110,14 @@ m_window(window)
     CreateDevice();
 	CreateSwapchain();
 	CreateRenderPass();
+	CreateDescriptorSetLayout();
 	CreatePipeline();
 	CreateFramebuffers();
 	CreateCommandPool();
+	CreateBuffers();
+	CreateUniformBuffers();
+	CreateDescriptorPool();
+	CreateDescriptorSets();
 	CreateCommandBuffers();
 	CreateSyncObjects();
 
@@ -72,37 +133,73 @@ Renderer::~Renderer()
         vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
     }
     //m_texture.reset();
-    //m_vertexBuffer.reset();
-    //m_indexBuffer.reset();
-    //for(auto& buffer : m_uniformBuffers)
-    //{
-    //    buffer.reset();
-    //}
-
+    m_vertexBuffer.reset();
+    m_indexBuffer.reset();
+    
     //vkDestroySampler(m_device, m_sampler, nullptr);
 
-    //CleanupSwapChain();
-
-    //vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
-    //m_descriptorSetLayout   = nullptr;
+    CleanupSwapchain();
+    
+    vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
 
     vkDestroyCommandPool(m_device, m_commandPool, nullptr);
-    m_commandPool           = nullptr;
-
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
-    m_surface               = nullptr;
 
     vkDestroyDevice(m_device, nullptr);
-    m_device                = nullptr;
 
 #ifdef VDEBUG
 	DestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);
 #endif
-    vkDestroyInstance(m_instance, nullptr);
-    m_instance              = nullptr;
 
+    vkDestroyInstance(m_instance, nullptr);
 
 	
+	
+}
+
+
+void Renderer::RecreateSwapchain()
+{
+	while(m_window->GetWidth() == 0 || m_window->GetHeight() == 0)
+		glfwWaitEvents();
+	
+
+	vkDeviceWaitIdle(m_device);
+
+	CleanupSwapchain();
+
+	CreateSwapchain();
+	CreateRenderPass();
+	CreateDescriptorSetLayout();
+	CreatePipeline();
+	CreateFramebuffers();
+	CreateUniformBuffers();
+	CreateDescriptorPool();
+	CreateDescriptorSets();
+	CreateCommandBuffers();
+	
+}
+
+void Renderer::CleanupSwapchain()
+{
+	for(auto framebuffer : m_swapchainFramebuffers)
+	{
+		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
+	}
+	m_commandBuffers.clear();
+	m_uniformBuffers.clear();
+	
+	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
+
+	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+	vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+	vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+
+	for(auto imageView : m_swapchainImageViews)
+	{
+		vkDestroyImageView(m_device, imageView, nullptr);
+	}
+	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 }
 
 void Renderer::CreateInstance()
@@ -361,18 +458,25 @@ void Renderer::CreatePipeline()
 
     VkPipelineShaderStageCreateInfo stages[] = {vertex, fragment};
 
+	auto bindingDescription = Vertex::GetBindingDescription();
+	auto attribDescriptions = Vertex::GetAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertexInput = {}; // vertex info hardcoded for the moment
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInput.vertexBindingDescriptionCount = 1;
+	vertexInput.pVertexBindingDescriptions = &bindingDescription;
+	vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribDescriptions.size());
+	vertexInput.pVertexAttributeDescriptions = attribDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {};
 	assembly.sType	  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     VkViewport viewport = {};
-    viewport.width  = m_swapchainExtent.width;
-    viewport.height = m_swapchainExtent.height;
+    viewport.width  = (float)m_swapchainExtent.width;
+    viewport.height = -(float)m_swapchainExtent.height;
     viewport.x = 0.f;
-    viewport.y = 0.f;
+    viewport.y = (float)m_swapchainExtent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
@@ -428,8 +532,10 @@ void Renderer::CreatePipeline()
 	*/
 	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutCreateInfo.setLayoutCount = 1;
+	layoutCreateInfo.pSetLayouts = &m_descriptorSetLayout;
 	
-	vkCreatePipelineLayout(m_device, &layoutCreateInfo, nullptr, &m_pipelineLayout);
+	VK_CHECK(vkCreatePipelineLayout(m_device, &layoutCreateInfo, nullptr, &m_pipelineLayout), "Failed to create pipeline layout");
 
 	
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -471,9 +577,8 @@ void Renderer::CreateFramebuffers()
 		framebufferInfo.height			= m_swapchainExtent.height;
 		framebufferInfo.layers			= 1;
 
-		if (vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create framebuffer!");
-		}
+		VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]), "Failed to create framebuffer");
+		
 	}
 }
 
@@ -511,7 +616,11 @@ void Renderer::CreateCommandBuffers()
 
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
-		vkCmdDraw(cb, 3, 1, 0, 0);
+		m_vertexBuffer->Bind(*m_commandBuffers[i]);
+		m_indexBuffer->Bind(*m_commandBuffers[i]);
+		
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[i], 0, nullptr);
+		vkCmdDrawIndexed(cb, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(cb);
 		m_commandBuffers[i]->End();
@@ -542,12 +651,105 @@ void Renderer::CreateSyncObjects()
 	}
 }
 
+
+void Renderer::CreateBuffers()
+{
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+	Buffer stagingVertexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingVertexBuffer.Fill((void*)vertices.data(), bufferSize);
+
+	m_vertexBuffer = std::make_unique<Buffer>(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	stagingVertexBuffer.Copy(m_vertexBuffer.get(), bufferSize, m_graphicsQueue, m_commandPool); 
+
+
+	bufferSize = sizeof(indices[0]) * indices.size();
+	Buffer stagingIndexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingIndexBuffer.Fill((void*)indices.data(), bufferSize);
+
+	m_indexBuffer = std::make_unique<Buffer>(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize, m_graphicsQueue, m_commandPool);
+}
+
+void Renderer::CreateDescriptorSetLayout()
+{
+	auto layoutBinding = UniformBuffer::GetDescriptorSetLayoutBinding(0, 1, VK_SHADER_STAGE_VERTEX_BIT);
+
+	VkDescriptorSetLayoutCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = 1;
+	createInfo.pBindings = &layoutBinding;
+	VK_CHECK(vkCreateDescriptorSetLayout(m_device, &createInfo, nullptr, &m_descriptorSetLayout), "Failed to create descriptor set layout");
+
+}
+
+void Renderer::CreateDescriptorPool()
+{
+	VkDescriptorPoolSize poolsize = {};
+	poolsize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	poolsize.descriptorCount = static_cast<uint32_t>(m_swapchainImages.size());
+
+	VkDescriptorPoolCreateInfo createInfo = {};
+	createInfo.sType		= VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	createInfo.poolSizeCount = 1;
+	createInfo.pPoolSizes	= &poolsize;
+	createInfo.maxSets		= static_cast<uint32_t>(m_swapchainImages.size());
+
+	VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
+}
+
+void Renderer::CreateDescriptorSets()
+{
+	std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size(), m_descriptorSetLayout);
+
+	VkDescriptorSetAllocateInfo allocInfo = {};
+	allocInfo.sType		= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = m_descriptorPool;
+	allocInfo.descriptorSetCount = static_cast<uint32_t>(m_swapchainImages.size());
+	allocInfo.pSetLayouts = layouts.data();
+
+	m_descriptorSets.resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_descriptorSets.data()), "Failed to allocate descriptor sets");
+
+	for(size_t i = 0; i < m_swapchainImages.size(); i++)
+	{
+		auto descWrite = m_uniformBuffers[i]->GetWriteDescriptorSet(0, m_descriptorSets[i]);
+		vkUpdateDescriptorSets(m_device, 1, &descWrite.GetWriteDescriptorSet(), 0, nullptr);
+	}
+
+}
+
+
+void Renderer::CreateUniformBuffers()
+{
+	VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    m_uniformBuffers.reserve(m_swapchainImages.size());
+
+    for(size_t i = 0; i < m_swapchainImages.size(); i++)
+    {
+        m_uniformBuffers.push_back(std::make_unique<UniformBuffer>(m_gpu, m_device, bufferSize));
+    }
+
+}
+
+
+
 void Renderer::DrawFrame()
 {
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;	
-	vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+
+	if(result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		RecreateSwapchain();
+		return;
+	}
+	else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+		throw std::runtime_error("Failed to acquire swap chain image");
 
 	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
 	if(m_imagesInFlight[imageIndex] != VK_NULL_HANDLE)
@@ -557,6 +759,10 @@ void Renderer::DrawFrame()
 
 
 	vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
+
+	
+	UpdateUniformBuffers(imageIndex);
+
 	m_commandBuffers[imageIndex]->Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
 
@@ -568,10 +774,59 @@ void Renderer::DrawFrame()
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &m_swapchain;
 	presentInfo.pImageIndices = &imageIndex;
-	vkQueuePresentKHR(m_presentQueue, &presentInfo);
+	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
 	
+	if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
+	{
+		m_window->SetResized(false);
+		RecreateSwapchain();
+	}
+	else if(result != VK_SUCCESS)
+		throw std::runtime_error("Failed to present swap chain image");
 	m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
 }
+
+void Renderer::UpdateUniformBuffers(uint32_t currentImage)
+{
+	static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	
+	UniformBufferObject ubo = {};
+	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.proj = glm::perspective(glm::radians(45.0f), m_swapchainExtent.width / (float) m_swapchainExtent.height, 0.1f, 10.0f);
+	m_uniformBuffers[currentImage]->Update(&ubo);
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // #################################################################################
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
@@ -753,15 +1008,19 @@ VkExtent2D ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, G
     // else we can't set it so just return it
     if(capabilities.currentExtent.width != (std::numeric_limits<uint32_t>::max)()) // () around max to prevent macro expansion by windows.h max macro
         return capabilities.currentExtent;
+	else
+	{
 
-    // choose an extent within the minImageExtent and maxImageExtent bounds
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-    VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
-    actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-    actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+		// choose an extent within the minImageExtent and maxImageExtent bounds
+		int width, height;
+		glfwGetFramebufferSize(window, &width, &height);
+		VkExtent2D actualExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+		actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
-    return actualExtent;
+		return actualExtent;
+
+	}
 }
 
 
@@ -784,6 +1043,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
 		prefix = "ERROR: ";
 	}
+	std::cerr << prefix << "\n";
     std::cerr << "\t" << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
     std::cerr << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
     std::cerr << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";

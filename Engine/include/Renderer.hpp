@@ -1,9 +1,12 @@
 #pragma once
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
+#include "Buffer.hpp"
+#include "UniformBuffer.hpp"
 
 class Renderer
 {
@@ -25,7 +28,16 @@ private:
 	void CreateCommandBuffers();
 	void CreateSyncObjects();
 
+	void RecreateSwapchain();
+	void CleanupSwapchain();
 
+	void CreateBuffers();
+	void CreateUniformBuffers();
+	void UpdateUniformBuffers(uint32_t currentImage);
+
+	void CreateDescriptorSetLayout();
+	void CreateDescriptorPool();
+	void CreateDescriptorSets();
 
     void SetupDebugMessenger();
 
@@ -61,6 +73,15 @@ private:
 	std::vector<VkSemaphore> m_renderFinished;
 	std::vector<VkFence>     m_inFlightFences;
 	std::vector<VkFence>     m_imagesInFlight;
+
+	std::unique_ptr<Buffer>  m_vertexBuffer;	
+	std::unique_ptr<Buffer>  m_indexBuffer;
+
+	VkDescriptorSetLayout	m_descriptorSetLayout;
+	VkDescriptorPool		m_descriptorPool;
+	std::vector<VkDescriptorSet> m_descriptorSets;
+	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
+
 
 	size_t m_currentFrame = 0;
 
