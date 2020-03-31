@@ -7,6 +7,7 @@
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "UniformBuffer.hpp"
+#include "Texture.hpp"
 
 class Renderer
 {
@@ -38,6 +39,12 @@ private:
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
 	void CreateDescriptorSets();
+
+	void CreateTexture();
+	void CreateSampler();
+
+	void CreateColorResources();
+	void CreateDepthResources();
 
     void SetupDebugMessenger();
 
@@ -81,7 +88,15 @@ private:
 	VkDescriptorPool		m_descriptorPool;
 	std::vector<VkDescriptorSet> m_descriptorSets;
 	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
+	
+	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
+	std::unique_ptr<Texture> m_texture;
 
+	std::unique_ptr<Image>   m_depthImage;
+
+
+	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+	std::unique_ptr<Image>  m_colorImage; // for MSAA
 
 	size_t m_currentFrame = 0;
 
