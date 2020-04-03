@@ -137,6 +137,7 @@ m_window(window)
 	CreateUniformBuffers();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
+	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
 
@@ -190,7 +191,6 @@ void Renderer::RecreateSwapchain()
 
 	CreateSwapchain();
 	CreateRenderPass();
-	CreateDescriptorSetLayout();
 	CreatePipeline();
 	CreateColorResources();
 	CreateDepthResources();
@@ -199,16 +199,40 @@ void Renderer::RecreateSwapchain()
 	CreateDescriptorPool();
 	CreateDescriptorSets();
 	CreateCommandBuffers();
+
+
+	DebugUIInitInfo initInfo = {};
+	initInfo.pWindow = m_window;
+	initInfo.instance = m_instance;
+    initInfo.gpu = m_gpu;
+    initInfo.device = m_device;
+
+	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
+    initInfo.queueFamily = families.graphicsFamily.value();
+    initInfo.queue = m_graphicsQueue;
+	
+	initInfo.renderPass = m_renderPass;
+    initInfo.pipelineCache = nullptr;
+    initInfo.descriptorPool = m_descriptorPool;
+	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
+    initInfo.msaaSamples = m_msaaSamples;
+    initInfo.allocator = nullptr; 
+	initInfo.commandPool = m_commandPool;
+	m_debugUI->ReInit(&initInfo);
 	
 }
 
 void Renderer::CleanupSwapchain()
 {
+	m_depthImage.reset();
+	m_colorImage.reset();
+
 	for(auto framebuffer : m_swapchainFramebuffers)
 	{
 		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 	}
 	m_commandBuffers.clear();
+	m_cbs.clear();
 	m_uniformBuffers.clear();
 	
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
@@ -223,6 +247,32 @@ void Renderer::CleanupSwapchain()
 	}
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 }
+
+void Renderer::CreateDebugUI()
+{
+	
+	DebugUIInitInfo initInfo = {};
+	initInfo.pWindow = m_window;
+	initInfo.instance = m_instance;
+    initInfo.gpu = m_gpu;
+    initInfo.device = m_device;
+
+	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
+    initInfo.queueFamily = families.graphicsFamily.value();
+    initInfo.queue = m_graphicsQueue;
+	
+	initInfo.renderPass = m_renderPass;
+    initInfo.pipelineCache = nullptr;
+    initInfo.descriptorPool = m_descriptorPool;
+	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
+    initInfo.msaaSamples = m_msaaSamples;
+    initInfo.allocator = nullptr; 
+	initInfo.commandPool = m_commandPool;
+	
+
+	m_debugUI = std::make_shared<DebugUI>(&initInfo);
+}
+
 
 void Renderer::CreateInstance()
 {
@@ -411,6 +461,7 @@ void Renderer::CreateSwapchain()
 
 		VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &m_swapchainImageViews[i]), "Failed to create swapchain image views");
     }
+
 }
 
 void Renderer::CreateRenderPass()
@@ -671,6 +722,7 @@ void Renderer::CreateCommandPool()
 	VkCommandPoolCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	createInfo.queueFamilyIndex = families.graphicsFamily.value();
+	createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
 	VK_CHECK(vkCreateCommandPool(m_device, &createInfo, nullptr, &m_commandPool), "Failed to create command pool");
 }
@@ -678,36 +730,28 @@ void Renderer::CreateCommandPool()
 void Renderer::CreateCommandBuffers()
 {
 	m_commandBuffers.resize(m_swapchainFramebuffers.size());
+	m_cbs.resize(m_swapchainFramebuffers.size());
 	for(size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
-		m_commandBuffers[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool);
-		m_commandBuffers[i]->Begin(0);
+		m_cbs[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool);
+		m_commandBuffers[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		VkCommandBufferInheritanceInfo inheritanceInfo = {};
+		inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+		inheritanceInfo.renderPass = m_renderPass;
+		inheritanceInfo.subpass = 0;
+		inheritanceInfo.framebuffer = m_swapchainFramebuffers[i];
+		m_commandBuffers[i]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
 
-		VkRenderPassBeginInfo beginInfo = {};
-		beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		beginInfo.renderPass = m_renderPass;
-		beginInfo.framebuffer = m_swapchainFramebuffers[i];
-		beginInfo.renderArea.offset = {0,0};
-		beginInfo.renderArea.extent = m_swapchainExtent;
+		
 
-		std::array<VkClearValue, 2> clearValues = {};
-		clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-		clearValues[1].depthStencil = {1.0f, 0};
-		beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		beginInfo.pClearValues = clearValues.data();
-
-		VkCommandBuffer cb = m_commandBuffers[i]->GetCommandBuffer();
-		vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-
+		
+		vkCmdBindPipeline(m_commandBuffers[i]->GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 		m_vertexBuffer->Bind(*m_commandBuffers[i]);
 		m_indexBuffer->Bind(*m_commandBuffers[i]);
 		
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[i], 0, nullptr);
-		vkCmdDrawIndexed(cb, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+		vkCmdBindDescriptorSets(m_commandBuffers[i]->GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[i], 0, nullptr);
+		vkCmdDrawIndexed(m_commandBuffers[i]->GetCommandBuffer(), static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
-		vkCmdEndRenderPass(cb);
 		m_commandBuffers[i]->End();
 	}
 }
@@ -783,14 +827,14 @@ void Renderer::CreateDescriptorPool()
     poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
     poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
+    poolSizes[1].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size())+1;
 
 
     VkDescriptorPoolCreateInfo createInfo   = {};
     createInfo.sType                        = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     createInfo.poolSizeCount                = static_cast<uint32_t>(poolSizes.size());
     createInfo.pPoolSizes                   = poolSizes.data();
-    createInfo.maxSets                      = static_cast<uint32_t>(m_swapchainImages.size());
+    createInfo.maxSets                      = static_cast<uint32_t>(m_swapchainImages.size())+1;
     VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
 }
 
@@ -912,10 +956,28 @@ void Renderer::DrawFrame()
 
 	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
-	
+	m_debugUI->SetupFrame(imageIndex, 0, m_swapchainFramebuffers[imageIndex]);	//subpass is 0 because we only have one subpass for now
 	UpdateUniformBuffers(imageIndex);
+	m_cbs[imageIndex]->Begin(0);
+	VkRenderPassBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	beginInfo.renderPass = m_renderPass;
+	beginInfo.framebuffer = m_swapchainFramebuffers[imageIndex];
+	beginInfo.renderArea.offset = {0,0};
+	beginInfo.renderArea.extent = m_swapchainExtent;
 
-	m_commandBuffers[imageIndex]->Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+	std::array<VkClearValue, 2> clearValues = {};
+	clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+	clearValues[1].depthStencil = {1.0f, 0};
+	beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+	beginInfo.pClearValues = clearValues.data();
+	vkCmdBeginRenderPass(m_cbs[imageIndex]->GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+	std::array<VkCommandBuffer, 2> secondaryCbs = { m_commandBuffers[imageIndex]->GetCommandBuffer(), m_debugUI->GetCommandBuffer(imageIndex)};
+	vkCmdExecuteCommands(m_cbs[imageIndex]->GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data()); 
+	vkCmdEndRenderPass(m_cbs[imageIndex]->GetCommandBuffer());
+
+	m_cbs[imageIndex]->Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+
 
 
 	VkPresentInfoKHR presentInfo = {};

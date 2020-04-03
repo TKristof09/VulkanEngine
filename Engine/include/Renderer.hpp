@@ -8,6 +8,7 @@
 #include "Buffer.hpp"
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
+#include "DebugUI.hpp"
 
 class Renderer
 {
@@ -18,6 +19,8 @@ public:
 	void DrawFrame();
 
 private:
+	void CreateDebugUI();
+
     void CreateInstance();
     void CreateSurface();
     void CreateDevice();
@@ -50,6 +53,11 @@ private:
 
 
     std::shared_ptr<Window> m_window;
+	
+	std::shared_ptr<DebugUI> m_debugUI;
+
+
+
 
     VkInstance				m_instance;
     VkPhysicalDevice		m_gpu;
@@ -102,4 +110,5 @@ private:
 
 	VkDebugUtilsMessengerEXT  m_messenger;
 
+	std::vector<std::unique_ptr<CommandBuffer>> m_cbs;
 };

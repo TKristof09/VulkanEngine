@@ -1,6 +1,6 @@
 #include "CommandBuffer.hpp"
 
-CommandBuffer::CommandBuffer(VkDevice device, VkCommandPool commandPool):
+CommandBuffer::CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level):
 m_running(false),
 m_commandBuffer(VK_NULL_HANDLE),
 m_device(device),
@@ -9,7 +9,7 @@ m_commandPool(commandPool)
     VkCommandBufferAllocateInfo allocInfo       = {};
     allocInfo.sType                             = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool                       = commandPool;
-    allocInfo.level                             = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // todo take this as param
+    allocInfo.level                             = level; // todo take this as param
     allocInfo.commandBufferCount                = 1;
 
     VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");
@@ -31,6 +31,17 @@ void CommandBuffer::Begin(VkCommandBufferUsageFlags usage)
     VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
     m_running = true;
 }
+void CommandBuffer::Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo)
+{
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = usage;
+	beginInfo.pInheritanceInfo = &inheritanceInfo; //this is ignore if its a primary command buffer	
+
+    VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
+    m_running = true;
+}
+
 void CommandBuffer::End()
 {
     if(!m_running)

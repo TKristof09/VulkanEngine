@@ -5,9 +5,10 @@ class CommandBuffer
 {
 
 public:
-    CommandBuffer(VkDevice device, VkCommandPool commandPool);
+    CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY );
     ~CommandBuffer();
-    void Begin(VkCommandBufferUsageFlags usage);
+	void Begin(VkCommandBufferUsageFlags usage);
+	void Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo);
     void End();
 
     void SubmitIdle(VkQueue queue);

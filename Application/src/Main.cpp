@@ -8,7 +8,7 @@ void run()
 }
 int main()
 {
-    std::shared_ptr<Window> window = std::make_shared<Window>(800, 600, "Vulkan Application");
+    std::shared_ptr<Window> window = std::make_shared<Window>(1280, 720, "Vulkan Application");
     Renderer renderer(window);
     std::cout << "Hello from main" << std::endl;
     run();
