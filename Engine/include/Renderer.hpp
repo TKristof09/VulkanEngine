@@ -9,6 +9,7 @@
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
 #include "DebugUI.hpp"
+#include "Model.hpp"
 
 class Renderer
 {
@@ -35,7 +36,7 @@ private:
 	void RecreateSwapchain();
 	void CleanupSwapchain();
 
-	void CreateBuffers();
+	void CreateModel();
 	void CreateUniformBuffers();
 	void UpdateUniformBuffers(uint32_t currentImage);
 
@@ -56,7 +57,7 @@ private:
 	
 	std::shared_ptr<DebugUI> m_debugUI;
 
-
+	std::shared_ptr<Model> m_model;
 
 
     VkInstance				m_instance;

@@ -22,63 +22,11 @@
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-	glm::vec2 texCoord;
 
-	static VkVertexInputBindingDescription GetBindingDescription()
-	{
-		VkVertexInputBindingDescription bindingDescription = {};
-		bindingDescription.binding = 0;
-		bindingDescription.stride  = sizeof(Vertex);
-		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-		return bindingDescription;
-	}
-
-	static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
-	{	
-		std::array<VkVertexInputAttributeDescription, 3> attribDescriptions = {};
-		
-		attribDescriptions[0].binding = 0;
-		attribDescriptions[0].location = 0;
-		attribDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDescriptions[0].offset = offsetof(Vertex, pos);
-
-		attribDescriptions[1].binding = 0;
-		attribDescriptions[1].location = 1;
-		attribDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attribDescriptions[1].offset = offsetof(Vertex, color);
-
-		attribDescriptions[2].binding = 0;
-		attribDescriptions[2].location = 2;
-		attribDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attribDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-		return attribDescriptions;
-	}
-};
 struct UniformBufferObject {
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
-};
-const std::vector<Vertex> vertices = {
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-	{{-0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
-
-};
-const std::vector<uint16_t> indices = {
-    0, 1, 2, 2, 3, 0,
-	4, 5, 6, 6, 7, 4
 };
 
 
@@ -133,7 +81,7 @@ m_window(window)
 	CreateFramebuffers();
 	CreateTexture();
 	CreateSampler();
-	CreateBuffers();
+	CreateModel();
 	CreateUniformBuffers();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
@@ -248,6 +196,10 @@ void Renderer::CleanupSwapchain()
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 }
 
+void Renderer::CreateModel()
+{
+	m_model = std::make_unique<Model>("models/chalet.obj", m_gpu, m_device, m_commandPool, m_graphicsQueue, m_swapchainFramebuffers.size());
+}
 void Renderer::CreateDebugUI()
 {
 	
@@ -606,7 +558,7 @@ void Renderer::CreatePipeline()
     VkPipelineRasterizationStateCreateInfo rasterizer = {};
 	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizer.depthClampEnable = false;
 	rasterizer.rasterizerDiscardEnable = false;
@@ -729,30 +681,11 @@ void Renderer::CreateCommandPool()
 
 void Renderer::CreateCommandBuffers()
 {
-	m_commandBuffers.resize(m_swapchainFramebuffers.size());
 	m_cbs.resize(m_swapchainFramebuffers.size());
-	for(size_t i = 0; i < m_commandBuffers.size(); i++)
+	for(size_t i = 0; i < m_cbs.size(); i++)
 	{
 		m_cbs[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool);
-		m_commandBuffers[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
-		VkCommandBufferInheritanceInfo inheritanceInfo = {};
-		inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-		inheritanceInfo.renderPass = m_renderPass;
-		inheritanceInfo.subpass = 0;
-		inheritanceInfo.framebuffer = m_swapchainFramebuffers[i];
-		m_commandBuffers[i]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
-
-		
-
-		
-		vkCmdBindPipeline(m_commandBuffers[i]->GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-		m_vertexBuffer->Bind(*m_commandBuffers[i]);
-		m_indexBuffer->Bind(*m_commandBuffers[i]);
-		
-		vkCmdBindDescriptorSets(m_commandBuffers[i]->GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[i], 0, nullptr);
-		vkCmdDrawIndexed(m_commandBuffers[i]->GetCommandBuffer(), static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-
-		m_commandBuffers[i]->End();
+		m_model->SetupCommandBuffer(i, m_graphicsPipeline, m_pipelineLayout, m_renderPass, m_swapchainFramebuffers[i], m_descriptorSets[i]);
 	}
 }
 
@@ -781,24 +714,7 @@ void Renderer::CreateSyncObjects()
 }
 
 
-void Renderer::CreateBuffers()
-{
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
-	Buffer stagingVertexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	stagingVertexBuffer.Fill((void*)vertices.data(), bufferSize);
-
-	m_vertexBuffer = std::make_unique<Buffer>(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	stagingVertexBuffer.Copy(m_vertexBuffer.get(), bufferSize, m_graphicsQueue, m_commandPool); 
-
-
-	bufferSize = sizeof(indices[0]) * indices.size();
-	Buffer stagingIndexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	stagingIndexBuffer.Fill((void*)indices.data(), bufferSize);
-
-	m_indexBuffer = std::make_unique<Buffer>(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize, m_graphicsQueue, m_commandPool);
-}
 
 void Renderer::CreateDescriptorSetLayout()
 {
@@ -892,7 +808,7 @@ void Renderer::CreateUniformBuffers()
 
 void Renderer::CreateTexture()
 {
-    m_texture = std::make_unique<Texture>("./textures/texture.jpg", m_gpu, m_device, m_commandPool, m_graphicsQueue);
+    m_texture = std::make_unique<Texture>("./textures/chalet.jpg", m_gpu, m_device, m_commandPool, m_graphicsQueue);
 }
 
 void Renderer::CreateSampler()
@@ -971,8 +887,10 @@ void Renderer::DrawFrame()
 	clearValues[1].depthStencil = {1.0f, 0};
 	beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	beginInfo.pClearValues = clearValues.data();
+
+
 	vkCmdBeginRenderPass(m_cbs[imageIndex]->GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-	std::array<VkCommandBuffer, 2> secondaryCbs = { m_commandBuffers[imageIndex]->GetCommandBuffer(), m_debugUI->GetCommandBuffer(imageIndex)};
+	std::array<VkCommandBuffer, 2> secondaryCbs = { m_model->GetCommandBuffer(imageIndex), m_debugUI->GetCommandBuffer(imageIndex)};
 	vkCmdExecuteCommands(m_cbs[imageIndex]->GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data()); 
 	vkCmdEndRenderPass(m_cbs[imageIndex]->GetCommandBuffer());
 

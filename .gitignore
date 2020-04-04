@@ -13,8 +13,9 @@ compile_commands.json
 *.frag
 *.spv
 
-# ignore textures
+# ignore textures, models
 textures/
+models/
 
 .vscode/
 

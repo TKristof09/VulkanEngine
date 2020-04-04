@@ -122,7 +122,7 @@ void Buffer::Bind(const CommandBuffer& commandBuffer)
         }
         case Type::INDEX:
         {
-            vkCmdBindIndexBuffer(commandBuffer.GetCommandBuffer(), m_buffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(commandBuffer.GetCommandBuffer(), m_buffer, 0, VK_INDEX_TYPE_UINT32);
             break;
         }
 		default:

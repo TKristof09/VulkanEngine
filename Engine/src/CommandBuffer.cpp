@@ -9,7 +9,7 @@ m_commandPool(commandPool)
     VkCommandBufferAllocateInfo allocInfo       = {};
     allocInfo.sType                             = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool                       = commandPool;
-    allocInfo.level                             = level; // todo take this as param
+    allocInfo.level                             = level; 
     allocInfo.commandBufferCount                = 1;
 
     VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");

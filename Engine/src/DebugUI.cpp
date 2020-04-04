@@ -53,7 +53,6 @@ void DebugUI::ReInit(DebugUIInitInfo* initInfo)
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 	ImGui::StyleColorsDark();
-	//ImGui_ImplGlfw_InitForVulkan(initInfo->pWindow->GetWindow(), false);
 
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
 	imguiInitInfo.Instance = initInfo->instance;
