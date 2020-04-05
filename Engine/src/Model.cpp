@@ -85,7 +85,7 @@ void Model::CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool c
 	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize, queue, commandPool);
 
 }
-void Model::SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet)
+void Model::SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet, uint32_t pushConstantsSize,void* pushConstantsData)
 {
 	VkCommandBufferInheritanceInfo inheritanceInfo = {};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -94,6 +94,7 @@ void Model::SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLa
 	inheritanceInfo.framebuffer = framebuffer;
 	m_commandBuffers[index]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
 
+	vkCmdPushConstants(m_commandBuffers[index]->GetCommandBuffer(), pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,pushConstantsSize, pushConstantsData);
 	vkCmdBindPipeline(m_commandBuffers[index]->GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	
 	m_vertexBuffer->Bind(*m_commandBuffers[index]);

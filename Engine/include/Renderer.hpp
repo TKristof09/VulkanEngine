@@ -10,7 +10,9 @@
 #include "Texture.hpp"
 #include "DebugUI.hpp"
 #include "Model.hpp"
+#include "Camera.hpp"
 
+#include <glm/glm.hpp>
 class Renderer
 {
 public:
@@ -58,6 +60,9 @@ private:
 	std::shared_ptr<DebugUI> m_debugUI;
 
 	std::shared_ptr<Model> m_model;
+
+	std::shared_ptr<Camera> m_camera;
+	glm::mat4 m_vpMatrix;
 
 
     VkInstance				m_instance;

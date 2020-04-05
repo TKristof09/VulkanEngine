@@ -25,8 +25,6 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 
 struct UniformBufferObject {
     glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
 };
 
 
@@ -88,6 +86,11 @@ m_window(window)
 	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
+
+	m_camera = std::make_shared<Camera>(45.0f, m_swapchainExtent.width / m_swapchainExtent.height, 0.001f, 1000.0f);
+	m_camera->Translate(glm::vec3(0, 5.0f, -5.0f));
+	m_camera->Rotate(45.0f, glm::vec3(1,0,0));
+	m_vpMatrix = m_camera->GetViewProjection();
 
 }
 
@@ -600,6 +603,10 @@ void Renderer::CreatePipeline()
     depthStencil.front = {}; // Optional
     depthStencil.back = {}; // Optional
 
+	VkPushConstantRange pcRange = {};
+	pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pcRange.offset = 0;
+	pcRange.size = sizeof(glm::mat4); // we will only send the view projection matrix for now
 
 	/*VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH };
 	VkPipelineDynamicStateCreateInfo dynamicState = {};
@@ -611,6 +618,8 @@ void Renderer::CreatePipeline()
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	layoutCreateInfo.setLayoutCount = 1;
 	layoutCreateInfo.pSetLayouts = &m_descriptorSetLayout;
+	layoutCreateInfo.pushConstantRangeCount = 1;
+	layoutCreateInfo.pPushConstantRanges = &pcRange;
 	
 	VK_CHECK(vkCreatePipelineLayout(m_device, &layoutCreateInfo, nullptr, &m_pipelineLayout), "Failed to create pipeline layout");
 
@@ -685,8 +694,7 @@ void Renderer::CreateCommandBuffers()
 	for(size_t i = 0; i < m_cbs.size(); i++)
 	{
 		m_cbs[i] = std::make_unique<CommandBuffer>(m_device, m_commandPool);
-		m_model->SetupCommandBuffer(i, m_graphicsPipeline, m_pipelineLayout, m_renderPass, m_swapchainFramebuffers[i], m_descriptorSets[i]);
-	}
+			}
 }
 
 void Renderer::CreateSyncObjects()
@@ -871,6 +879,7 @@ void Renderer::DrawFrame()
 
 
 	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
+m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_renderPass, m_swapchainFramebuffers[imageIndex], m_descriptorSets[imageIndex], sizeof(glm::mat4), &m_vpMatrix);
 
 	m_debugUI->SetupFrame(imageIndex, 0, m_swapchainFramebuffers[imageIndex]);	//subpass is 0 because we only have one subpass for now
 	UpdateUniformBuffers(imageIndex);
@@ -887,7 +896,6 @@ void Renderer::DrawFrame()
 	clearValues[1].depthStencil = {1.0f, 0};
 	beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	beginInfo.pClearValues = clearValues.data();
-
 
 	vkCmdBeginRenderPass(m_cbs[imageIndex]->GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 	std::array<VkCommandBuffer, 2> secondaryCbs = { m_model->GetCommandBuffer(imageIndex), m_debugUI->GetCommandBuffer(imageIndex)};
@@ -920,6 +928,7 @@ void Renderer::DrawFrame()
 
 void Renderer::UpdateUniformBuffers(uint32_t currentImage)
 {
+	m_vpMatrix = m_camera->GetViewProjection();
 	static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
@@ -927,8 +936,6 @@ void Renderer::UpdateUniformBuffers(uint32_t currentImage)
 	
 	UniformBufferObject ubo = {};
 	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.proj = glm::perspective(glm::radians(45.0f), m_swapchainExtent.width / (float) m_swapchainExtent.height, 0.1f, 10.0f);
 	m_uniformBuffers[currentImage]->Update(&ubo);
 
 }

@@ -67,7 +67,7 @@ public:
 	Model(const std::string& file, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue, uint32_t numCommandBuffers);
 	~Model();
 	VkCommandBuffer GetCommandBuffer(uint32_t index) const { return m_commandBuffers[index]->GetCommandBuffer(); };
-	void SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet);
+	void SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet, uint32_t pushConstantsSize = 0, void* pushConstantsData = nullptr);
 private:
 	void LoadModel(const std::string& file);
 	void CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue);
