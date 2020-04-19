@@ -16,20 +16,20 @@
 class Renderer
 {
 public:
-    Renderer(std::shared_ptr<Window> window);
-    ~Renderer();
+	Renderer(std::shared_ptr<Window> window);
+	~Renderer();
 
 	void DrawFrame();
 
 private:
 	void CreateDebugUI();
 
-    void CreateInstance();
-    void CreateSurface();
-    void CreateDevice();
-    void CreateSwapchain();
-    void CreateRenderPass();
-    void CreatePipeline();
+	void CreateInstance();
+	void CreateSurface();
+	void CreateDevice();
+	void CreateSwapchain();
+	void CreateRenderPass();
+	void CreatePipeline();
 	void CreateFramebuffers();
 	void CreateCommandPool();
 	void CreateCommandBuffers();
@@ -52,11 +52,11 @@ private:
 	void CreateColorResources();
 	void CreateDepthResources();
 
-    void SetupDebugMessenger();
+	void SetupDebugMessenger();
 
 
-    std::shared_ptr<Window> m_window;
-	
+	std::shared_ptr<Window> m_window;
+
 	std::shared_ptr<DebugUI> m_debugUI;
 
 	std::shared_ptr<Model> m_model;
@@ -65,23 +65,23 @@ private:
 	glm::mat4 m_vpMatrix;
 
 
-    VkInstance				m_instance;
-    VkPhysicalDevice		m_gpu;
-    VkDevice				m_device;
+	VkInstance				m_instance;
+	VkPhysicalDevice		m_gpu;
+	VkDevice				m_device;
 
-    VkQueue					m_graphicsQueue;
-    VkQueue					m_presentQueue;
+	VkQueue					m_graphicsQueue;
+	VkQueue					m_presentQueue;
 
-    VkSurfaceKHR			m_surface;
+	VkSurfaceKHR			m_surface;
 
-    VkSwapchainKHR			m_swapchain;
-    std::vector<VkImage>	m_swapchainImages;
-    std::vector<VkImageView> m_swapchainImageViews;
-    VkFormat				m_swapchainImageFormat;
-    VkExtent2D				m_swapchainExtent;
+	VkSwapchainKHR			m_swapchain;
+	std::vector<VkImage>	m_swapchainImages;
+	std::vector<VkImageView> m_swapchainImageViews;
+	VkFormat				m_swapchainImageFormat;
+	VkExtent2D				m_swapchainExtent;
 	std::vector<VkFramebuffer> m_swapchainFramebuffers;
 
-    VkRenderPass			m_renderPass;
+	VkRenderPass			m_renderPass;
 
 	VkPipelineLayout		m_pipelineLayout;
 	VkPipeline				m_graphicsPipeline;
@@ -95,14 +95,14 @@ private:
 	std::vector<VkFence>     m_inFlightFences;
 	std::vector<VkFence>     m_imagesInFlight;
 
-	std::unique_ptr<Buffer>  m_vertexBuffer;	
+	std::unique_ptr<Buffer>  m_vertexBuffer;
 	std::unique_ptr<Buffer>  m_indexBuffer;
 
 	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
 	std::vector<VkDescriptorSet> m_descriptorSets;
 	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
-	
+
 	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
 	std::unique_ptr<Texture> m_texture;
 

@@ -19,7 +19,7 @@ Buffer::Buffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBuffe
 m_device(device),
 m_size(size)
 {
-	
+
     m_type = Buffer::Type::TRANSFER;
     if(usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
         m_type = Buffer::Type::VERTEX;

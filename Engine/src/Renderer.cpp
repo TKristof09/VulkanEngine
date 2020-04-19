@@ -1,4 +1,4 @@
-#include "Renderer.hpp"
+#include <Renderer.hpp>
 #include <memory>
 #include <sstream>
 #include <optional>
@@ -106,11 +106,11 @@ Renderer::~Renderer()
     //m_texture.reset();
     m_vertexBuffer.reset();
     m_indexBuffer.reset();
-    
+
     //vkDestroySampler(m_device, m_sampler, nullptr);
 
     CleanupSwapchain();
-    
+
 	vkDestroySampler(m_device, m_sampler, nullptr);
     vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
 
@@ -125,8 +125,8 @@ Renderer::~Renderer()
 
     vkDestroyInstance(m_instance, nullptr);
 
-	
-	
+
+
 }
 
 
@@ -134,7 +134,7 @@ void Renderer::RecreateSwapchain()
 {
 	while(m_window->GetWidth() == 0 || m_window->GetHeight() == 0)
 		glfwWaitEvents();
-	
+
 
 	vkDeviceWaitIdle(m_device);
 
@@ -161,16 +161,16 @@ void Renderer::RecreateSwapchain()
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
     initInfo.queueFamily = families.graphicsFamily.value();
     initInfo.queue = m_graphicsQueue;
-	
+
 	initInfo.renderPass = m_renderPass;
     initInfo.pipelineCache = nullptr;
     initInfo.descriptorPool = m_descriptorPool;
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
     initInfo.msaaSamples = m_msaaSamples;
-    initInfo.allocator = nullptr; 
+    initInfo.allocator = nullptr;
 	initInfo.commandPool = m_commandPool;
 	m_debugUI->ReInit(&initInfo);
-	
+
 }
 
 void Renderer::CleanupSwapchain()
@@ -185,7 +185,7 @@ void Renderer::CleanupSwapchain()
 	m_commandBuffers.clear();
 	m_cbs.clear();
 	m_uniformBuffers.clear();
-	
+
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
 	vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
@@ -205,7 +205,7 @@ void Renderer::CreateModel()
 }
 void Renderer::CreateDebugUI()
 {
-	
+
 	DebugUIInitInfo initInfo = {};
 	initInfo.pWindow = m_window;
 	initInfo.instance = m_instance;
@@ -215,15 +215,15 @@ void Renderer::CreateDebugUI()
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
     initInfo.queueFamily = families.graphicsFamily.value();
     initInfo.queue = m_graphicsQueue;
-	
+
 	initInfo.renderPass = m_renderPass;
     initInfo.pipelineCache = nullptr;
     initInfo.descriptorPool = m_descriptorPool;
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
     initInfo.msaaSamples = m_msaaSamples;
-    initInfo.allocator = nullptr; 
+    initInfo.allocator = nullptr;
 	initInfo.commandPool = m_commandPool;
-	
+
 
 	m_debugUI = std::make_shared<DebugUI>(&initInfo);
 }
@@ -245,14 +245,14 @@ void Renderer::CreateInstance()
     createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
 
 #ifdef VDEBUG
-	
+
 
     // The VK_LAYER_KHRONOS_validation contains all current validation functionality.
     const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
     // Check if this layer is available at instance level
 	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-    std::vector<VkLayerProperties> instanceLayerProperties(layerCount); 
+    std::vector<VkLayerProperties> instanceLayerProperties(layerCount);
 	vkEnumerateInstanceLayerProperties(&layerCount, instanceLayerProperties.data());
 
     bool validationLayerPresent = false;
@@ -296,7 +296,7 @@ void Renderer::SetupDebugMessenger()
 	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo.pfnUserCallback = debugUtilsMessengerCallback;
-    
+
 	CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_messenger);
 }
 
@@ -346,7 +346,7 @@ void Renderer::CreateDevice()
 
 	VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
 	vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
-	vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue);	
+	vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue);
 
 }
 
@@ -387,9 +387,9 @@ void Renderer::CreateSwapchain()
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.preTransform = details.capabilities.currentTransform;
     createInfo.clipped      = VK_TRUE;
-	
+
 	VK_CHECK(vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain), "Failed to create swapchain");
-   
+
 	uint32_t imageCount;
 	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr), "Failed to get swapchain images");
 	m_swapchainImages.resize(imageCount);
@@ -421,7 +421,7 @@ void Renderer::CreateSwapchain()
 
 void Renderer::CreateRenderPass()
 {
-    VkAttachmentDescription colorAttachment = {}; 
+    VkAttachmentDescription colorAttachment = {};
 	colorAttachment.format = m_swapchainImageFormat;
 	colorAttachment.samples = m_msaaSamples;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -443,8 +443,8 @@ void Renderer::CreateRenderPass()
 	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;	
-    
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 	VkAttachmentDescription colorAttachmentResolve = {}; // To "combine" all the samples from the msaa attachment
 	colorAttachmentResolve.format = m_swapchainImageFormat;
 	colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -481,7 +481,7 @@ void Renderer::CreateRenderPass()
 	attachments.push_back(depthAttachment);
 	if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
 		attachments.push_back(colorAttachmentResolve);
-    
+
 	VkRenderPassCreateInfo createInfo = {};
 	createInfo.sType			= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     createInfo.attachmentCount  = static_cast<uint32_t>(attachments.size());
@@ -573,7 +573,7 @@ void Renderer::CreatePipeline()
 	multisample.sampleShadingEnable = VK_TRUE;
 	multisample.minSampleShading = 0.2f; // closer to 1 is smoother
 	multisample.rasterizationSamples = m_msaaSamples;
-	
+
 
 	VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
 	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_A_BIT | VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
@@ -584,7 +584,7 @@ void Renderer::CreatePipeline()
 	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-	
+
 	VkPipelineColorBlendStateCreateInfo colorBlend = {};
 	colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	colorBlend.logicOpEnable = false;
@@ -620,10 +620,10 @@ void Renderer::CreatePipeline()
 	layoutCreateInfo.pSetLayouts = &m_descriptorSetLayout;
 	layoutCreateInfo.pushConstantRangeCount = 1;
 	layoutCreateInfo.pPushConstantRanges = &pcRange;
-	
+
 	VK_CHECK(vkCreatePipelineLayout(m_device, &layoutCreateInfo, nullptr, &m_pipelineLayout), "Failed to create pipeline layout");
 
-	
+
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineInfo.stageCount = 2;
@@ -634,8 +634,8 @@ void Renderer::CreatePipeline()
 	pipelineInfo.pRasterizationState = &rasterizer;
 	pipelineInfo.pMultisampleState = &multisample;
 	pipelineInfo.pColorBlendState = &colorBlend;
-	pipelineInfo.pDepthStencilState = &depthStencil; 
-	//pipelineInfo.pDynamicState = &dynamicState; 	
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	//pipelineInfo.pDynamicState = &dynamicState;
 
 	pipelineInfo.layout = m_pipelineLayout;
 	pipelineInfo.renderPass = m_renderPass;
@@ -673,7 +673,7 @@ void Renderer::CreateFramebuffers()
 		framebufferInfo.layers			= 1;
 
 		VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]), "Failed to create framebuffer");
-		
+
 	}
 }
 
@@ -733,7 +733,7 @@ void Renderer::CreateDescriptorSetLayout()
     samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     samplerLayoutBinding.descriptorCount               = 1;
     samplerLayoutBinding.stageFlags                    = VK_SHADER_STAGE_FRAGMENT_BIT;
-    samplerLayoutBinding.pImmutableSamplers            = nullptr; 
+    samplerLayoutBinding.pImmutableSamplers            = nullptr;
 
     std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboBinding, samplerLayoutBinding};
 
@@ -859,7 +859,7 @@ void Renderer::DrawFrame()
 {
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
-	uint32_t imageIndex;	
+	uint32_t imageIndex;
 	VkResult result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
 
 
@@ -899,7 +899,7 @@ m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_
 
 	vkCmdBeginRenderPass(m_cbs[imageIndex]->GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 	std::array<VkCommandBuffer, 2> secondaryCbs = { m_model->GetCommandBuffer(imageIndex), m_debugUI->GetCommandBuffer(imageIndex)};
-	vkCmdExecuteCommands(m_cbs[imageIndex]->GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data()); 
+	vkCmdExecuteCommands(m_cbs[imageIndex]->GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data());
 	vkCmdEndRenderPass(m_cbs[imageIndex]->GetCommandBuffer());
 
 	m_cbs[imageIndex]->Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
@@ -915,7 +915,7 @@ m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_
 	presentInfo.pSwapchains = &m_swapchain;
 	presentInfo.pImageIndices = &imageIndex;
 	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
-	
+
 	if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
 	{
 		m_window->SetResized(false);
@@ -933,7 +933,7 @@ void Renderer::UpdateUniformBuffers(uint32_t currentImage)
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-	
+
 	UniformBufferObject ubo = {};
 	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 	m_uniformBuffers[currentImage]->Update(&ubo);
@@ -1013,7 +1013,7 @@ VkPhysicalDevice PickDevice(const std::vector<VkPhysicalDevice>& devices, VkSurf
 
 int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<const char*>& deviceExtensions)
 {
-	uint32_t extensionPropCount; 
+	uint32_t extensionPropCount;
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionPropCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionPropCount);
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionPropCount, availableExtensions.data());
@@ -1045,7 +1045,7 @@ int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<
 
     score += deviceProperties.limits.maxImageDimension2D;
     bool temp = FindQueueFamilies(device, surface).IsComplete();
-    // exemple: if the application cannot function without a geometry shader
+    // example: if the application cannot function without a geometry shader
     if( !deviceFeatures.geometryShader ||
         !temp ||
         !requiredExtensions.empty() ||
