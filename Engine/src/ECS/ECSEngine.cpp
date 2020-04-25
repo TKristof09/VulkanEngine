@@ -2,6 +2,7 @@
 
 ECSEngine::ECSEngine()
 {
+	m_eventHandler = new EventHandler();
 	m_systemManager = new SystemManager();
 	m_componentManager = new ComponentManager();
 	m_entityManager = new EntityManager(m_componentManager);
@@ -12,6 +13,7 @@ ECSEngine::~ECSEngine()
 	delete m_entityManager;
 	delete m_componentManager;
 	delete m_systemManager;
+	delete m_eventHandler;
 }
 
 void ECSEngine::Update(float dt)
