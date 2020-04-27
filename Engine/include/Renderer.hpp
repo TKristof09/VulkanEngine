@@ -16,7 +16,7 @@
 class Renderer
 {
 public:
-	Renderer(std::shared_ptr<Window> window);
+	Renderer(eastl::shared_ptr<Window> window);
 	~Renderer();
 
 	void DrawFrame();
@@ -55,13 +55,13 @@ private:
 	void SetupDebugMessenger();
 
 
-	std::shared_ptr<Window> m_window;
+	eastl::shared_ptr<Window> m_window;
 
-	std::shared_ptr<DebugUI> m_debugUI;
+	eastl::shared_ptr<DebugUI> m_debugUI;
 
-	std::shared_ptr<Model> m_model;
+	eastl::shared_ptr<Model> m_model;
 
-	std::shared_ptr<Camera> m_camera;
+	eastl::shared_ptr<Camera> m_camera;
 	glm::mat4 m_vpMatrix;
 
 
@@ -75,11 +75,11 @@ private:
 	VkSurfaceKHR			m_surface;
 
 	VkSwapchainKHR			m_swapchain;
-	std::vector<VkImage>	m_swapchainImages;
-	std::vector<VkImageView> m_swapchainImageViews;
+	eastl::vector<VkImage>	m_swapchainImages;
+	eastl::vector<VkImageView> m_swapchainImageViews;
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
-	std::vector<VkFramebuffer> m_swapchainFramebuffers;
+	eastl::vector<VkFramebuffer> m_swapchainFramebuffers;
 
 	VkRenderPass			m_renderPass;
 
@@ -88,33 +88,33 @@ private:
 
 	VkCommandPool			m_commandPool;
 
-	std::vector<std::unique_ptr<CommandBuffer>> m_commandBuffers;
+	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_commandBuffers;
 
-	std::vector<VkSemaphore> m_imageAvailable;
-	std::vector<VkSemaphore> m_renderFinished;
-	std::vector<VkFence>     m_inFlightFences;
-	std::vector<VkFence>     m_imagesInFlight;
+	eastl::vector<VkSemaphore> m_imageAvailable;
+	eastl::vector<VkSemaphore> m_renderFinished;
+	eastl::vector<VkFence>     m_inFlightFences;
+	eastl::vector<VkFence>     m_imagesInFlight;
 
-	std::unique_ptr<Buffer>  m_vertexBuffer;
-	std::unique_ptr<Buffer>  m_indexBuffer;
+	eastl::unique_ptr<Buffer>  m_vertexBuffer;
+	eastl::unique_ptr<Buffer>  m_indexBuffer;
 
 	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
-	std::vector<VkDescriptorSet> m_descriptorSets;
-	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
+	eastl::vector<VkDescriptorSet> m_descriptorSets;
+	eastl::vector<eastl::unique_ptr<UniformBuffer>> m_uniformBuffers;
 
 	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
-	std::unique_ptr<Texture> m_texture;
+	eastl::unique_ptr<Texture> m_texture;
 
-	std::unique_ptr<Image>   m_depthImage;
+	eastl::unique_ptr<Image>   m_depthImage;
 
 
 	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	std::unique_ptr<Image>  m_colorImage; // for MSAA
+	eastl::unique_ptr<Image>  m_colorImage; // for MSAA
 
 	size_t m_currentFrame = 0;
 
 	VkDebugUtilsMessengerEXT  m_messenger;
 
-	std::vector<std::unique_ptr<CommandBuffer>> m_cbs;
+	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_cbs;
 };

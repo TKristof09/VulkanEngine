@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ECS/IEventDelegate.hpp"
-#include <memory>
 
 template<typename Class, typename EventType>
 class EventDelegate : public IEventDelegate

@@ -2,7 +2,7 @@
 
 #include "IEntity.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
-#include <unordered_map>
+#include <EASTL/unordered_map.h>
 
 class ComponentManager;
 #define CHUNK_SIZE 512
@@ -35,11 +35,11 @@ private:
 	EntityManager(const EntityManager&) = delete;
 	EntityManager& operator=(EntityManager&) = delete;
 
-	std::unordered_map<EntityTypeID, IEntityContainer*> m_registry;
-	std::vector<EntityID> m_pendingDestroy;
+	eastl::unordered_map<EntityTypeID, IEntityContainer*> m_registry;
+	eastl::vector<EntityID> m_pendingDestroy;
 	size_t m_numPendingDestroy;
 
-	std::unordered_map<EntityID, IEntity*> m_handleTable;
+	eastl::unordered_map<EntityID, IEntity*> m_handleTable;
 
 	ComponentManager* m_componentManager;
 
@@ -79,7 +79,7 @@ public:
 		((T*)pMemory)->m_id = m_lastID++;
 		((T*)pMemory)->m_componentManager = m_componentManager;
 
-		IEntity* entity = new(pMemory) T(std::forward<Args>(args)...);
+		IEntity* entity = new(pMemory) T(eastl::forward<Args>(args)...);
 	}
 
 	void DestroyEntity(EntityID id);

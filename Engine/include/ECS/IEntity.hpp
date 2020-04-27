@@ -21,7 +21,7 @@ public:
 	template<typename T, typename ...ARGS>
 	T* AddComponent(ARGS&&... args)
 	{
-		return m_componentManager->AddComponent<T>(m_id, std::forward<ARGS>(args)...);
+		return m_componentManager->AddComponent<T>(m_id, eastl::forward<ARGS>(args)...);
 	}
 
 	template<typename T>

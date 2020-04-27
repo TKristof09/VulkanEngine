@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Allocator.hpp"
-#include <cmath>
 
 class PoolAllocator : public Allocator
 {

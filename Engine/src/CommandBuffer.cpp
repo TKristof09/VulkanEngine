@@ -69,7 +69,7 @@ void CommandBuffer::SubmitIdle(VkQueue queue)
     VK_CHECK(vkCreateFence(m_device, &fenceInfo, nullptr, &fence), "Failed to create fence");
     VK_CHECK(vkResetFences(m_device, 1, &fence), "Failed to reset fence");
     VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit queue");
-    VK_CHECK(vkWaitForFences(m_device, 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "Failed to wait for fence");
+    VK_CHECK(vkWaitForFences(m_device, 1, &fence, VK_TRUE, eastl::numeric_limits<uint64_t>::max()), "Failed to wait for fence");
     vkDestroyFence(m_device, fence, nullptr);
 
 }

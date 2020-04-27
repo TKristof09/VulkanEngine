@@ -1,6 +1,5 @@
 #pragma once
 #include <glm/glm.hpp>
-#include <array>
 #include <vulkan/vulkan.h>
 #include "CommandBuffer.hpp"
 uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);

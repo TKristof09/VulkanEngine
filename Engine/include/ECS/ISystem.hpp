@@ -3,7 +3,7 @@
 #include "ECS/Types.hpp"
 #include "ECS/EventHandler.hpp"
 #include "ECS/EventDelegate.hpp"
-#include <forward_list>
+#include <EASTL/slist.h>
 
 class ISystem
 {

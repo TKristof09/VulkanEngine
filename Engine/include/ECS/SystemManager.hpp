@@ -4,7 +4,7 @@
 #include "ECS/Types.hpp"
 #include "ECS/ISystem.hpp"
 
-#include <unordered_map>
+#include <EASTL/unordered_map.h>
 
 #define ECS_SYSTEM_MEMORY_SIZE 8388608 // 8MB
 //TODO system dependecies
@@ -12,7 +12,7 @@ class SystemManager
 {
 private:
 	LinearAllocator* m_allocator;
-	std::unordered_map<SystemTypeID, ISystem*> m_registry;
+	eastl::unordered_map<SystemTypeID, ISystem*> m_registry;
 	SystemManager(const SystemManager&) = delete;
 	SystemManager& operator=(SystemManager&) = delete;
 public:
@@ -35,7 +35,7 @@ public:
 		void* pMemory = m_allocator->Allocate(sizeof(T), alignof(T));
 		((T*)pMemory)->m_systemManager = this;
 
-		system = new(pMemory) T(std::forward<Args>(args)...);
+		system = new(pMemory) T(eastl::forward<Args>(args)...);
 		m_registry[id] = system;
 		return system;
 	}

@@ -1,7 +1,6 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "CommandBuffer.hpp"
-#include <locale>
 
 bool hasStencilComponent(VkFormat format)
 {
@@ -22,7 +21,7 @@ m_layout(layout)
 {
 
     if(numSamples == VK_SAMPLE_COUNT_1_BIT)
-		m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(m_width, m_height)))) + 1;
+		m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(eastl::max(m_width, m_height)))) + 1;
 	else
 		m_mipLevels = 1;
 
@@ -74,7 +73,7 @@ m_layout(layout)
     VK_CHECK(vkCreateImageView(m_device, &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
 }
 
-Image::Image(VkPhysicalDevice gpu, VkDevice device, std::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
+Image::Image(VkPhysicalDevice gpu, VkDevice device, eastl::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
              VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples):
 Image(gpu, device, widthHeight.first, widthHeight.second, format, tiling, usage, layout, properties, aspectFlags, numSamples)
 {
@@ -115,7 +114,7 @@ void Image::TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool,
     {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     }
-    barrier.subresourceRange.baseMipLevel       = 0; 
+    barrier.subresourceRange.baseMipLevel       = 0;
     barrier.subresourceRange.levelCount         = m_mipLevels;
     barrier.subresourceRange.baseArrayLayer     = 0;
     barrier.subresourceRange.layerCount         = 1;

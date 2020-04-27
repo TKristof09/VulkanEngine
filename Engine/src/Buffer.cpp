@@ -1,6 +1,5 @@
 #include "Buffer.hpp"
 #include <iostream>
-#include <cstring>
 
 uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {

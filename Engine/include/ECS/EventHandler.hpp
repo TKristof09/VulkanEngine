@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ECS/Types.hpp"
-#include <unordered_map>
-#include <list>
+#include <EASTL/unordered_map.h>
+#include <EASTL/list.h>
 
 #include "ECS/IEventDelegate.hpp"
 #include "Memory/LinearAllocator.hpp"
@@ -22,7 +22,7 @@ public:
 	{
 		void* memory = m_allocator->Allocate(sizeof(T), alignof(T));
 		if(memory != nullptr)
-			m_pendingEvents.push_back(new(memory)T(std::forward<Args>(args)...));
+			m_pendingEvents.push_back(new(memory)T(eastl::forward<Args>(args)...));
 		else
 			std::cerr << "Event buffer is full" << std::endl;
 
@@ -31,7 +31,7 @@ public:
 	template<typename T>
 	void Subscribe(IEventDelegate* delegate)
 	{
-		m_eventCallbacks[T::STATIC_EVENT_TYPE_ID].push_back(std::unique_ptr<IEventDelegate>(delegate));
+		m_eventCallbacks[T::STATIC_EVENT_TYPE_ID].push_back(eastl::unique_ptr<IEventDelegate>(delegate));
 	}
 
 	template<typename T>
@@ -44,6 +44,6 @@ public:
 
 private:
 	LinearAllocator* m_allocator;
-	std::unordered_map<EventTypeID, std::list<std::unique_ptr<IEventDelegate>>> m_eventCallbacks;
-	std::vector<IEvent*> m_pendingEvents;
+	eastl::unordered_map<EventTypeID, eastl::list<eastl::unique_ptr<IEventDelegate>>> m_eventCallbacks;
+	eastl::vector<IEvent*> m_pendingEvents;
 };

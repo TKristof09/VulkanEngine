@@ -4,10 +4,10 @@
 class Shader
 {
 public:
-    Shader(const std::string& filename);
+    Shader(const eastl::string& filename);
     VkShaderModule GetShaderModule(VkDevice device);
 
 private:
-    std::vector<char> m_data;
+    eastl::vector<char> m_data;
 
 };

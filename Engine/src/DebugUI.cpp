@@ -1,7 +1,8 @@
 #include "DebugUI.hpp"
 
 DebugUI::DebugUI(DebugUIInitInfo* initInfo):
-m_initInfo(*initInfo)
+m_initInfo(*initInfo),
+m_show_demo_window(true)
 {
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
@@ -35,7 +36,7 @@ m_initInfo(*initInfo)
 	m_commandBuffers.resize(initInfo->imageCount);
 	for(size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
-		m_commandBuffers[i] = std::make_unique<CommandBuffer>(initInfo->device, initInfo->commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		m_commandBuffers[i] = eastl::make_unique<CommandBuffer>(initInfo->device, initInfo->commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
 }
 
@@ -95,5 +96,5 @@ void DebugUI::SetupFrame(uint32_t imageIndex, uint32_t subpass, VkFramebuffer fr
 	m_commandBuffers[imageIndex]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), GetCommandBuffer(imageIndex));
 	m_commandBuffers[imageIndex]->End();
-	
+
 }

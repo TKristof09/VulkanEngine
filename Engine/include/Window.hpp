@@ -6,7 +6,7 @@
 class Window
 {
 public:
-    Window(uint32_t width, uint32_t height, const std::string& title);
+    Window(uint32_t width, uint32_t height, const eastl::string& title);
     ~Window();
 
     GLFWwindow* GetWindow() const {   return m_window;  };
@@ -28,7 +28,7 @@ public:
 private:
     uint32_t        m_width;
     uint32_t        m_height;
-    std::string     m_title;
+    eastl::string     m_title;
     GLFWwindow*     m_window;
 	bool			m_resized;
 };

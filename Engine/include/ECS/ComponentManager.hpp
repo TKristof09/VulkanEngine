@@ -4,7 +4,7 @@
 #include "IComponent.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
 
-#include <unordered_map>
+#include <EASTL/unordered_map.h>
 
 #define CHUNK_SIZE 512
 
@@ -34,9 +34,9 @@ class ComponentManager
 	};
 
 
-	std::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
-	std::unordered_map<EntityID, std::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
-	std::unordered_map<ComponentID, IComponent*> m_componentMap;
+	eastl::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
+	eastl::unordered_map<EntityID, eastl::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
+	eastl::unordered_map<ComponentID, IComponent*> m_componentMap;
 	template<typename T>
 	ComponentContainer<T>* GetComponentContainer()
 	{
@@ -76,7 +76,7 @@ public:
 		ComponentID id = m_lastID++;
 		((T*)pMemory)->m_id = id;
 
-		IComponent* component = new(pMemory) T(std::forward<Args>(args)...);
+		IComponent* component = new(pMemory) T(eastl::forward<Args>(args)...);
 
 		component->m_parent = entityId;
 

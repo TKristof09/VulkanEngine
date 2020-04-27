@@ -1,10 +1,10 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include <vector>
 #include <glm/glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
+#include <EASTL/array.h>
 
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
@@ -25,9 +25,9 @@ struct Vertex {
 		return bindingDescription;
 	}
 
-	static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
+	static eastl::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
 	{
-		std::array<VkVertexInputAttributeDescription, 3> attribDescriptions = {};
+		eastl::array<VkVertexInputAttributeDescription, 3> attribDescriptions = {};
 
 		attribDescriptions[0].binding = 0;
 		attribDescriptions[0].location = 0;
@@ -51,10 +51,10 @@ struct Vertex {
 		return pos == other.pos && color == other.color && texCoord == other.texCoord;
 	}
 };
-namespace std {
+namespace eastl {
 	template<> struct hash<Vertex> {
 		size_t operator()(Vertex const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+			return ((std::hash<glm::vec3>()(vertex.pos) ^ (std::hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (std::hash<glm::vec2>()(vertex.texCoord) << 1);
 		}
 	};
 }
@@ -63,19 +63,19 @@ namespace std {
 class Model
 {
 	public:
-		Model(const std::string& file, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue, uint32_t numCommandBuffers);
+		Model(const eastl::string& file, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue, uint32_t numCommandBuffers);
 		~Model();
 		VkCommandBuffer GetCommandBuffer(uint32_t index) const { return m_commandBuffers[index]->GetCommandBuffer(); };
 		void SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet, uint32_t pushConstantsSize = 0, void* pushConstantsData = nullptr);
 	private:
-		void LoadModel(const std::string& file);
+		void LoadModel(const eastl::string& file);
 		void CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue);
 
 
-		std::vector<Vertex> m_vertices;
-		std::vector<uint32_t> m_indices;
-		std::vector<std::unique_ptr<CommandBuffer>> m_commandBuffers;
+		eastl::vector<Vertex> m_vertices;
+		eastl::vector<uint32_t> m_indices;
+		eastl::vector<eastl::unique_ptr<CommandBuffer>> m_commandBuffers;
 
-		std::unique_ptr<Buffer> m_vertexBuffer;
-		std::unique_ptr<Buffer> m_indexBuffer;
+		eastl::unique_ptr<Buffer> m_vertexBuffer;
+		eastl::unique_ptr<Buffer> m_indexBuffer;
 };

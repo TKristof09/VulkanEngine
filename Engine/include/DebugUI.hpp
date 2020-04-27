@@ -3,7 +3,6 @@
 #include <imgui/imgui.h>
 #include <imgui/examples/imgui_impl_glfw.h>
 #include <imgui/examples/imgui_impl_vulkan.h>
-#include <pthread.h>
 #include <vulkan/vulkan.h>
 
 #include "CommandBuffer.hpp"
@@ -11,7 +10,7 @@
 
 struct DebugUIInitInfo
 {
-	std::shared_ptr<Window>	pWindow;
+	eastl::shared_ptr<Window>	pWindow;
 	VkInstance          instance;
     VkPhysicalDevice    gpu;
     VkDevice            device;
@@ -25,7 +24,7 @@ struct DebugUIInitInfo
     const VkAllocationCallbacks* allocator;
 
 	VkCommandPool       commandPool;
-	
+
 };
 
 class DebugUI
@@ -40,5 +39,5 @@ public:
 private:
 	DebugUIInitInfo m_initInfo;
     bool	m_show_demo_window;
-	std::vector<std::unique_ptr<CommandBuffer>> m_commandBuffers;
+	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_commandBuffers;
 };

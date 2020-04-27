@@ -1,6 +1,6 @@
 #pragma once
 
-#include <list>
+#include <EASTL/list.h>
 #include "PoolAllocator.hpp"
 #include "ECS/ECSMemoryManager.hpp"
 
@@ -9,7 +9,7 @@ class MemoryChunkAllocator
 {
 	static const size_t ALLOC_SIZE = (sizeof(T) + alignof(T)) * MAX_OBJECTS;
 
-	using ObjectList = std::list<T*>;
+	using ObjectList = eastl::list<T*>;
 	class MemoryChunk
 	{
 	public:
@@ -27,8 +27,8 @@ class MemoryChunkAllocator
 			objects.clear();
 		}
 	};
-	using MemoryChunks = std::list<MemoryChunk*>;
-	class iterator : public std::iterator<std::forward_iterator_tag, T>
+	using MemoryChunks = eastl::list<MemoryChunk*>;
+	class iterator : public eastl::iterator<eastl::forward_iterator_tag, T>
 	{
 		typename MemoryChunks::iterator m_currentChunk;
 		typename MemoryChunks::iterator m_end;
@@ -41,7 +41,7 @@ class MemoryChunkAllocator
 			if(begin != end)
 				m_currentObject = (*m_currentChunk)->objects.begin();
 			else
-				m_currentObject = (*std::prev(m_end))->objects.end();
+				m_currentObject = (*eastl::prev(m_end))->objects.end();
 		}
 		inline iterator& operator++()
 		{
