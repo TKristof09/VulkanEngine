@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include "Buffer.hpp"
-#include "Descriptor.h"
+#include "Descriptor.hpp"
 
 class UniformBuffer : public Buffer, public Descriptor{
 

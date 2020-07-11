@@ -2,6 +2,7 @@
 
 #include "ECS/ISystem.hpp"
 #include "ECS/Util.hpp"
+#include "ECS/ECSEngine.hpp"
 
 template<typename T>
 class System : public ISystem
@@ -15,10 +16,6 @@ public:
 	virtual void Update(float dt) override {};
 	virtual void PostUpdate(float dt) override {};
 
-private:
-	// System destrucion happens through SystemManager
-	void operator delete(void*) = delete;
-	void operator delete[](void*) = delete;
 };
 
 template<typename T>

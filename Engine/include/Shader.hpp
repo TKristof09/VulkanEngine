@@ -1,5 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <EASTL/string.h>
+#include <EASTL/vector.h>
 
 class Shader
 {

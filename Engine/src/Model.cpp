@@ -67,7 +67,7 @@ void Model::LoadModel(const eastl::string& file)
 
 void Model::CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue)
 {
-	 VkDeviceSize bufferSize = sizeof(m_vertices[0]) * m_vertices.size();
+	VkDeviceSize bufferSize = sizeof(m_vertices[0]) * m_vertices.size();
 
 	Buffer stagingVertexBuffer(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingVertexBuffer.Fill((void*)m_vertices.data(), bufferSize);

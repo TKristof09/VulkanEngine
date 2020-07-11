@@ -15,4 +15,6 @@ namespace Util
 	private:
 		static uint64_t s_count;
 	};
+	template<typename T>
+	uint64_t TypeIDManager<T>::s_count = 0;
 }

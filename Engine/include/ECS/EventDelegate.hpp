@@ -8,13 +8,13 @@ class EventDelegate : public IEventDelegate
 typedef void(Class::*Callback)(const EventType* const);
 
 public:
-	EventDelegate(Class* receiver, Callback* callback):
+	EventDelegate(Class* receiver, Callback& callback):
 	m_receiver(receiver),
 	m_callback(callback) {}
 
 	virtual	void Invoke(const IEvent* const e) override
 	{
-		(m_receiver->*m_callback)(e);
+		(m_receiver->*m_callback)(reinterpret_cast<const EventType* const>(e));
 	}
 
 	virtual bool operator==(const IEventDelegate* other) const override
@@ -26,5 +26,5 @@ public:
 	}
 private:
 	Class* m_receiver;
-	Callback* m_callback;
+	Callback m_callback;
 };

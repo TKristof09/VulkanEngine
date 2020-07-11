@@ -3,6 +3,8 @@
 #include "ECS/Types.hpp"
 #include <EASTL/unordered_map.h>
 #include <EASTL/list.h>
+#include <EASTL/unique_ptr.h>
+#include <EASTL/vector.h>
 
 #include "ECS/IEventDelegate.hpp"
 #include "Memory/LinearAllocator.hpp"
@@ -25,8 +27,8 @@ public:
 			m_pendingEvents.push_back(new(memory)T(eastl::forward<Args>(args)...));
 		else
 			std::cerr << "Event buffer is full" << std::endl;
-
 	}
+
 
 	template<typename T>
 	void Subscribe(IEventDelegate* delegate)

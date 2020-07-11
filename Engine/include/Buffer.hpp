@@ -20,6 +20,7 @@ public:
 	};
 	Buffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
 	~Buffer();
+
 	void Copy(Buffer* dst, VkDeviceSize size, VkQueue queue, VkCommandPool commandPool);
 	void CopyToImage(VkImage image, uint32_t width, uint32_t height, VkCommandPool commandPool, VkQueue queue);
 	void Fill(void* data, VkDeviceSize size);
@@ -28,6 +29,7 @@ public:
 	{
 		return m_buffer;
 	}
+	const VkDeviceSize GetSize() const { return m_size; }
 
 protected:
 	Type								m_type;

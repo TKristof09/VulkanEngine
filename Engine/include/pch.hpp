@@ -3,22 +3,18 @@
 #include <stdint.h>
 #include <cassert>
 #include <iostream>
-#include <EASTL/string.h>
-#include <EASTL/memory.h>
-#include <EASTL/unique_ptr.h>
-#include <EASTL/shared_ptr.h>
-#include <EASTL/vector.h>
+
 
 #ifdef VDEBUG
 // using int instead of VkResult enum beacuse i don't want to include vulkan here so this is just a dirty fix
-inline void VK_CHECK(int result, const eastl::string& error_message)
+inline void VK_CHECK(int result, const char* error_message)
 {
     if (result != 0) // VK_SUCCESS is 0
-        throw std::runtime_error(error_message.c_str());
+        throw std::runtime_error(error_message);
 }
 
 #else
-inline void VK_CHECK(int result, const eastl::string& error_message)
+inline void VK_CHECK(int result, const char* error_message)
 {
 	return;
 }

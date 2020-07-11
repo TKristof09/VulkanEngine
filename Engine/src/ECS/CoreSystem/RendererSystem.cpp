@@ -1,17 +1,23 @@
-#include <Renderer.hpp>
+#include "ECS/CoreSystems/RendererSystem.hpp"
 #include <sstream>
 #include <EASTL/optional.h>
 #include <EASTL/set.h>
 #include <EASTL/map.h>
 #include <EASTL/numeric_limits.h>
 #include <EASTL/chrono.h>
+#include <EASTL/array.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include "Shader.hpp"
+#include "ECS/ComponentManager.hpp"
+#include "ECS/CoreComponents/Camera.hpp"
+#include "ECS/CoreComponents/Transform.hpp"
 
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -59,9 +65,10 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 
 
 
-Renderer::Renderer(eastl::shared_ptr<Window> window):
-m_window(window)
+Renderer::Renderer()
 {
+	Subscribe(&Renderer::OnMeshComponentAdded);
+
     CreateInstance();
     SetupDebugMessenger();
     CreateDevice();
@@ -83,11 +90,6 @@ m_window(window)
 	CreateCommandBuffers();
 	CreateSyncObjects();
 
-	m_camera = eastl::make_shared<Camera>(45.0f, m_swapchainExtent.width / m_swapchainExtent.height, 0.001f, 1000.0f);
-	m_camera->Translate(glm::vec3(0, 5.0f, -5.0f));
-	m_camera->Rotate(45.0f, glm::vec3(1,0,0));
-	m_vpMatrix = m_camera->GetViewProjection();
-
 }
 
 Renderer::~Renderer()
@@ -99,9 +101,7 @@ Renderer::~Renderer()
         vkDestroySemaphore(m_device, m_renderFinished[i], nullptr);
         vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
     }
-    //m_texture.reset();
-    m_vertexBuffer.reset();
-    m_indexBuffer.reset();
+
 
     //vkDestroySampler(m_device, m_sampler, nullptr);
 
@@ -178,7 +178,7 @@ void Renderer::CleanupSwapchain()
 		vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 	}
 	m_commandBuffers.clear();
-	m_cbs.clear();
+	m_mainCommandBuffers.clear();
 	m_uniformBuffers.clear();
 
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
@@ -192,11 +192,6 @@ void Renderer::CleanupSwapchain()
 		vkDestroyImageView(m_device, imageView, nullptr);
 	}
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
-}
-
-void Renderer::CreateModel()
-{
-	m_model = eastl::make_unique<Model>("models/chalet.obj", m_gpu, m_device, m_commandPool, m_graphicsQueue, m_swapchainFramebuffers.size());
 }
 
 void Renderer::CreateDebugUI()
@@ -520,8 +515,8 @@ void Renderer::CreatePipeline()
 
     VkPipelineShaderStageCreateInfo stages[] = {vertex, fragment};
 
-	auto bindingDescription = Vertex::GetBindingDescription();
-	auto attribDescriptions = Vertex::GetAttributeDescriptions();
+	auto bindingDescription = GetVertexBindingDescription();
+	auto attribDescriptions = GetVertexAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInput = {}; // vertex info hardcoded for the moment
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -683,10 +678,10 @@ void Renderer::CreateCommandPool()
 
 void Renderer::CreateCommandBuffers()
 {
-	m_cbs.resize(m_swapchainFramebuffers.size());
-	for(size_t i = 0; i < m_cbs.size(); i++)
+
+	for(size_t i = 0; i < m_swapchainImages.size(); i++)
 	{
-		m_cbs[i] = eastl::make_unique<CommandBuffer>(m_device, m_commandPool);
+		m_mainCommandBuffers.push_back(CommandBuffer(m_device, m_commandPool));
 	}
 }
 
@@ -843,7 +838,7 @@ void Renderer::CreateDepthResources()
                                            VK_FORMAT_D32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, m_msaaSamples);
 }
 
-void Renderer::DrawFrame()
+void Renderer::Update(float dt)
 {
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -867,11 +862,18 @@ void Renderer::DrawFrame()
 
 
 	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
-m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_renderPass, m_swapchainFramebuffers[imageIndex], m_descriptorSets[imageIndex], sizeof(glm::mat4), &m_vpMatrix);
+
 
 	m_debugUI->SetupFrame(imageIndex, 0, m_swapchainFramebuffers[imageIndex]);	//subpass is 0 because we only have one subpass for now
-	UpdateUniformBuffers(imageIndex);
-	m_cbs[imageIndex]->Begin(0);
+
+	UniformBufferObject ubo = {};
+	ubo.model = glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	m_uniformBuffers[imageIndex]->Update(&ubo);
+
+
+	m_mainCommandBuffers[imageIndex].Begin(0);
+
+
 	VkRenderPassBeginInfo beginInfo = {};
 	beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	beginInfo.renderPass = m_renderPass;
@@ -885,12 +887,49 @@ m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_
 	beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	beginInfo.pClearValues = clearValues.data();
 
-	vkCmdBeginRenderPass(m_cbs[imageIndex]->GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-	eastl::array<VkCommandBuffer, 2> secondaryCbs = { m_model->GetCommandBuffer(imageIndex), m_debugUI->GetCommandBuffer(imageIndex)};
-	vkCmdExecuteCommands(m_cbs[imageIndex]->GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data());
-	vkCmdEndRenderPass(m_cbs[imageIndex]->GetCommandBuffer());
+	vkCmdBeginRenderPass(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-	m_cbs[imageIndex]->Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+	eastl::vector<VkCommandBuffer> secondaryCbs;
+	secondaryCbs.resize(m_commandBuffers[imageIndex].size());
+	for (int i = 0; i < m_commandBuffers[imageIndex].size(); ++i)
+	{
+		VkCommandBufferInheritanceInfo inheritanceInfo = {};
+		inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+		inheritanceInfo.renderPass = m_renderPass;
+		inheritanceInfo.subpass = 0;
+		inheritanceInfo.framebuffer = m_swapchainFramebuffers[imageIndex];
+
+		m_commandBuffers[imageIndex][i].Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
+
+		// TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
+		// also a single camera has a whole chunk of memory which isnt good if we only use 1 camera per game
+		Camera camera = *(m_ecsEngine->m_componentManager->begin<Camera>());
+		Transform* cameraTransform = m_ecsEngine->m_componentManager->GetComponent<Transform>(camera.GetOwner());
+
+		glm::mat4 vp = camera.GetProjection() * glm::toMat4(glm::conjugate(cameraTransform->wRotation)) * glm::translate(cameraTransform->wPosition);
+
+		VkCommandBuffer cb = m_commandBuffers[imageIndex][i].GetCommandBuffer();
+		vkCmdPushConstants(cb, m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp);
+		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+
+		m_vertexBuffers[i].Bind(m_commandBuffers[imageIndex][i]);
+		m_indexBuffers[i].Bind(m_commandBuffers[imageIndex][i]);
+
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[imageIndex], 0, nullptr);
+		vkCmdDrawIndexed(cb, static_cast<uint32_t>(m_indexBuffers[i].GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+
+		m_commandBuffers[imageIndex][i].End();
+
+
+		secondaryCbs[i] = m_commandBuffers[imageIndex][i].GetCommandBuffer();
+	}
+
+	secondaryCbs.push_back(m_debugUI->GetCommandBuffer(imageIndex));
+
+	vkCmdExecuteCommands(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data());
+	vkCmdEndRenderPass(m_mainCommandBuffers[imageIndex].GetCommandBuffer());
+
+	m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
 
 
@@ -914,43 +953,34 @@ m_model->SetupCommandBuffer(imageIndex, m_graphicsPipeline, m_pipelineLayout, m_
 	m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void Renderer::UpdateUniformBuffers(uint32_t currentImage)
+
+void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 {
-	m_vpMatrix = m_camera->GetViewProjection();
-	static auto startTime = eastl::chrono::high_resolution_clock::now();
+	assert(m_vertexBuffers.size() == m_indexBuffers.size() && m_commandBuffers[0].size() == m_vertexBuffers.size());
 
-    auto currentTime = eastl::chrono::high_resolution_clock::now();
-    float time = eastl::chrono::duration<float, eastl::chrono::seconds::period>(currentTime - startTime).count();
+	for (int i = 0; i < m_swapchainImages.size(); ++i)
+	{
+		m_commandBuffers[i].push_back(CommandBuffer(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY));
+	}
 
-	UniformBufferObject ubo = {};
-	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	m_uniformBuffers[currentImage]->Update(&ubo);
+	Mesh* mesh = e->component;
+	VkDeviceSize bufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
 
+	// create the vertex and index buffers on the gpu
+	Buffer stagingVertexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingVertexBuffer.Fill((void*)mesh->vertices.data(), bufferSize);
+
+	m_vertexBuffers.push_back(Buffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	stagingVertexBuffer.Copy(&m_vertexBuffers.back(), bufferSize, m_graphicsQueue, m_commandPool);
+
+
+	bufferSize = sizeof(mesh->indices[0]) * mesh->indices.size();
+	Buffer stagingIndexBuffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingIndexBuffer.Fill((void*)mesh->indices.data(), bufferSize);
+
+	m_indexBuffers.push_back(Buffer(m_gpu, m_device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	stagingIndexBuffer.Copy(&m_indexBuffers.back(), bufferSize, m_graphicsQueue, m_commandPool);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

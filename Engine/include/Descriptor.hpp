@@ -1,7 +1,7 @@
 
 #pragma once
 #include <vulkan/vulkan.h>
-
+#include <EASTL/unique_ptr.h>
 
 class WriteDescriptorSet
 {

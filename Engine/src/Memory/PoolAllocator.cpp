@@ -1,4 +1,6 @@
 #include "Memory/PoolAllocator.hpp"
+#include <cmath>
+
 PoolAllocator::PoolAllocator(size_t size, const void* memoryStart, size_t objectSize, uint8_t alignment):
 	Allocator(size, memoryStart),
 	m_objectSize(objectSize),

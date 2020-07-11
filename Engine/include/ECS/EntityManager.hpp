@@ -1,91 +1,101 @@
 #pragma once
 
-#include "IEntity.hpp"
-#include "Memory/MemoryChunkAllocator.hpp"
 #include <EASTL/unordered_map.h>
+#include <EASTL/vector.h>
 
-class ComponentManager;
+#include "ECS/Entity.hpp"
+#include "Memory/MemoryChunkAllocator.hpp"
+#include "ECS/CoreComponents/Relationship.hpp"
+#include "ECS/EventHandler.hpp"
+#include "ECS/CoreEvents/EntityEvents.hpp"
+#include "ECS/ECSEngine.hpp"
+
 #define CHUNK_SIZE 512
 
-class EntityManager
-{
-	class IEntityContainer
-	{
-	public:
-		virtual ~IEntityContainer() {};
-		virtual void DestroyEntity(IEntity* entity) = 0;
-	};
-	template<typename T>
-	class EntityContainer : public IEntityContainer, public MemoryChunkAllocator<T, CHUNK_SIZE>
-	{
-	public:
-		EntityContainer() {}
-		virtual ~EntityContainer() {}
-		virtual void DestroyEntity(IEntity* entity) override
-		{
-			entity->~IEntity();
-			this->DestroyObject(entity);
-		}
-	private:
-		EntityContainer(const EntityContainer&) = delete;
-		EntityContainer& operator=(EntityContainer&) = delete;
-	};
 
+class EntityManager : public MemoryChunkAllocator<Entity, CHUNK_SIZE>
+{
 private:
 	EntityManager(const EntityManager&) = delete;
 	EntityManager& operator=(EntityManager&) = delete;
 
-	eastl::unordered_map<EntityTypeID, IEntityContainer*> m_registry;
+
 	eastl::vector<EntityID> m_pendingDestroy;
 	size_t m_numPendingDestroy;
 
-	eastl::unordered_map<EntityID, IEntity*> m_handleTable;
+	eastl::unordered_map<EntityID, Entity*> m_handleTable;
 
-	ComponentManager* m_componentManager;
-
-	// return or create an entity container for entities of type T
-	template<typename T>
-	EntityContainer<T>* GetEntityContainer()
-	{
-		EntityTypeID typeID = T::STATIC_ENTITY_TYPE_ID;
-
-		auto it = m_registry.find(typeID);
-		EntityContainer<T>* container = nullptr;
-
-		if(it == m_registry.end())
-		{
-			container = new EntityContainer<T>();
-			m_registry[typeID] = container;
-		}
-		else
-			container = (EntityContainer<T>*)it->second;
-
-		assert(container != nullptr);
-		return container;
-	}
+	ECSEngine* m_ecsEngine;
 
 
 	uint64_t m_lastID;
 
 public:
-	EntityManager(ComponentManager* componentManager);
+	EntityManager(ECSEngine* ecsEngine);
 	~EntityManager();
 
-	template<typename T, typename... Args>
+	template<typename... Args>
 	EntityID CreateEntity(Args... args)
 	{
-		void* pMemory = GetEntityContainer<T>()->CreateObject();
+		void* pMemory = this->CreateObject();
 
-		((T*)pMemory)->m_id = m_lastID++;
-		((T*)pMemory)->m_componentManager = m_componentManager;
+		((Entity*)pMemory)->m_id = m_lastID++;
+		((Entity*)pMemory)->m_componentManager = m_ecsEngine->m_componentManager;
 
-		IEntity* entity = new(pMemory) T(eastl::forward<Args>(args)...);
+		Entity* entity = new(pMemory) Entity(eastl::forward<Args>(args)...);
+
+		m_ecsEngine->m_componentManager->AddComponent<Relationship>(entity->GetEntityID());
+		// TODO: maybe make entities have transform component by default too
+
+		EntityCreated e;
+		e.entity = entity->GetEntityID();
+		m_ecsEngine->m_eventHandler->Send<EntityCreated>(e);
+
+		return entity->GetEntityID();
+	}
+
+	template<typename... Args>
+	EntityID CreateChild(EntityID parent, Args... args)
+	{
+		EntityID entity = CreateEntity(eastl::forward<Args>(args)...);
+
+		Relationship* relationshipComp = m_ecsEngine->m_componentManager->AddComponent<Relationship>(entity);
+
+		Relationship* relationshipParent = m_ecsEngine->m_componentManager->GetComponent<Relationship>(parent);
+		relationshipParent->numChildren++;
+
+		relationshipComp->parent = parent;
+
+		EntityID prev = m_ecsEngine->m_componentManager->GetComponent<Relationship>(parent)->firstChild;
+
+		if(prev == INVALID_ENTITY_ID)
+			relationshipParent->firstChild = entity;
+		else
+		{
+			while(true)
+			{
+				EntityID sibling = m_ecsEngine->m_componentManager->GetComponent<Relationship>(prev)->nextSibling;
+				if(sibling != INVALID_ENTITY_ID)
+				{
+					prev = sibling;
+					break;
+				}
+			}
+
+			relationshipComp->previousSibling = prev;
+			m_ecsEngine->m_componentManager->GetComponent<Relationship>(prev)->nextSibling = entity;
+		}
+
+		// TODO: maybe make entities have transform component by default too
+
+		return entity;
+
 	}
 
 	void DestroyEntity(EntityID id);
 	void RemoveDestroyedEntities();
 
-	IEntity* GetEntity(EntityID id) { return m_handleTable[id]; }
+	Entity* GetEntity(EntityID id) { return m_handleTable[id]; }
 
 
 };

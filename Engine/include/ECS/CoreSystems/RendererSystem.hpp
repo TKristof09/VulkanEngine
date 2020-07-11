@@ -1,30 +1,34 @@
 #pragma once
 
+#include "ECS/System.hpp"
+#include "ECS/CoreEvents/ComponentEvents.hpp"
 
-#include <EASTL/vector.h>
-#include <EASTL/shared_ptr.h>
-#include <EASTL/unique_ptr.h>
 #include <vulkan/vulkan.h>
+#include <EASTL/vector.h>
+#include <EASTL/unique_ptr.h>
+#include <EASTL/shared_ptr.h>
+#include <glm/glm.hpp>
 
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
+#include "DebugUI.hpp"
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
-#include "DebugUI.hpp"
-#include "Model.hpp"
-#include "Camera.hpp"
+#include "ECS/CoreComponents/Mesh.hpp"
 
-#include <glm/glm.hpp>
-class Renderer
+
+class Renderer : public System<Renderer>
 {
 public:
-	Renderer(eastl::shared_ptr<Window> window);
+	Renderer();
 	~Renderer();
-
-	void DrawFrame();
+	virtual	void Update(float dt) override;
 
 private:
+	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
+
+	// vulkan initialization stuff
 	void CreateDebugUI();
 
 	void CreateInstance();
@@ -43,7 +47,6 @@ private:
 
 	void CreateModel();
 	void CreateUniformBuffers();
-	void UpdateUniformBuffers(uint32_t currentImage);
 
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
@@ -61,11 +64,6 @@ private:
 	eastl::shared_ptr<Window> m_window;
 
 	eastl::shared_ptr<DebugUI> m_debugUI;
-
-	eastl::shared_ptr<Model> m_model;
-
-	eastl::shared_ptr<Camera> m_camera;
-	glm::mat4 m_vpMatrix;
 
 
 	VkInstance				m_instance;
@@ -90,16 +88,12 @@ private:
 	VkPipeline				m_graphicsPipeline;
 
 	VkCommandPool			m_commandPool;
-
-	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_commandBuffers;
+	eastl::vector<CommandBuffer> m_mainCommandBuffers;
 
 	eastl::vector<VkSemaphore> m_imageAvailable;
 	eastl::vector<VkSemaphore> m_renderFinished;
 	eastl::vector<VkFence>     m_inFlightFences;
 	eastl::vector<VkFence>     m_imagesInFlight;
-
-	eastl::unique_ptr<Buffer>  m_vertexBuffer;
-	eastl::unique_ptr<Buffer>  m_indexBuffer;
 
 	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
@@ -119,5 +113,12 @@ private:
 
 	VkDebugUtilsMessengerEXT  m_messenger;
 
-	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_cbs;
+
+	// one mesh has the same index in each of these vectors
+	// TODO: maybe this should be in some kind of "static" component? like in the overwatch yt video
+	// TODO: also maybe make the Buffer and CommandBuffer classes more cache friendly? not sure if needed tho
+	eastl::vector<Buffer> m_vertexBuffers;
+	eastl::vector<Buffer> m_indexBuffers;
+	eastl::vector<eastl::vector<CommandBuffer>> m_commandBuffers;
+
 };

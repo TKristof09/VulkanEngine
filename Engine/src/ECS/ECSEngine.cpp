@@ -1,11 +1,15 @@
 #include "ECS/ECSEngine.hpp"
+#include "ECS/EventHandler.hpp"
+#include "ECS/EntityManager.hpp"
+#include "ECS/ComponentManager.hpp"
+#include "ECS/SystemManager.hpp"
 
 ECSEngine::ECSEngine()
 {
 	m_eventHandler = new EventHandler();
-	m_systemManager = new SystemManager();
-	m_componentManager = new ComponentManager();
-	m_entityManager = new EntityManager(m_componentManager);
+	m_componentManager = new ComponentManager(this);
+	m_systemManager = new SystemManager(this);
+	m_entityManager = new EntityManager(this);
 }
 
 ECSEngine::~ECSEngine()

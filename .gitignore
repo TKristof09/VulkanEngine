@@ -1,6 +1,8 @@
 # build files
 build/
 compile_commands.json
+.cmake/
+.cmake2/
 
 # clagnd cache
 .clangd/

@@ -5,7 +5,7 @@ class Image {
 public:
     Image(VkPhysicalDevice gpu, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
           VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT);
-    Image(VkPhysicalDevice gpu, VkDevice device, eastl::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
+    Image(VkPhysicalDevice gpu, VkDevice device, std::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
           VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT);
     virtual ~Image();
     void TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue);

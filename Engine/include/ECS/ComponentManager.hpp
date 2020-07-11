@@ -1,12 +1,18 @@
 #pragma once
 
-#include "ECS/Types.hpp"
-#include "IComponent.hpp"
-#include "Memory/MemoryChunkAllocator.hpp"
-
 #include <EASTL/unordered_map.h>
+#include <EASTL/sort.h>
+
+#include "ECS/Types.hpp"
+#include "ECS/IComponent.hpp"
+#include "Memory/MemoryChunkAllocator.hpp"
+#include "ECS/CoreEvents/ComponentEvents.hpp"
+#include "ECS/EventHandler.hpp"
+#include "ECS/ECSEngine.hpp"
+
 
 #define CHUNK_SIZE 512
+
 
 class ComponentManager
 {
@@ -29,7 +35,7 @@ class ComponentManager
 		virtual void DestroyComponent(IComponent* component) override
 		{
 			component->~IComponent();
-			this->DestroyObject(component);
+			this->FreeObject(component);
 		}
 	};
 
@@ -37,6 +43,9 @@ class ComponentManager
 	eastl::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
 	eastl::unordered_map<EntityID, eastl::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
 	eastl::unordered_map<ComponentID, IComponent*> m_componentMap;
+
+	ECSEngine* m_ecsEngine;
+
 	template<typename T>
 	ComponentContainer<T>* GetComponentContainer()
 	{
@@ -60,13 +69,13 @@ class ComponentManager
 
 
 public:
-	ComponentManager();
+	ComponentManager(ECSEngine* ecsEngine);
 	~ComponentManager();
 
 	template<typename T, typename ...Args>
 	T* AddComponent(const EntityID entityId, Args... args)
 	{
-		ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
+		const ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
 
 		auto it = m_entityComponentMap[entityId].find(typeId);
 		assert(it != m_entityComponentMap[entityId].end() && "An entity can have only on of each component type");
@@ -74,20 +83,27 @@ public:
 		void* pMemory = GetComponentContainer<T>()->CreateObject();
 
 		ComponentID id = m_lastID++;
-		((T*)pMemory)->m_id = id;
 
 		IComponent* component = new(pMemory) T(eastl::forward<Args>(args)...);
 
-		component->m_parent = entityId;
+		component->m_id = id;
+		component->m_owner = entityId;
+		component->m_typeID = typeId;
 
 		m_entityComponentMap[entityId][typeId] = id;
+		m_componentMap[id] = component;
+
+		ComponentAdded<T> e;
+		e.entity = entityId;
+		e.component = (T*)component;
+		m_ecsEngine->m_eventHandler->Send<ComponentAdded<T>>(e);
 
 		return (T*)component;
 	}
-	template<class T>
+	template<typename T>
 	void RemoveComponent(const EntityID entityId)
 	{
-		ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
+		const ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
 		ComponentID id = m_entityComponentMap[entityId][typeId];
 
 		IComponent* component = m_componentMap[id];
@@ -99,10 +115,16 @@ public:
 		m_entityComponentMap[entityId].erase(typeId);
 
 		m_componentMap.erase(id);
+
+		ComponentRemoved<T> e;
+		e.entity = entityId;
+		e.component = (T*)component;
+		m_ecsEngine->m_eventHandler->Send<ComponentRemoved<T>>(e);
+
 	}
 	void RemoveAllComponents(const EntityID entityId);
 
-	template<class T>
+	template<typename T>
 	T* GetComponent(const EntityID entityId)
 	{
 		ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
@@ -113,6 +135,12 @@ public:
 			return nullptr;
 
 		return (T*)m_componentMap[it->second];
+	}
+
+	template<typename T>
+	bool HasComponent(const EntityID entity)
+	{
+		return m_entityComponentMap[entity].find(T::STATIC_COMPONENT_TYPE_ID) != m_entityComponentMap[entity].end();
 	}
 
 
@@ -126,6 +154,17 @@ public:
 	typename ComponentContainer<T>::iterator end()
 	{
 		return GetComponentContainer<T>()->end();
+	}
+
+	template<typename T, typename Compare>
+	void Sort(Compare comp)
+	{
+		auto container = GetComponentContainer<T>();
+		eastl::comb_sort(container->begin(), container->end(), comp);
+		for (auto it = container->begin(); it != container->end(); ++it)
+		{
+			m_componentMap[it->m_id] = (IComponent*)&(*it);
+		}
 	}
 
 };

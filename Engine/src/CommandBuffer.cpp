@@ -1,4 +1,5 @@
 #include "CommandBuffer.hpp"
+#include <EASTL/numeric_limits.h>
 
 CommandBuffer::CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level):
 m_running(false),

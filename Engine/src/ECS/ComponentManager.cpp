@@ -1,6 +1,7 @@
 #include "ECS/ComponentManager.hpp"
 
-ComponentManager::ComponentManager()
+ComponentManager::ComponentManager(ECSEngine* ecsEngine):
+	m_ecsEngine(ecsEngine)
 {}
 
 ComponentManager::~ComponentManager()
@@ -22,6 +23,7 @@ void ComponentManager::RemoveAllComponents(const EntityID entityId)
 		m_registry[it.first]->DestroyComponent(component);
 
 		m_componentMap.erase(it.second);
+
 	}
 	m_entityComponentMap.erase(entityId);
 

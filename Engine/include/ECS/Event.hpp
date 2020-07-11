@@ -8,7 +8,6 @@ class Event : public IEvent
 {
 public:
 	virtual const EventTypeID GetEventTypeID() const override { return STATIC_EVENT_TYPE_ID; }
-private:
 	static const EventTypeID STATIC_EVENT_TYPE_ID;
 };
 

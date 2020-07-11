@@ -1,22 +1,48 @@
 #pragma once
+#include "ECS/Types.hpp"
+#include "ComponentManager.hpp"
 
-#include "ECS/IEntity.hpp"
-#include "ECS/Util.hpp"
-
-template<typename T>
-class Entity : public IEntity
+class Entity
 {
+	friend class EntityManager;
 public:
-	virtual const EntityTypeID GetTypeID() const override { return STATIC_ENTITY_TYPE_ID; }
+	Entity():
+		m_active(true)
+	{};
+	virtual ~Entity() {};
 
-	static const EntityTypeID STATIC_ENTITY_TYPE_ID;
+	template<typename T>
+	T* GetComponent() const
+	{
+		return m_componentManager->GetComponent<T>(m_id);
+	}
+
+	template<typename T, typename ...ARGS>
+	T* AddComponent(ARGS&&... args)
+	{
+		return m_componentManager->AddComponent<T>(m_id, eastl::forward<ARGS>(args)...);
+	}
+
+	template<typename T>
+	void RemoveComponent()
+	{
+		m_componentManager->RemoveComponent<T>(m_id);
+	}
+
+	inline bool operator==(const Entity& rhs) const { return m_id == rhs.m_id; }
+	inline bool operator!=(const Entity& rhs) const { return m_id != rhs.m_id; }
+	inline bool operator==(const Entity* rhs) const { return m_id == rhs->m_id; }
+	inline bool operator!=(const Entity* rhs) const { return m_id != rhs->m_id; }
+
+	inline const EntityID GetEntityID() const { return m_id; }
+
+	void SetActive(bool state) { m_active = state; }
+	inline bool IsActive() const { return m_active; }
+protected:
+	EntityID m_id;
+	bool m_active;
 
 private:
-	// Entity destrucion happens through EntityManager
-	void operator delete(void*) = delete;
-	void operator delete[](void*) = delete;
+	ComponentManager* m_componentManager;
 
 };
-
-template<typename T>
-const EntityTypeID Entity<T>::STATIC_ENTITY_TYPE_ID = Util::TypeIDManager<IEntity>::Get<T>();

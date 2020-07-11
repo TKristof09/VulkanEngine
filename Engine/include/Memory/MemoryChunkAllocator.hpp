@@ -9,6 +9,7 @@ class MemoryChunkAllocator
 {
 	static const size_t ALLOC_SIZE = (sizeof(T) + alignof(T)) * MAX_OBJECTS;
 
+public:
 	using ObjectList = eastl::list<T*>;
 	class MemoryChunk
 	{
@@ -27,7 +28,9 @@ class MemoryChunkAllocator
 			objects.clear();
 		}
 	};
+
 	using MemoryChunks = eastl::list<MemoryChunk*>;
+
 	class iterator : public eastl::iterator<eastl::forward_iterator_tag, T>
 	{
 		typename MemoryChunks::iterator m_currentChunk;
@@ -43,6 +46,9 @@ class MemoryChunkAllocator
 			else
 				m_currentObject = (*eastl::prev(m_end))->objects.end();
 		}
+		iterator()
+		{}
+
 		inline iterator& operator++()
 		{
 			m_currentObject++;
@@ -55,11 +61,15 @@ class MemoryChunkAllocator
 			}
 			return *this;
 		}
-		inline T& operator*() const { return *m_currentObject; }
+		inline iterator& operator++(int)
+		{
+			return operator++();
+		}
+		inline T& operator*() const { return *(*m_currentObject); }
 		inline T* operator->() const { return *m_currentObject; }
 
-		inline bool operator==(iterator& other) { return ((this->m_currentChunk == other.m_currentChunk) && (this->m_currentObject == other.m_currentObject)); }
-		inline bool operator!=(iterator& other) { return ! (*this == other); }
+		inline bool operator==(const iterator& other) { return ((this->m_currentChunk == other.m_currentChunk) && (this->m_currentObject == other.m_currentObject)); }
+		inline bool operator!=(const iterator& other) { return ! (*this == other); }
 
 	};
 
@@ -81,7 +91,7 @@ public:
 				((T*)obj)->~T();
 			chunk->objects.clear();
 
-			ECSMemoryManager::GetInstance().Free(chunk->allocator->GetMemoryStartAddress());
+			ECSMemoryManager::GetInstance().Free((void*)chunk->allocator->GetMemoryStartAddress());
 
 			delete chunk->allocator;
 			delete chunk;

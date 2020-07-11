@@ -5,6 +5,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 #include <EASTL/array.h>
+#include <EASTL/vector.h>
+#include <EASTL/string.h>
+#include <EASTL/unique_ptr.h>
 
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"

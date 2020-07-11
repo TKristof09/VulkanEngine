@@ -1,13 +1,15 @@
 #pragma once
 
-#include "ECS/Types.hpp"
-#include "ECS/EventHandler.hpp"
-#include "ECS/EventDelegate.hpp"
 #include <EASTL/slist.h>
+#include "ECS/EventHandler.hpp"
+#include "ECS/Types.hpp"
+#include "ECS/EventDelegate.hpp"
+#include "ECS/ECSEngine.hpp"
 
 class ISystem
 {
 	friend class SystemManager;
+	friend class EventHandler;
 public:
 	virtual ~ISystem() {};
 
@@ -23,24 +25,25 @@ protected:
 	template<typename EventType, typename... Args>
 	void SendEvent(Args... args)
 	{
-		m_eventHandler->Send<EventType>(std::forward<Args>(args)...);
+		m_ecsEngine->m_eventHandler->Send<EventType>(std::forward<Args>(args)...);
 	}
 
 	template<typename Class, typename EventType>
 	void Subscribe(void(Class::*Callback)(const EventType* const))
 	{
 		IEventDelegate* delegate = new EventDelegate<Class, EventType>(static_cast<Class*>(this), Callback);
-		m_eventHandler->Subscribe<EventType>(delegate);
+		m_ecsEngine->m_eventHandler->Subscribe<EventType>(delegate);
 	}
 	template<typename Class, typename EventType>
 	void Unsubscribe(void(Class::*Callback)(const EventType* const))
 	{
 		EventDelegate<Class, EventType> delegate(static_cast<Class*>(this), Callback);
-		m_eventHandler->Unsubscribe<EventType>(delegate);
+		m_ecsEngine->m_eventHandler->Unsubscribe<EventType>(delegate);
 	}
 
+	ECSEngine* m_ecsEngine;
+
 private:
-	EventHandler* m_eventHandler;
 	bool m_enabled;
 
 };

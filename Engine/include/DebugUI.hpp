@@ -4,6 +4,8 @@
 #include <imgui/examples/imgui_impl_glfw.h>
 #include <imgui/examples/imgui_impl_vulkan.h>
 #include <vulkan/vulkan.h>
+#include <EASTL/shared_ptr.h>
+#include <EASTL/vector.h>
 
 #include "CommandBuffer.hpp"
 #include "Window.hpp"

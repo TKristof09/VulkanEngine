@@ -26,7 +26,7 @@ Texture::~Texture()
 {
 }
 
-eastl::pair<uint32_t, uint32_t> Texture::LoadFile(const eastl::string& fileName)
+std::pair<uint32_t, uint32_t> Texture::LoadFile(const eastl::string& fileName)
 {
     int width, height, channels;
     m_pixels = stbi_load(fileName.c_str(), &width, &height, &channels, STBI_rgb_alpha);
@@ -36,5 +36,5 @@ eastl::pair<uint32_t, uint32_t> Texture::LoadFile(const eastl::string& fileName)
     if(!m_pixels)
         throw std::runtime_error("Failed to load texture image!");
 
-    return eastl::pair<uint32_t, uint32_t>(m_width, height);
+    return std::pair<uint32_t, uint32_t>(m_width, height);
 }
