@@ -6,7 +6,7 @@ static void frambufferResizeCallback(GLFWwindow* window, int width, int height)
 	w->_Resized(width, height);
 }
 
-Window::Window(uint32_t width, uint32_t height, const eastl::string& title):
+Window::Window(uint32_t width, uint32_t height, const std::string& title):
 m_width(width), m_height(height), m_title(title)
 {
     glfwInit();

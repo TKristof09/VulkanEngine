@@ -1,7 +1,6 @@
 #pragma once
 
-#include <EASTL/unordered_map.h>
-#include <EASTL/sort.h>
+#include <unordered_map>
 
 #include "ECS/Types.hpp"
 #include "ECS/IComponent.hpp"
@@ -9,7 +8,7 @@
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 #include "ECS/EventHandler.hpp"
 #include "ECS/ECSEngine.hpp"
-
+#include <unordered_map>
 
 #define CHUNK_SIZE 512
 
@@ -40,9 +39,9 @@ class ComponentManager
 	};
 
 
-	eastl::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
-	eastl::unordered_map<EntityID, eastl::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
-	eastl::unordered_map<ComponentID, IComponent*> m_componentMap;
+	std::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
+	std::unordered_map<EntityID, std::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
+	std::unordered_map<ComponentID, IComponent*> m_componentMap;
 
 	ECSEngine* m_ecsEngine;
 
@@ -78,13 +77,13 @@ public:
 		const ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
 
 		auto it = m_entityComponentMap[entityId].find(typeId);
-		assert(it != m_entityComponentMap[entityId].end() && "An entity can have only on of each component type");
+		//assert(it != m_entityComponentMap[entityId].end() && "An entity can have only on of each component type");
 
 		void* pMemory = GetComponentContainer<T>()->CreateObject();
 
 		ComponentID id = m_lastID++;
 
-		IComponent* component = new(pMemory) T(eastl::forward<Args>(args)...);
+		IComponent* component = new(pMemory) T(std::forward<Args>(args)...);
 
 		component->m_id = id;
 		component->m_owner = entityId;
@@ -96,7 +95,7 @@ public:
 		ComponentAdded<T> e;
 		e.entity = entityId;
 		e.component = (T*)component;
-		m_ecsEngine->m_eventHandler->Send<ComponentAdded<T>>(e);
+		m_ecsEngine->eventHandler->Send<ComponentAdded<T>>(e);
 
 		return (T*)component;
 	}
@@ -118,8 +117,7 @@ public:
 
 		ComponentRemoved<T> e;
 		e.entity = entityId;
-		e.component = (T*)component;
-		m_ecsEngine->m_eventHandler->Send<ComponentRemoved<T>>(e);
+		m_ecsEngine->eventHandler->Send<ComponentRemoved<T>>(e);
 
 	}
 	void RemoveAllComponents(const EntityID entityId);
@@ -156,14 +154,20 @@ public:
 		return GetComponentContainer<T>()->end();
 	}
 
+	template<typename T>
+	ComponentContainer<T>* GetComponents()
+	{
+		return GetComponentContainer<T>();
+	}
+
 	template<typename T, typename Compare>
 	void Sort(Compare comp)
 	{
 		auto container = GetComponentContainer<T>();
-		eastl::comb_sort(container->begin(), container->end(), comp);
+		//std::comb_sort(container->begin(), container->end(), comp);
 		for (auto it = container->begin(); it != container->end(); ++it)
 		{
-			m_componentMap[it->m_id] = (IComponent*)&(*it);
+			m_componentMap[it->m_id] = (IComponent*)(*it);
 		}
 	}
 

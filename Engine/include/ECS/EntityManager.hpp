@@ -1,7 +1,7 @@
 #pragma once
 
-#include <EASTL/unordered_map.h>
-#include <EASTL/vector.h>
+#include <unordered_map>
+#include <vector>
 
 #include "ECS/Entity.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
@@ -20,10 +20,10 @@ private:
 	EntityManager& operator=(EntityManager&) = delete;
 
 
-	eastl::vector<EntityID> m_pendingDestroy;
+	std::vector<EntityID> m_pendingDestroy;
 	size_t m_numPendingDestroy;
 
-	eastl::unordered_map<EntityID, Entity*> m_handleTable;
+	std::unordered_map<EntityID, Entity*> m_handleTable;
 
 	ECSEngine* m_ecsEngine;
 
@@ -40,16 +40,16 @@ public:
 		void* pMemory = this->CreateObject();
 
 		((Entity*)pMemory)->m_id = m_lastID++;
-		((Entity*)pMemory)->m_componentManager = m_ecsEngine->m_componentManager;
+		((Entity*)pMemory)->m_componentManager = m_ecsEngine->componentManager;
 
-		Entity* entity = new(pMemory) Entity(eastl::forward<Args>(args)...);
+		Entity* entity = new(pMemory) Entity(std::forward<Args>(args)...);
 
-		m_ecsEngine->m_componentManager->AddComponent<Relationship>(entity->GetEntityID());
+		m_ecsEngine->componentManager->AddComponent<Relationship>(entity->GetEntityID());
 		// TODO: maybe make entities have transform component by default too
 
 		EntityCreated e;
 		e.entity = entity->GetEntityID();
-		m_ecsEngine->m_eventHandler->Send<EntityCreated>(e);
+		m_ecsEngine->eventHandler->Send<EntityCreated>(e);
 
 		return entity->GetEntityID();
 	}
@@ -57,16 +57,16 @@ public:
 	template<typename... Args>
 	EntityID CreateChild(EntityID parent, Args... args)
 	{
-		EntityID entity = CreateEntity(eastl::forward<Args>(args)...);
+		EntityID entity = CreateEntity(std::forward<Args>(args)...);
 
-		Relationship* relationshipComp = m_ecsEngine->m_componentManager->AddComponent<Relationship>(entity);
+		Relationship* relationshipComp = m_ecsEngine->componentManager->AddComponent<Relationship>(entity);
 
-		Relationship* relationshipParent = m_ecsEngine->m_componentManager->GetComponent<Relationship>(parent);
+		Relationship* relationshipParent = m_ecsEngine->componentManager->GetComponent<Relationship>(parent);
 		relationshipParent->numChildren++;
 
 		relationshipComp->parent = parent;
 
-		EntityID prev = m_ecsEngine->m_componentManager->GetComponent<Relationship>(parent)->firstChild;
+		EntityID prev = m_ecsEngine->componentManager->GetComponent<Relationship>(parent)->firstChild;
 
 		if(prev == INVALID_ENTITY_ID)
 			relationshipParent->firstChild = entity;
@@ -74,7 +74,7 @@ public:
 		{
 			while(true)
 			{
-				EntityID sibling = m_ecsEngine->m_componentManager->GetComponent<Relationship>(prev)->nextSibling;
+				EntityID sibling = m_ecsEngine->componentManager->GetComponent<Relationship>(prev)->nextSibling;
 				if(sibling != INVALID_ENTITY_ID)
 				{
 					prev = sibling;
@@ -83,7 +83,7 @@ public:
 			}
 
 			relationshipComp->previousSibling = prev;
-			m_ecsEngine->m_componentManager->GetComponent<Relationship>(prev)->nextSibling = entity;
+			m_ecsEngine->componentManager->GetComponent<Relationship>(prev)->nextSibling = entity;
 		}
 
 		// TODO: maybe make entities have transform component by default too

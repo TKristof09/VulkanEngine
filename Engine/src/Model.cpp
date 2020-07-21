@@ -1,16 +1,16 @@
 #include "Model.hpp"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
-#include <EASTL/unordered_map.h>
+#include <unordered_map>
 //#include <assimp/scene.h>
 //#include <assimp/Importer.hpp>
 //#include <assimp/postprocess.h>
-Model::Model(const eastl::string& file, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue, uint32_t numCommandBuffers)
+Model::Model(const std::string& file, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue, uint32_t numCommandBuffers)
 {
 	m_commandBuffers.resize(numCommandBuffers);
 	for(size_t i = 0; i < numCommandBuffers; i++)
 	{
-		m_commandBuffers[i] = eastl::make_unique<CommandBuffer>(device, commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		m_commandBuffers[i] = std::make_unique<CommandBuffer>(device, commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
 
 	LoadModel(file);
@@ -23,7 +23,7 @@ Model::~Model()
 
 }
 
-void Model::LoadModel(const eastl::string& file)
+void Model::LoadModel(const std::string& file)
 {
 
 	tinyobj::attrib_t attrib;
@@ -35,7 +35,7 @@ void Model::LoadModel(const eastl::string& file)
         throw std::runtime_error(warn + err);
     }
 
-	eastl::unordered_map<Vertex, uint32_t> uniqueVertices;
+	std::unordered_map<Vertex, uint32_t> uniqueVertices;
 	for(const auto& shape : shapes)
 	{
 		for(const auto& index : shape.mesh.indices)
@@ -72,7 +72,7 @@ void Model::CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool c
 	Buffer stagingVertexBuffer(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingVertexBuffer.Fill((void*)m_vertices.data(), bufferSize);
 
-	m_vertexBuffer = eastl::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	m_vertexBuffer = std::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	stagingVertexBuffer.Copy(m_vertexBuffer.get(), bufferSize, queue, commandPool);
 
 
@@ -80,7 +80,7 @@ void Model::CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool c
 	Buffer stagingIndexBuffer(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingIndexBuffer.Fill((void*)m_indices.data(), bufferSize);
 
-	m_indexBuffer = eastl::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	m_indexBuffer = std::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize, queue, commandPool);
 
 }

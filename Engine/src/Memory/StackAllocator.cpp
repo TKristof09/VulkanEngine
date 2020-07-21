@@ -8,7 +8,7 @@ StackAllocator::~StackAllocator()
 	Clear();
 }
 
-void* StackAllocator::Allocate(size_t size, u_int8_t alignment)
+void* StackAllocator::Allocate(size_t size, uint8_t alignment)
 {
 	union
 	{

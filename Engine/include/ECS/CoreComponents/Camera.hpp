@@ -11,6 +11,8 @@ struct Camera : public Component<Camera>
 	float zNear;
 	float zFar;
 
+	Camera(float fovDeg, float aspect, float zNear, float zFar):
+	fovDegrees(fovDeg), aspect(aspect), zNear(zNear), zFar(zFar) {}
 	glm::mat4 GetProjection() const
 	{
 		return glm::perspective(glm::radians(fovDegrees), aspect, zNear, zFar);

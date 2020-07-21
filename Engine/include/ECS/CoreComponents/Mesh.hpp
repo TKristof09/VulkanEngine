@@ -1,11 +1,13 @@
 #pragma once
 
 #include "ECS/Component.hpp"
-#include <EASTL/vector.h>
-#include <EASTL/string.h>
-#include <EASTL/array.h>
+#include <vector>
+#include <string.h>
+#include <array>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
+#include "Buffer.hpp"
+#include "CommandBuffer.hpp"
 
 struct Vertex
 {
@@ -15,11 +17,12 @@ struct Vertex
 
 struct Mesh : public Component<Mesh>
 {
-	Mesh(const eastl::vector<Vertex>& vertices, const eastl::vector<uint32_t>& indices):
+	Mesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices):
 		vertices(vertices),
 		indices(indices) {};
-	eastl::vector<Vertex> vertices;
-	eastl::vector<uint32_t> indices;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
 };
 
 
@@ -33,9 +36,9 @@ static VkVertexInputBindingDescription GetVertexBindingDescription()
 	return bindingDescription;
 }
 
-static eastl::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescriptions()
+static std::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescriptions()
 {
-	eastl::array<VkVertexInputAttributeDescription, 2> attribDescriptions = {};
+	std::array<VkVertexInputAttributeDescription, 2> attribDescriptions = {};
 
 	attribDescriptions[0].binding = 0;
 	attribDescriptions[0].location = 0;

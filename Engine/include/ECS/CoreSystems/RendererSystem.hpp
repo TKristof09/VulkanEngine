@@ -4,9 +4,8 @@
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 
 #include <vulkan/vulkan.h>
-#include <EASTL/vector.h>
-#include <EASTL/unique_ptr.h>
-#include <EASTL/shared_ptr.h>
+#include <vector>
+#include <memory>
 #include <glm/glm.hpp>
 
 #include "Window.hpp"
@@ -18,15 +17,16 @@
 #include "ECS/CoreComponents/Mesh.hpp"
 
 
-class Renderer : public System<Renderer>
+class RendererSystem : public System<RendererSystem>
 {
 public:
-	Renderer();
-	~Renderer();
+	RendererSystem(std::shared_ptr<Window> window);
+	~RendererSystem();
 	virtual	void Update(float dt) override;
 
 private:
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
+	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
 
 	// vulkan initialization stuff
 	void CreateDebugUI();
@@ -61,9 +61,9 @@ private:
 	void SetupDebugMessenger();
 
 
-	eastl::shared_ptr<Window> m_window;
+	std::shared_ptr<Window> m_window;
 
-	eastl::shared_ptr<DebugUI> m_debugUI;
+	std::shared_ptr<DebugUI> m_debugUI;
 
 
 	VkInstance				m_instance;
@@ -76,11 +76,11 @@ private:
 	VkSurfaceKHR			m_surface;
 
 	VkSwapchainKHR			m_swapchain;
-	eastl::vector<VkImage>	m_swapchainImages;
-	eastl::vector<VkImageView> m_swapchainImageViews;
+	std::vector<VkImage>	m_swapchainImages;
+	std::vector<VkImageView> m_swapchainImageViews;
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
-	eastl::vector<VkFramebuffer> m_swapchainFramebuffers;
+	std::vector<VkFramebuffer> m_swapchainFramebuffers;
 
 	VkRenderPass			m_renderPass;
 
@@ -88,26 +88,26 @@ private:
 	VkPipeline				m_graphicsPipeline;
 
 	VkCommandPool			m_commandPool;
-	eastl::vector<CommandBuffer> m_mainCommandBuffers;
+	std::vector<CommandBuffer> m_mainCommandBuffers;
 
-	eastl::vector<VkSemaphore> m_imageAvailable;
-	eastl::vector<VkSemaphore> m_renderFinished;
-	eastl::vector<VkFence>     m_inFlightFences;
-	eastl::vector<VkFence>     m_imagesInFlight;
+	std::vector<VkSemaphore> m_imageAvailable;
+	std::vector<VkSemaphore> m_renderFinished;
+	std::vector<VkFence>     m_inFlightFences;
+	std::vector<VkFence>     m_imagesInFlight;
 
 	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
-	eastl::vector<VkDescriptorSet> m_descriptorSets;
-	eastl::vector<eastl::unique_ptr<UniformBuffer>> m_uniformBuffers;
+	std::vector<VkDescriptorSet> m_descriptorSets;
+	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
 
 	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
-	eastl::unique_ptr<Texture> m_texture;
+	std::unique_ptr<Texture> m_texture;
 
-	eastl::unique_ptr<Image>   m_depthImage;
+	std::unique_ptr<Image>   m_depthImage;
 
 
 	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	eastl::unique_ptr<Image>  m_colorImage; // for MSAA
+	std::unique_ptr<Image>  m_colorImage; // for MSAA
 
 	size_t m_currentFrame = 0;
 
@@ -117,8 +117,8 @@ private:
 	// one mesh has the same index in each of these vectors
 	// TODO: maybe this should be in some kind of "static" component? like in the overwatch yt video
 	// TODO: also maybe make the Buffer and CommandBuffer classes more cache friendly? not sure if needed tho
-	eastl::vector<Buffer> m_vertexBuffers;
-	eastl::vector<Buffer> m_indexBuffers;
-	eastl::vector<eastl::vector<CommandBuffer>> m_commandBuffers;
+	std::vector<Buffer> m_vertexBuffers;
+	std::vector<Buffer> m_indexBuffers;
+	std::vector<std::vector<CommandBuffer>> m_commandBuffers;
 
 };

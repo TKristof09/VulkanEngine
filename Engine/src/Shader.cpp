@@ -2,7 +2,7 @@
 #include <fstream>
 
 
-Shader::Shader(const eastl::string& filename)
+Shader::Shader(const std::string& filename)
 {
 	// TODO make this work better(not hardcodign file path)
     std::ifstream file(("./" + filename).c_str(), std::ios::ate | std::ios::binary);
@@ -27,7 +27,7 @@ VkShaderModule Shader::GetShaderModule(VkDevice device)
     VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule), "Failed to create shader module");
 	return shaderModule;
     //could deallocate the data vector here
-    //eastl::vector<char> tempVector;
+    //std::vector<char> tempVector;
     //m_data.swap(tempVector);
 
 }

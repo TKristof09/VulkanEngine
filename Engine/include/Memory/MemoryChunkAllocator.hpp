@@ -1,6 +1,6 @@
 #pragma once
 
-#include <EASTL/list.h>
+#include <list>
 #include "PoolAllocator.hpp"
 #include "ECS/ECSMemoryManager.hpp"
 
@@ -10,7 +10,7 @@ class MemoryChunkAllocator
 	static const size_t ALLOC_SIZE = (sizeof(T) + alignof(T)) * MAX_OBJECTS;
 
 public:
-	using ObjectList = eastl::list<T*>;
+	using ObjectList = std::list<T*>;
 	class MemoryChunk
 	{
 	public:
@@ -29,9 +29,9 @@ public:
 		}
 	};
 
-	using MemoryChunks = eastl::list<MemoryChunk*>;
+	using MemoryChunks = std::list<MemoryChunk*>;
 
-	class iterator : public eastl::iterator<eastl::forward_iterator_tag, T>
+	class iterator : public std::iterator<std::forward_iterator_tag, T*>
 	{
 		typename MemoryChunks::iterator m_currentChunk;
 		typename MemoryChunks::iterator m_end;
@@ -44,7 +44,7 @@ public:
 			if(begin != end)
 				m_currentObject = (*m_currentChunk)->objects.begin();
 			else
-				m_currentObject = (*eastl::prev(m_end))->objects.end();
+				m_currentObject = (*std::prev(m_end))->objects.end();
 		}
 		iterator()
 		{}
@@ -65,11 +65,12 @@ public:
 		{
 			return operator++();
 		}
-		inline T& operator*() const { return *(*m_currentObject); }
+
+		inline T* operator*() const { return *m_currentObject; }
 		inline T* operator->() const { return *m_currentObject; }
 
 		inline bool operator==(const iterator& other) { return ((this->m_currentChunk == other.m_currentChunk) && (this->m_currentObject == other.m_currentObject)); }
-		inline bool operator!=(const iterator& other) { return ! (*this == other); }
+		inline bool operator!=(const iterator& other) { return ((this->m_currentChunk != other.m_currentChunk) && (this->m_currentObject != other.m_currentObject));; }
 
 	};
 
@@ -85,6 +86,7 @@ public:
 	}
 	virtual ~MemoryChunkAllocator()
 	{
+
 		for (auto chunk : m_chunks)
 		{
 			for (auto obj : chunk->objects)
@@ -131,6 +133,7 @@ public:
 
 	void FreeObject(void* object)
 	{
+		std::cout << "free " << std::endl;
 		uintptr_t p = (uintptr_t)object;
 
 		for (auto chunk : m_chunks)

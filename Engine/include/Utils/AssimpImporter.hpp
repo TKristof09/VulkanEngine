@@ -1,7 +1,7 @@
 #pragma once
 
-#include <EASTL/vector.h>
-#include <EASTL/string.h>
+#include <vector>
+#include <string.h>
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 
@@ -13,7 +13,7 @@ class Mesh;
 class AssimpImporter
 {
 public:
-	bool LoadFile(const eastl::string& file, ECSEngine* ecsEngine);
+	bool LoadFile(const std::string& file, ECSEngine* ecsEngine);
 
 private:
 	void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, EntityID entity);

@@ -1,6 +1,7 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "CommandBuffer.hpp"
+#include <algorithm>
 
 bool hasStencilComponent(VkFormat format)
 {

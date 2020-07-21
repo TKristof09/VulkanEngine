@@ -30,12 +30,12 @@ void EntityManager::RemoveDestroyedEntities()
 		EntityID id = m_pendingDestroy[i];
 		Entity* entity = m_handleTable[id];
 
-		m_ecsEngine->m_componentManager->RemoveAllComponents(id);
+		m_ecsEngine->componentManager->RemoveAllComponents(id);
 
 		this->FreeObject(entity);
 		EntityDestroyed e;
 		e.entity = id;
-		m_ecsEngine->m_eventHandler->Send<EntityDestroyed>(e);
+		m_ecsEngine->eventHandler->Send<EntityDestroyed>(e);
 	}
 	m_numPendingDestroy = 0;
 }

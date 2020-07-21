@@ -6,21 +6,22 @@
 
 ECSEngine::ECSEngine()
 {
-	m_eventHandler = new EventHandler();
-	m_componentManager = new ComponentManager(this);
-	m_systemManager = new SystemManager(this);
-	m_entityManager = new EntityManager(this);
+	eventHandler = new EventHandler();
+	componentManager = new ComponentManager(this);
+	systemManager = new SystemManager(this);
+	entityManager = new EntityManager(this);
 }
 
 ECSEngine::~ECSEngine()
 {
-	delete m_entityManager;
-	delete m_componentManager;
-	delete m_systemManager;
-	delete m_eventHandler;
+	delete entityManager;
+	delete componentManager;
+	delete systemManager;
+	delete eventHandler;
 }
 
 void ECSEngine::Update(float dt)
 {
-	m_systemManager->Update(dt);
+	eventHandler->DispatchEvents();
+	systemManager->Update(dt);
 }

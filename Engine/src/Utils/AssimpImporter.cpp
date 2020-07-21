@@ -7,7 +7,7 @@
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/EntityManager.hpp"
 
-bool AssimpImporter::LoadFile(const eastl::string& file, ECSEngine* ecsEngine)
+bool AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
 {
 	Assimp::Importer importer;
 	const aiScene* scene = importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality);
@@ -19,7 +19,7 @@ bool AssimpImporter::LoadFile(const eastl::string& file, ECSEngine* ecsEngine)
 		return false;
 	}
 
-	ProcessNode(scene->mRootNode, scene, ecsEngine, ecsEngine->m_entityManager->CreateEntity());
+	ProcessNode(scene->mRootNode, scene, ecsEngine, ecsEngine->entityManager->CreateEntity());
 	return true;
 }
 
@@ -45,16 +45,16 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 
 	for (int i = 0; i < node->mNumChildren; ++i)
 	{
-		ProcessNode(node->mChildren[i], scene, ecsEngine, ecsEngine->m_entityManager->CreateChild(entity));
+		ProcessNode(node->mChildren[i], scene, ecsEngine, ecsEngine->entityManager->CreateChild(entity));
 	}
 }
 
 void AssimpImporter::LoadMesh(const aiMesh* mesh, EntityID entity, ECSEngine* ecsEngine)
 {
 
-	eastl::vector<Vertex> vertices;
+	std::vector<Vertex> vertices;
 	vertices.resize(mesh->mNumVertices);
-	eastl::vector<uint32_t> indices;
+	std::vector<uint32_t> indices;
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 	{
 		Vertex vertex;
@@ -84,5 +84,5 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, EntityID entity, ECSEngine* ec
 			indices.push_back(face.mIndices[j]);
 		}
 	}
-	ecsEngine->m_componentManager->AddComponent<Mesh>(entity, vertices, indices );
+	ecsEngine->componentManager->AddComponent<Mesh>(entity, vertices, indices );
 }

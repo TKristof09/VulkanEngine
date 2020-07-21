@@ -1,14 +1,14 @@
 
 #pragma once
 #include <vulkan/vulkan.h>
-#include <EASTL/unique_ptr.h>
+#include <memory>
 
 class WriteDescriptorSet
 {
 public:
 	WriteDescriptorSet(const VkWriteDescriptorSet& writeDescriptorSet, const VkDescriptorImageInfo& imageInfo) :
 		m_writeDescriptorSet(writeDescriptorSet),
-		m_imageInfo(eastl::make_unique<VkDescriptorImageInfo>(imageInfo)),
+		m_imageInfo(std::make_unique<VkDescriptorImageInfo>(imageInfo)),
 		m_bufferInfo(nullptr)
 	{
 		m_writeDescriptorSet.pImageInfo = m_imageInfo.get();
@@ -17,7 +17,7 @@ public:
 	WriteDescriptorSet(const VkWriteDescriptorSet& writeDescriptorSet, const VkDescriptorBufferInfo& bufferInfo) :
 		m_writeDescriptorSet(writeDescriptorSet),
 		m_imageInfo(nullptr),
-		m_bufferInfo(eastl::make_unique<VkDescriptorBufferInfo>(bufferInfo))
+		m_bufferInfo(std::make_unique<VkDescriptorBufferInfo>(bufferInfo))
 	{
 		m_writeDescriptorSet.pBufferInfo = m_bufferInfo.get();
 	}
@@ -26,8 +26,8 @@ public:
 
 private:
 	VkWriteDescriptorSet m_writeDescriptorSet;
-	eastl::unique_ptr<VkDescriptorImageInfo> m_imageInfo;
-	eastl::unique_ptr<VkDescriptorBufferInfo> m_bufferInfo;
+	std::unique_ptr<VkDescriptorImageInfo> m_imageInfo;
+	std::unique_ptr<VkDescriptorBufferInfo> m_bufferInfo;
 };
 
 class Descriptor

@@ -4,15 +4,15 @@
 #include <imgui/examples/imgui_impl_glfw.h>
 #include <imgui/examples/imgui_impl_vulkan.h>
 #include <vulkan/vulkan.h>
-#include <EASTL/shared_ptr.h>
-#include <EASTL/vector.h>
+#include <memory>
+#include <vector>
 
 #include "CommandBuffer.hpp"
 #include "Window.hpp"
 
 struct DebugUIInitInfo
 {
-	eastl::shared_ptr<Window>	pWindow;
+	std::shared_ptr<Window>	pWindow;
 	VkInstance          instance;
     VkPhysicalDevice    gpu;
     VkDevice            device;
@@ -41,5 +41,5 @@ public:
 private:
 	DebugUIInitInfo m_initInfo;
     bool	m_show_demo_window;
-	eastl::vector<eastl::unique_ptr<CommandBuffer>> m_commandBuffers;
+	std::vector<std::unique_ptr<CommandBuffer>> m_commandBuffers;
 };

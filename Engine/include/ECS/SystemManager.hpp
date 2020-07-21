@@ -5,7 +5,7 @@
 #include "ECS/ISystem.hpp"
 #include "ECS/ECSEngine.hpp"
 
-#include <EASTL/unordered_map.h>
+#include <unordered_map>
 
 #define ECS_SYSTEM_MEMORY_SIZE 8388608 // 8MB
 //TODO system dependecies
@@ -14,7 +14,7 @@ class SystemManager
 {
 private:
 	LinearAllocator* m_allocator;
-	eastl::unordered_map<SystemTypeID, ISystem*> m_registry;
+	std::unordered_map<SystemTypeID, ISystem*> m_registry;
 	SystemManager(const SystemManager&) = delete;
 	SystemManager& operator=(SystemManager&) = delete;
 
@@ -39,11 +39,11 @@ public:
 		void* pMemory = m_allocator->Allocate(sizeof(T), alignof(T));
 		((T*)pMemory)->m_ecsEngine = m_ecsEngine;
 
-		ISystem* system = new(pMemory) T(eastl::forward<Args>(args)...);
+		ISystem* system = new(pMemory) T(std::forward<Args>(args)...);
 
 
 		m_registry[id] = system;
-		return system;
+		return (T*)system;
 	}
 
 	template<typename T>
@@ -60,8 +60,8 @@ public:
 		auto it = m_registry.find(id);
 		if(it != m_registry.end())
 		{
-			if(it->second->m_enabled == true)
-				return;
+			/* if(it->second->m_enabled == true)
+				return; */
 			it->second->m_enabled = true;
 		}
 	}

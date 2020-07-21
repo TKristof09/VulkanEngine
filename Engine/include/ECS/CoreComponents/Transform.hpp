@@ -6,11 +6,11 @@
 
 struct Transform : public Component<Transform>
 {
-	glm::vec3 lPosition;
-	glm::quat lRotation;
-	glm::vec3 lScale;
+	glm::vec3 lPosition = glm::vec3(0);
+	glm::quat lRotation = glm::quat(1.0, 0.0, 0.0, 0.0);
+	glm::vec3 lScale = glm::vec3(1);
 
-	glm::vec3 wPosition;
-	glm::quat wRotation;
-	glm::vec3 wScale;
+	glm::vec3 wPosition = glm::vec3(0);
+	glm::quat wRotation = glm::quat(1.0, 0.0, 0.0, 0.0);
+	glm::vec3 wScale = glm::vec3(1);
 };

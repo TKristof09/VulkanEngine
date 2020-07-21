@@ -13,10 +13,10 @@ public:
 
 	void Update(float dt);
 
-	EntityManager* m_entityManager;
-	ComponentManager* m_componentManager;
-	SystemManager* m_systemManager;
-	EventHandler* m_eventHandler;
+	EntityManager* entityManager;
+	ComponentManager* componentManager;
+	SystemManager* systemManager;
+	EventHandler* eventHandler;
 private:
 
 	ECSEngine(const ECSEngine&) = delete;

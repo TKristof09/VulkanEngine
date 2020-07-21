@@ -36,7 +36,7 @@ m_show_demo_window(true)
 	m_commandBuffers.resize(initInfo->imageCount);
 	for(size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
-		m_commandBuffers[i] = eastl::make_unique<CommandBuffer>(initInfo->device, initInfo->commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		m_commandBuffers[i] = std::make_unique<CommandBuffer>(initInfo->device, initInfo->commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
 }
 

@@ -23,3 +23,7 @@ models/
 
 # imgui config
 imgui.ini
+
+# lib files and debug info files
+*.lib
+*.pdb
