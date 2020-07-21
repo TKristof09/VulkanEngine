@@ -1,3 +1,6 @@
 [submodule "external/EASTL"]
 	path = external/EASTL
 	url = https://github.com/electronicarts/EASTL.git
+[submodule "external/glfw"]
+	path = external/glfw
+	url = https://github.com/glfw/glfw.git

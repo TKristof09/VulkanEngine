@@ -18,9 +18,11 @@ public:
 
 		TRANSFER
 	};
+	Buffer();
 	Buffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
-	~Buffer();
 
+	void Allocate(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+	void Free();
 	void Copy(Buffer* dst, VkDeviceSize size, VkQueue queue, VkCommandPool commandPool);
 	void CopyToImage(VkImage image, uint32_t width, uint32_t height, VkCommandPool commandPool, VkQueue queue);
 	void Fill(void* data, VkDeviceSize size);

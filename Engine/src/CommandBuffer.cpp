@@ -1,16 +1,31 @@
 #include "CommandBuffer.hpp"
 #include <EASTL/numeric_limits.h>
 
+CommandBuffer::CommandBuffer():
+m_running(false),
+m_commandBuffer(VK_NULL_HANDLE),
+m_device(VK_NULL_HANDLE),
+m_commandPool(VK_NULL_HANDLE){}
+
 CommandBuffer::CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level):
 m_running(false),
 m_commandBuffer(VK_NULL_HANDLE),
 m_device(device),
 m_commandPool(commandPool)
 {
+    Allocate(device, commandPool, level);
+}
+
+void CommandBuffer::Allocate(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level)
+{
+    m_running = false;
+    m_commandPool = commandPool;
+    m_device = device;
+
     VkCommandBufferAllocateInfo allocInfo       = {};
     allocInfo.sType                             = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool                       = commandPool;
-    allocInfo.level                             = level; 
+    allocInfo.level                             = level;
     allocInfo.commandBufferCount                = 1;
 
     VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");
@@ -18,7 +33,7 @@ m_commandPool(commandPool)
 
 }
 
-CommandBuffer::~CommandBuffer()
+void CommandBuffer::Free()
 {
     vkFreeCommandBuffers(m_device, m_commandPool, 1, &m_commandBuffer);
 }
@@ -37,7 +52,7 @@ void CommandBuffer::Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheri
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = usage;
-	beginInfo.pInheritanceInfo = &inheritanceInfo; //this is ignore if its a primary command buffer	
+	beginInfo.pInheritanceInfo = &inheritanceInfo; //this is ignore if its a primary command buffer
 
     VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
     m_running = true;

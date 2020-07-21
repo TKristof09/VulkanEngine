@@ -15,10 +15,19 @@ uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, Vk
     throw std::runtime_error("Failed to find suitable memory type");
 }
 
-Buffer::Buffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties):
-m_device(device),
-m_size(size)
+Buffer::Buffer():
+m_device(VK_NULL_HANDLE),
+m_size(VK_NULL_HANDLE) {}
+
+Buffer::Buffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
 {
+    Allocate(gpu, device, size, usage, properties);
+}
+
+void Buffer::Allocate(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
+{
+    m_device = device;
+    m_size = size;
 
     m_type = Buffer::Type::TRANSFER;
     if(usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
@@ -50,7 +59,7 @@ m_size(size)
     VK_CHECK(vkBindBufferMemory(m_device, m_buffer, m_memory, 0), "Failed to bind buffer memory");
 }
 
-Buffer::~Buffer()
+void Buffer::Free()
 {
     vkDestroyBuffer(m_device, m_buffer, nullptr);
     vkFreeMemory(m_device, m_memory, nullptr);
