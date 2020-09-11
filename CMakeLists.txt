@@ -9,10 +9,11 @@ set( CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAM
 set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/lib)
 
 
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/spdlog)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Engine)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Application)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
+#add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 
 set_property(TARGET Engine PROPERTY CXX_STANDARD 17)
 set_property(TARGET Engine PROPERTY CXX_STANDARD_REQUIRED ON)

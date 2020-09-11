@@ -6,7 +6,7 @@
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
-
+#include "Utils/Color.hpp"
 
 void run()
 {
@@ -14,6 +14,8 @@ void run()
 }
 int main()
 {
+	Log::Init();
+
     std::vector<Vertex> vertices = {
         {{-0.5f, -0.5f, -1.f}, {1.0f, 0.0f}},
         {{0.5f, -0.5f, -1.f}, {0.0f, 1.0f}},
@@ -36,12 +38,15 @@ int main()
     EntityID cameraID = engine->entityManager->CreateEntity();
     engine->componentManager->AddComponent<Transform>(cameraID);
     engine->componentManager->AddComponent<Camera>(cameraID, 90.f, window->GetWidth()/window->GetHeight(), 0.001f, 100.f);
-    while(!glfwWindowShouldClose(w))
+
+    while(!glfwWindowShouldClose(w) )
     {
-        glfwPollEvents();
+		glfwPollEvents();
+		if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+			break;
 		engine->Update(1.f);
     }
     glfwTerminate();
-    std::cin.get();
+    //std::cin.get();
     return 0;
 }
