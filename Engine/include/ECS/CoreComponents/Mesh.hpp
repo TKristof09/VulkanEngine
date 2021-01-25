@@ -46,7 +46,7 @@ static std::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescri
 	attribDescriptions[0].offset = offsetof(Vertex, pos);
 
 	attribDescriptions[1].binding = 0;
-	attribDescriptions[1].location = 2;
+	attribDescriptions[1].location = 1;
 	attribDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
 	attribDescriptions[1].offset = offsetof(Vertex, texCoord);
 

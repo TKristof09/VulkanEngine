@@ -8,6 +8,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 
+#include "VulkanContext.hpp"
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
@@ -15,6 +16,7 @@
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
+#include "Shader.hpp"
 
 
 class RendererSystem : public System<RendererSystem>
@@ -23,6 +25,7 @@ public:
 	RendererSystem(std::shared_ptr<Window> window);
 	~RendererSystem();
 	virtual	void Update(float dt) override;
+
 
 private:
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
@@ -67,8 +70,8 @@ private:
 
 
 	VkInstance				m_instance;
-	VkPhysicalDevice		m_gpu;
-	VkDevice				m_device;
+	VkPhysicalDevice&		m_gpu;
+	VkDevice&				m_device;
 
 	VkQueue					m_graphicsQueue;
 	VkQueue					m_presentQueue;
@@ -81,15 +84,33 @@ private:
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
 	std::vector<VkFramebuffer> m_swapchainFramebuffers;
+	VkFramebuffer m_depthFramebuffers;
 
 	VkRenderPass			m_renderPass;
+	VkRenderPass			m_prePassRenderPass;
+
+	struct PipelineInfo
+	{
+		VkPipelineLayout layout;
+		VkPipeline pipeline;
+		VkDescriptorSetLayout descriptorSetLayout;
+		std::vector<Shader> shaders;
+	};
+	std::unordered_map<std::string, PipelineInfo> m_pipelines;
+	UniformBuffer			m_cameraUBO;
+	UniformBuffer			m_transformsUBO;
 
 	VkPipelineLayout		m_pipelineLayout;
 	VkPipeline				m_graphicsPipeline;
 
+	VkPipelineLayout		m_prePassPipelineLayout;
+	VkPipeline				m_prePassPipeline;
+
 	VkCommandPool			m_commandPool;
+	std::vector<CommandBuffer> m_depthCommandBuffers;
 	std::vector<CommandBuffer> m_mainCommandBuffers;
 
+	std::vector<VkSemaphore> m_prePassFinished;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished;
 	std::vector<VkFence>     m_inFlightFences;

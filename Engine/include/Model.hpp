@@ -30,6 +30,7 @@ struct Vertex {
 
 	static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
 	{
+		std::cout << "biw"<<std::endl;
 		std::array<VkVertexInputAttributeDescription, 3> attribDescriptions = {};
 
 		attribDescriptions[0].binding = 0;

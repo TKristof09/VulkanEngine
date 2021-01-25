@@ -8,8 +8,16 @@ set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAM
 set( CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/lib)
 set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/lib)
 
-
+#add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
+#SPIRV CROSS
+set(SPIRV_CROSS_CLI OFF)
+set(SPIRV_CROSS_ENABLE_TESTS OFF)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/SPIRV-Cross)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/spdlog)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
+set(ASSIMP_BUILD_TESTS OFF)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/Engine)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Application)
 

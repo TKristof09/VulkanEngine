@@ -40,6 +40,7 @@ public:
 		((T*)pMemory)->m_ecsEngine = m_ecsEngine;
 
 		ISystem* system = new(pMemory) T(std::forward<Args>(args)...);
+		system->m_enabled = true;
 
 
 		m_registry[id] = system;

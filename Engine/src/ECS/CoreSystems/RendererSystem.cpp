@@ -6,6 +6,7 @@
 #include <limits>
 #include <chrono>
 #include <array>
+#include <vulkan/vulkan_core.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -14,7 +15,6 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/transform.hpp>
 
-#include "Shader.hpp"
 #include "ECS/ComponentManager.hpp"
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
@@ -22,7 +22,8 @@
 
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
-
+VkPhysicalDevice VulkanContext::m_gpu = VK_NULL_HANDLE;
+VkDevice VulkanContext::m_device = VK_NULL_HANDLE;
 
 
 struct UniformBufferObject
@@ -67,7 +68,9 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 
 
 RendererSystem::RendererSystem(std::shared_ptr<Window> window):
-m_window(window)
+m_window(window),
+m_gpu(VulkanContext::m_gpu),
+m_device(VulkanContext::m_device)
 {
 	Subscribe(&RendererSystem::OnMeshComponentAdded);
 	Subscribe(&RendererSystem::OnMeshComponentRemoved);
@@ -250,6 +253,7 @@ void RendererSystem::CreateInstance()
 
     bool validationLayerPresent = false;
     for (VkLayerProperties layer : instanceLayerProperties) {
+		std::cout << layer.layerName << std::endl;
         if (strcmp(layer.layerName, validationLayerName) == 0) {
             validationLayerPresent = true;
             break;
@@ -261,14 +265,11 @@ void RendererSystem::CreateInstance()
     } else {
 		std::cerr << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled";
     }
-	std::cout << "DEBUG" << std::endl;
 
-    createInfo.ppEnabledLayerNames = nullptr;
-    createInfo.enabledLayerCount   = 0;
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
 	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = debugUtilsMessengerCallback;
 	createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
@@ -287,7 +288,7 @@ void RendererSystem::SetupDebugMessenger()
 #endif
 	VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageSeverity =  VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo.pfnUserCallback = debugUtilsMessengerCallback;
 
@@ -351,7 +352,12 @@ void RendererSystem::CreateDevice()
 	std::vector<VkPhysicalDevice> devices(deviceCount);
 	vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
 
-    m_gpu = PickDevice(devices, m_surface, deviceExtensions);
+	m_gpu = PickDevice(devices, m_surface, deviceExtensions);
+
+	VkPhysicalDeviceProperties deviceProperties;
+	vkGetPhysicalDeviceProperties(m_gpu, &deviceProperties);
+	LOG_TRACE("Picked device: {0}", deviceProperties.deviceName);
+
 	m_msaaSamples = GetMaxUsableSampleCount(m_gpu);
 
     QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
@@ -374,7 +380,7 @@ void RendererSystem::CreateDevice()
     VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.sampleRateShading = VK_TRUE;
-	//deviceFeatures.depthBounds = VK_TRUE; doesnt work on my surface 2017
+	deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
 
     VkDeviceCreateInfo createInfo		= {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -385,8 +391,9 @@ void RendererSystem::CreateDevice()
     createInfo.queueCreateInfoCount     = static_cast<uint32_t>(queueCreateInfos.size());
 
 	VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
-	vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
-	vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue);
+	vkGetDeviceQueue(VulkanContext::m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
+	vkGetDeviceQueue(VulkanContext::m_device, families.presentationFamily.value(), 0, &m_presentQueue);
+
 
 }
 
@@ -461,6 +468,10 @@ void RendererSystem::CreateSwapchain()
 
 void RendererSystem::CreateRenderPass()
 {
+
+
+
+	// Main render pass
     VkAttachmentDescription colorAttachment = {};
 	colorAttachment.format = m_swapchainImageFormat;
 	colorAttachment.samples = m_msaaSamples;
@@ -478,12 +489,12 @@ void RendererSystem::CreateRenderPass()
 	VkAttachmentDescription depthAttachment = {};
 	depthAttachment.format = VK_FORMAT_D32_SFLOAT;
 	depthAttachment.samples = m_msaaSamples;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	VkAttachmentDescription colorAttachmentResolve = {}; // To "combine" all the samples from the msaa attachment
 	colorAttachmentResolve.format = m_swapchainImageFormat;
@@ -502,7 +513,7 @@ void RendererSystem::CreateRenderPass()
 
 	VkAttachmentReference depthRef = {};
 	depthRef.attachment = 1;
-	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	VkAttachmentReference colorResolveRef = {};
 	colorResolveRef.attachment = 2;
@@ -541,66 +552,121 @@ void RendererSystem::CreateRenderPass()
 	createInfo.pDependencies = &dependency;
 
 	VK_CHECK(vkCreateRenderPass(m_device, &createInfo, nullptr, &m_renderPass), "Failed to create render pass");
+
+	// Render pass for the depth prepass
+	VkAttachmentDescription prePassDepthAttachment = {};
+	prePassDepthAttachment.format = VK_FORMAT_D32_SFLOAT;
+	prePassDepthAttachment.samples = m_msaaSamples;
+	prePassDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	prePassDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	prePassDepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	prePassDepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	prePassDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	prePassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	VkAttachmentReference prePassDepthRef = {};
+	prePassDepthRef.attachment = 0;
+	prePassDepthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference prePassColorResolveRef = {};
+	prePassColorResolveRef.attachment = 1;
+	prePassColorResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription prePassSubpass = {};
+    prePassSubpass.colorAttachmentCount = 0;
+    prePassSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	prePassSubpass.pDepthStencilAttachment = &prePassDepthRef;
+	if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
+		prePassSubpass.pResolveAttachments = &prePassColorResolveRef;
+
+	std::vector<VkAttachmentDescription> prePassAttachments;
+	prePassAttachments.push_back(prePassDepthAttachment);
+	if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
+		attachments.push_back(colorAttachmentResolve);
+
+	VkRenderPassCreateInfo prePassCreateInfo = {};
+	prePassCreateInfo.sType			= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	prePassCreateInfo.attachmentCount  = (uint32_t)prePassAttachments.size();
+	prePassCreateInfo.pAttachments     = prePassAttachments.data();
+	prePassCreateInfo.subpassCount     = 1;
+	prePassCreateInfo.pSubpasses       = &prePassSubpass;
+
+
+	VkSubpassDependency prePassDependency = {};
+	prePassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	prePassDependency.dstSubpass = 0;
+	prePassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	prePassDependency.srcAccessMask = 0;
+	prePassDependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	prePassDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+
+	prePassCreateInfo.dependencyCount = 1;
+	prePassCreateInfo.pDependencies = &prePassDependency;
+
+	VK_CHECK(vkCreateRenderPass(m_device, &prePassCreateInfo, nullptr, &m_prePassRenderPass), "Failed to create pre pass render pass");
 }
 
 void RendererSystem::CreatePipeline()
 {
-    Shader vs("shaders/vert.spv");
-    Shader fs("shaders/frag.spv");
 
-    auto vsModule = vs.GetShaderModule(m_device);
-    auto fsModule = fs.GetShaderModule(m_device);
+	// Main graphics pipeline
 
-    VkPipelineShaderStageCreateInfo vertex = {};
+	Shader vs("base", VK_SHADER_STAGE_VERTEX_BIT);
+	Shader fs("base", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+	auto vsModule = vs.GetShaderModule();
+	auto fsModule = fs.GetShaderModule();
+
+	VkPipelineShaderStageCreateInfo vertex = {};
 	vertex.sType	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertex.stage    = VK_SHADER_STAGE_VERTEX_BIT;
-    vertex.pName    = "main";
-    vertex.module   = vsModule;
+	vertex.stage    = VK_SHADER_STAGE_VERTEX_BIT;
+	vertex.pName    = "main";
+	vertex.module   = vsModule;
 
-    VkPipelineShaderStageCreateInfo fragment = {};
+	VkPipelineShaderStageCreateInfo fragment = {};
 	fragment.sType	  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragment.stage    = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragment.pName    = "main";
-    fragment.module   = fsModule;
+	fragment.stage    = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragment.pName    = "main";
+	fragment.module   = fsModule;
 
-    VkPipelineShaderStageCreateInfo stages[] = {vertex, fragment};
+	VkPipelineShaderStageCreateInfo stages[] = {vertex, fragment};
 
 	auto bindingDescription = GetVertexBindingDescription();
 	auto attribDescriptions = GetVertexAttributeDescriptions();
 
-    VkPipelineVertexInputStateCreateInfo vertexInput = {}; // vertex info hardcoded for the moment
+	VkPipelineVertexInputStateCreateInfo vertexInput = {}; // vertex info hardcoded for the moment
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInput.vertexBindingDescriptionCount = 1;
 	vertexInput.pVertexBindingDescriptions = &bindingDescription;
 	vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribDescriptions.size());
 	vertexInput.pVertexAttributeDescriptions = attribDescriptions.data();
 
-    VkPipelineInputAssemblyStateCreateInfo assembly = {};
+	VkPipelineInputAssemblyStateCreateInfo assembly = {};
 	assembly.sType	  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    VkViewport viewport = {};
-    viewport.width  = (float)m_swapchainExtent.width;
-    viewport.height = -(float)m_swapchainExtent.height;
-    viewport.x = 0.f;
-    viewport.y = (float)m_swapchainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
+	VkViewport viewport = {};
+	viewport.width  = (float)m_swapchainExtent.width;
+	viewport.height = -(float)m_swapchainExtent.height;
+	viewport.x = 0.f;
+	viewport.y = (float)m_swapchainExtent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
 
-    VkRect2D scissor = {};
+	VkRect2D scissor = {};
 	scissor.offset = {0, 0};
 	scissor.extent = m_swapchainExtent;
 
-    VkPipelineViewportStateCreateInfo viewportState = {};
+	VkPipelineViewportStateCreateInfo viewportState = {};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.pViewports = &viewport;
-    viewportState.viewportCount = 1;
-    viewportState.pScissors = &scissor;
-    viewportState.scissorCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.viewportCount = 1;
+	viewportState.pScissors = &scissor;
+	viewportState.scissorCount = 1;
 
-    VkPipelineRasterizationStateCreateInfo rasterizer = {};
+	VkPipelineRasterizationStateCreateInfo rasterizer = {};
 	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
 	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizer.depthClampEnable = false;
@@ -631,17 +697,16 @@ void RendererSystem::CreatePipeline()
 	colorBlend.attachmentCount = 1;
 	colorBlend.pAttachments = &colorBlendAttachment;
 
-    VkPipelineDepthStencilStateCreateInfo depthStencil  = {};
-    depthStencil.sType  = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    depthStencil.depthBoundsTestEnable = VK_TRUE;
-    depthStencil.minDepthBounds = 0.0f;
-    depthStencil.maxDepthBounds = 1.0f;
-    depthStencil.stencilTestEnable = VK_FALSE;
-    depthStencil.front = {}; // Optional
-    depthStencil.back = {}; // Optional
+	VkPipelineDepthStencilStateCreateInfo depthStencil  = {};
+	depthStencil.sType  = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_FALSE; // false since we have a depth prepass
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; // not OP_LESS because we have a depth prepass
+	depthStencil.depthBoundsTestEnable = VK_TRUE;
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
+	depthStencil.stencilTestEnable = VK_FALSE;
+
 
 	VkPushConstantRange pcRange = {};
 	pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -675,6 +740,7 @@ void RendererSystem::CreatePipeline()
 	pipelineInfo.pMultisampleState = &multisample;
 	pipelineInfo.pColorBlendState = &colorBlend;
 	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT; // for the prepass pipeline
 	//pipelineInfo.pDynamicState = &dynamicState;
 
 	pipelineInfo.layout = m_pipelineLayout;
@@ -682,37 +748,114 @@ void RendererSystem::CreatePipeline()
 	pipelineInfo.subpass = 0;
 
 	VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline), "Failed to create graphics pipeline");
+
+
+	// Depth prepass pipeline
+
+	Shader prePassVs("depth", VK_SHADER_STAGE_VERTEX_BIT);
+
+	auto prePassVsModule = prePassVs.GetShaderModule();
+	VkPipelineShaderStageCreateInfo prePassVertex = {};
+	prePassVertex.sType	   = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	prePassVertex.stage    = VK_SHADER_STAGE_VERTEX_BIT;
+	prePassVertex.pName    = "main";
+	prePassVertex.module   = prePassVsModule;
+
+	VkPipelineShaderStageCreateInfo prePassStages[] = {prePassVertex};
+
+	VkPipelineLayoutCreateInfo prePassLayoutCreateInfo = {};
+	prePassLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	prePassLayoutCreateInfo.setLayoutCount = 1;
+	prePassLayoutCreateInfo.pSetLayouts = &m_descriptorSetLayout;
+	prePassLayoutCreateInfo.pushConstantRangeCount = 1;
+	prePassLayoutCreateInfo.pPushConstantRanges = &pcRange;
+
+	VK_CHECK(vkCreatePipelineLayout(m_device, &prePassLayoutCreateInfo, nullptr, &m_prePassPipelineLayout), "Failed to create pre pass pipeline layout");
+
+	VkPipelineDepthStencilStateCreateInfo prePassDepthStencil  = {};
+	prePassDepthStencil.sType  = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	prePassDepthStencil.depthTestEnable = VK_TRUE;
+	prePassDepthStencil.depthWriteEnable = VK_TRUE;
+	prePassDepthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	prePassDepthStencil.depthBoundsTestEnable = VK_TRUE;
+	prePassDepthStencil.minDepthBounds = 0.0f;
+	prePassDepthStencil.maxDepthBounds = 1.0f;
+	prePassDepthStencil.stencilTestEnable = VK_FALSE;
+
+
+	VkGraphicsPipelineCreateInfo prePassPipelineInfo = {};
+	prePassPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	prePassPipelineInfo.stageCount = 1;
+	prePassPipelineInfo.pStages = prePassStages;
+	prePassPipelineInfo.pVertexInputState = &vertexInput;
+	prePassPipelineInfo.pInputAssemblyState = &assembly;
+	prePassPipelineInfo.pViewportState = &viewportState;
+	prePassPipelineInfo.pRasterizationState = &rasterizer;
+	prePassPipelineInfo.pMultisampleState = &multisample;
+	prePassPipelineInfo.pColorBlendState = nullptr;
+	prePassPipelineInfo.pDepthStencilState = &prePassDepthStencil;
+	prePassPipelineInfo.basePipelineHandle = m_graphicsPipeline;
+	prePassPipelineInfo.basePipelineIndex = -1;
+	prePassPipelineInfo.flags = VK_PIPELINE_CREATE_DERIVATIVE_BIT; //make it a child of the main pipeline
+
+	prePassPipelineInfo.layout = m_prePassPipelineLayout;
+	prePassPipelineInfo.renderPass = m_prePassRenderPass;
+	prePassPipelineInfo.subpass = 0;
+
+	VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &prePassPipelineInfo, nullptr, &m_prePassPipeline), "Failed to create pre pass pipeline");
+
+
+
+
 }
 
 void RendererSystem::CreateFramebuffers()
 {
 	m_swapchainFramebuffers.resize(m_swapchainImageViews.size());
 	for (size_t i = 0; i < m_swapchainImageViews.size(); i++) {
-		std::vector<VkImageView> attachments;
-		if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
 		{
-			attachments.push_back(m_colorImage->GetImageView());
-			attachments.push_back(m_depthImage->GetImageView());
-			attachments.push_back(m_swapchainImageViews[i]);
-		}
-		else
-		{
-			attachments.push_back(m_swapchainImageViews[i]);
-			attachments.push_back(m_depthImage->GetImageView());
-		}
+				std::vector<VkImageView> attachments;
+			if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
+			{
+				attachments.push_back(m_colorImage->GetImageView());
+				attachments.push_back(m_depthImage->GetImageView());
+				attachments.push_back(m_swapchainImageViews[i]);
+			}
+			else
+			{
+				attachments.push_back(m_swapchainImageViews[i]);
+				attachments.push_back(m_depthImage->GetImageView());
+			}
 
+			VkFramebufferCreateInfo framebufferInfo = {};
+			framebufferInfo.sType			= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			framebufferInfo.renderPass		= m_renderPass;
+			framebufferInfo.width			= m_swapchainExtent.width;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments	= attachments.data();
+			framebufferInfo.height			= m_swapchainExtent.height;
+			framebufferInfo.layers			= 1;
+
+			VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]), "Failed to create framebuffer");
+		}
+		// depth pass framebuffers
+	}
+	{
 		VkFramebufferCreateInfo framebufferInfo = {};
 		framebufferInfo.sType			= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass		= m_renderPass;
+		framebufferInfo.renderPass		= m_prePassRenderPass;
 		framebufferInfo.width			= m_swapchainExtent.width;
-		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-		framebufferInfo.pAttachments	= attachments.data();
+		framebufferInfo.attachmentCount = 1;
+		framebufferInfo.pAttachments	= &m_depthImage->GetImageView();;
 		framebufferInfo.height			= m_swapchainExtent.height;
 		framebufferInfo.layers			= 1;
 
-		VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_swapchainFramebuffers[i]), "Failed to create framebuffer");
 
+		VK_CHECK(vkCreateFramebuffer(m_device, &framebufferInfo, nullptr, &m_depthFramebuffers), "Failed to create depth framebuffer");
 	}
+
+
+
 }
 
 void RendererSystem::CreateCommandPool()
@@ -732,6 +875,8 @@ void RendererSystem::CreateCommandBuffers()
 	{
 		m_mainCommandBuffers.push_back(CommandBuffer());
 		m_mainCommandBuffers[i].Allocate(m_device, m_commandPool);
+		m_depthCommandBuffers.push_back(CommandBuffer());
+		m_depthCommandBuffers[i].Allocate(m_device, m_commandPool);
 	}
 }
 
@@ -739,6 +884,7 @@ void RendererSystem::CreateSyncObjects()
 {
 	m_imageAvailable.resize(MAX_FRAMES_IN_FLIGHT);
     m_renderFinished.resize(MAX_FRAMES_IN_FLIGHT);
+	m_prePassFinished.resize(MAX_FRAMES_IN_FLIGHT);
 	m_inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 	m_imagesInFlight.resize(m_swapchainImages.size(), VK_NULL_HANDLE);
 
@@ -756,37 +902,63 @@ void RendererSystem::CreateSyncObjects()
 		VK_CHECK(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinished[i]), "Failed to create semaphore");
 
 		VK_CHECK(vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]), "Failed to create fence");
+		VK_CHECK(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_prePassFinished[i]), "Failed to create semaphore");
 	}
+
 }
 
 void RendererSystem::CreateDescriptorSetLayout()
 {
-	auto uboBinding = UniformBuffer::GetDescriptorSetLayoutBinding(0, 1, VK_SHADER_STAGE_VERTEX_BIT);
+	for(auto& [_, pipeline] : m_pipelines)
+	{
+		std::vector<VkDescriptorSetLayoutBinding> bindings;
+		for(auto& shader : pipeline.shaders)
+		{
+			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
+			{
+				VkDescriptorSetLayoutBinding layoutBinding  = {};
+				layoutBinding.binding                       = bufferInfo.binding;
+				layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+				layoutBinding.descriptorCount               = bufferInfo.count;
+				layoutBinding.stageFlags                    = bufferInfo.stage;
+				layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
 
-	VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
-    samplerLayoutBinding.binding                       = 1;
-    samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.descriptorCount               = 1;
-    samplerLayoutBinding.stageFlags                    = VK_SHADER_STAGE_FRAGMENT_BIT;
-    samplerLayoutBinding.pImmutableSamplers            = nullptr;
+				bindings.push_back(layoutBinding);
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboBinding, samplerLayoutBinding};
+			}
+			for(auto& [name, textureInfo] : shader.m_Textures)
+			{
+				VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
+				samplerLayoutBinding.binding                       = textureInfo.binding;
+				samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				samplerLayoutBinding.descriptorCount               = textureInfo.count;
+				samplerLayoutBinding.stageFlags                    = textureInfo.stage;
+				samplerLayoutBinding.pImmutableSamplers            = nullptr;
 
-    VkDescriptorSetLayoutCreateInfo createInfo  = {};
-    createInfo.sType                            = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    createInfo.bindingCount                     = static_cast<uint32_t>(bindings.size());
-    createInfo.pBindings                        = bindings.data();
-	VK_CHECK(vkCreateDescriptorSetLayout(m_device, &createInfo, nullptr, &m_descriptorSetLayout), "Failed to create descriptor set layout");
+				bindings.push_back(samplerLayoutBinding);
+
+			}
+		}
+		VkDescriptorSetLayoutCreateInfo createInfo  = {};
+		createInfo.sType                            = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		createInfo.bindingCount                     = static_cast<uint32_t>(bindings.size());
+		createInfo.pBindings                        = bindings.data();
+		VK_CHECK(vkCreateDescriptorSetLayout(m_device, &createInfo, nullptr, &pipeline.descriptorSetLayout), "Failed to create descriptor set layout");
+	}
+
+
 
 }
 
 void RendererSystem::CreateDescriptorPool()
 {
-	std::array<VkDescriptorPoolSize, 2> poolSizes   = {};
+	std::array<VkDescriptorPoolSize, 3> poolSizes   = {};
     poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
     poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size())+1;
+    poolSizes[1].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size())+1; // +1 for imgui
+	poolSizes[2].type								= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	poolSizes[2].descriptorCount					= static_cast<uint32_t>(m_swapchainImages.size());;
 
 
     VkDescriptorPoolCreateInfo createInfo   = {};
@@ -799,6 +971,7 @@ void RendererSystem::CreateDescriptorPool()
 
 void RendererSystem::CreateDescriptorSets()
 {
+	// TODO: iterate through all materialInstance components to create the desc sets
 	std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size(), m_descriptorSetLayout);
 
 	VkDescriptorSetAllocateInfo allocInfo = {};
@@ -885,7 +1058,7 @@ void RendererSystem::CreateColorResources()
 void RendererSystem::CreateDepthResources()
 {
 	m_depthImage = std::make_unique<Image>(m_gpu, m_device, m_swapchainExtent.width, m_swapchainExtent.height,
-                                           VK_FORMAT_D32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, m_msaaSamples);
+                                           VK_FORMAT_D32_SFLOAT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, m_msaaSamples);
 }
 
 void RendererSystem::Update(float dt)
@@ -916,13 +1089,86 @@ void RendererSystem::Update(float dt)
 
 	m_debugUI->SetupFrame(imageIndex, 0, m_swapchainFramebuffers[imageIndex]);	//subpass is 0 because we only have one subpass for now
 
-	UniformBufferObject ubo = {};
-	ubo.model = glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	m_uniformBuffers[imageIndex]->Update(&ubo);
+	static auto startTime = std::chrono::high_resolution_clock::now();
 
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+
+
+	int i = -1;
+
+	// depth prepass
+	{
+		m_depthCommandBuffers[imageIndex].Begin(0);
+
+		VkRenderPassBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		beginInfo.renderPass = m_prePassRenderPass;
+		beginInfo.framebuffer = m_depthFramebuffers;
+		beginInfo.renderArea.offset = {0,0};
+		beginInfo.renderArea.extent = m_swapchainExtent;
+
+		VkClearValue clearValue;
+		clearValue.depthStencil = {1.0f, 0};
+		beginInfo.clearValueCount = 1;
+		beginInfo.pClearValues = &clearValue;
+
+		vkCmdBeginRenderPass(m_depthCommandBuffers[imageIndex].GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+		std::vector<VkCommandBuffer> secondaryCbs;
+	ComponentManager* cm = m_ecsEngine->componentManager;
+
+
+		// TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
+		// also a single camera has a whole chunk of memory which isnt good if we only use 1 camera per game
+		Camera camera = *(*(cm->begin<Camera>()));
+		Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
+
+		for (auto&& comp : *cm->GetComponents<Renderable>())
+		{
+			VkCommandBufferInheritanceInfo inheritanceInfo = {};
+			inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+			inheritanceInfo.renderPass = m_prePassRenderPass;
+			inheritanceInfo.subpass = 0;
+			inheritanceInfo.framebuffer = m_depthFramebuffers;
+
+
+			comp->prePassCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, inheritanceInfo);
+
+
+			glm::mat4 vp = camera.GetProjection() * glm::toMat4(glm::conjugate(cameraTransform->wRotation)) * glm::translate(cameraTransform->wPosition);
+			UniformBufferObject ubo{};
+			Transform* t = cm->GetComponent<Transform>(comp->GetOwner());
+			ubo.model =  glm::translate(t->wPosition) * glm::rotate(glm::mat4(1.0f), i * time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			m_uniformBuffers[imageIndex]->Update(&ubo);
+
+			VkCommandBuffer cb = comp->prePassCommandBuffers[imageIndex].GetCommandBuffer();
+			vkCmdPushConstants(cb, m_prePassPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp);
+			vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_prePassPipeline);
+
+			comp->vertexBuffer.Bind(comp->prePassCommandBuffers[imageIndex]);
+			comp->indexBuffer.Bind(comp->prePassCommandBuffers[imageIndex]);
+
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSets[imageIndex], 0, nullptr);
+			vkCmdDrawIndexed(cb, static_cast<uint32_t>(comp->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+
+			comp->prePassCommandBuffers[imageIndex].End();
+
+
+			secondaryCbs.push_back(cb);
+			i *= -1;
+		}
+
+		vkCmdExecuteCommands(m_depthCommandBuffers[imageIndex].GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data());
+		vkCmdEndRenderPass(m_depthCommandBuffers[imageIndex].GetCommandBuffer());
+
+
+		//m_depthCommandBuffer.Submit(m_graphicsQueue, VK_NULL_HANDLE, VK_NULL_HANDLE, m_prePassFinished, VK_NULL_HANDLE);
+		m_depthCommandBuffers[imageIndex].End();
+	}
 
 	m_mainCommandBuffers[imageIndex].Begin(0);
-
 
 	VkRenderPassBeginInfo beginInfo = {};
 	beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -956,11 +1202,16 @@ void RendererSystem::Update(float dt)
 		inheritanceInfo.subpass = 0;
 		inheritanceInfo.framebuffer = m_swapchainFramebuffers[imageIndex];
 
-		comp->commandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
+		comp->commandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, inheritanceInfo);
 
 
 		glm::mat4 vp = camera.GetProjection() * glm::toMat4(glm::conjugate(cameraTransform->wRotation)) * glm::translate(cameraTransform->wPosition);
 
+		UniformBufferObject ubo{};
+		Transform* t = cm->GetComponent<Transform>(comp->GetOwner());
+		ubo.model =  glm::translate(t->wPosition) * glm::rotate(glm::mat4(1.0f), i * time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+		m_uniformBuffers[imageIndex]->Update(&ubo);
 		VkCommandBuffer cb = comp->commandBuffers[imageIndex].GetCommandBuffer();
 		vkCmdPushConstants(cb, m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp);
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
@@ -975,14 +1226,40 @@ void RendererSystem::Update(float dt)
 
 
 		secondaryCbs.push_back(cb);
+		i *= -1;
 	}
 
 	secondaryCbs.push_back(m_debugUI->GetCommandBuffer(imageIndex));
 
 	vkCmdExecuteCommands(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), static_cast<uint32_t>(secondaryCbs.size()), secondaryCbs.data());
 	vkCmdEndRenderPass(m_mainCommandBuffers[imageIndex].GetCommandBuffer());
+	m_mainCommandBuffers[imageIndex].End();
 
-	m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+//	m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_prePassFinished, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+	VkCommandBuffer prepassCb = m_depthCommandBuffers[imageIndex].GetCommandBuffer();
+	VkCommandBuffer mainCb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
+
+	VkSubmitInfo submitInfo[2] = {};
+	submitInfo[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo[0].commandBufferCount = 1;
+	submitInfo[0].pCommandBuffers = &prepassCb;
+	submitInfo[0].signalSemaphoreCount = 1;
+	submitInfo[0].pSignalSemaphores = &m_prePassFinished[m_currentFrame];
+
+	VkPipelineStageFlags wait[2] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+	VkSemaphore waitSemaphores[2] = {m_prePassFinished[m_currentFrame], m_imageAvailable[m_currentFrame]};
+	submitInfo[1].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo[1].commandBufferCount = 1;
+	submitInfo[1].pCommandBuffers = &mainCb;
+	submitInfo[1].waitSemaphoreCount = 2;
+	submitInfo[1].pWaitSemaphores = waitSemaphores;
+	submitInfo[1].pWaitDstStageMask = wait;
+	submitInfo[1].signalSemaphoreCount = 1;
+	submitInfo[1].pSignalSemaphores = &m_renderFinished[m_currentFrame];
+
+	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
+	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 2, submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
+
 
 
 	VkPresentInfoKHR presentInfo = {};
@@ -1020,13 +1297,17 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
 
 	std::vector<CommandBuffer> cbs;
+	std::vector<CommandBuffer> prePassCbs;
 	for (int i = 0; i < m_swapchainImages.size(); ++i)
 	{
 		cbs.push_back(CommandBuffer());
+		prePassCbs.push_back(CommandBuffer());
 		cbs[i].Allocate(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		prePassCbs[i].Allocate(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
 	Renderable* comp = m_ecsEngine->componentManager->AddComponent<Renderable>(e->entity,
 									cbs,
+									prePassCbs,
 									Buffer(m_gpu, m_device, vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
 									Buffer(m_gpu, m_device, iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 									);
@@ -1124,6 +1405,7 @@ int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<
     VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
+
     VkPhysicalDeviceFeatures deviceFeatures;
 	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
@@ -1142,7 +1424,7 @@ int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<
     {
         return 0;
     }
-
+	std::cout << "Device: " << deviceProperties.deviceName  << " score: " << score << std::endl;
     return score;
 }
 
@@ -1261,8 +1543,8 @@ VkExtent2D ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, G
 		int width, height;
 		glfwGetFramebufferSize(window, &width, &height);
 		VkExtent2D actualExtent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
-		actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+		actualExtent.width = glm::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+		actualExtent.height = glm::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
 		return actualExtent;
 

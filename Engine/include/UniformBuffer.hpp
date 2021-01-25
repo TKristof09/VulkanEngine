@@ -3,9 +3,10 @@
 #include "Buffer.hpp"
 #include "Descriptor.hpp"
 
-class UniformBuffer : public Buffer, public Descriptor{
-
+class UniformBuffer : public Buffer, public Descriptor
+{
 public:
+	UniformBuffer() = default;
     UniformBuffer(VkPhysicalDevice gpu, VkDevice device, VkDeviceSize size, void* data=nullptr);
     ~UniformBuffer();
 

@@ -33,6 +33,8 @@ std::pair<uint32_t, uint32_t> Texture::LoadFile(const std::string& fileName)
 
     m_width = static_cast<uint32_t>(width);
     m_height = static_cast<uint32_t>(height);
+	if(channels != 4)
+		throw std::runtime_error("Texture doesnt have 4 channels");
     if(!m_pixels)
         throw std::runtime_error("Failed to load texture image!");
 
