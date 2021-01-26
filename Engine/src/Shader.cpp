@@ -65,7 +65,7 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 		m_uniformBuffers[resource.name].binding = binding;
 		m_uniformBuffers[resource.name].set = set;
 		m_uniformBuffers[resource.name].count = arraySize;
-		
+
 	}
 	for(auto& resource : resources.sampled_images)
 	{
@@ -80,7 +80,7 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Binding: {0}", binding);
 		m_Textures[resource.name] = TextureInfo();
-		
+
 		m_Textures[resource.name].stage = stage;
 		m_Textures[resource.name].binding = binding;
 		m_Textures[resource.name].count = arraySize;

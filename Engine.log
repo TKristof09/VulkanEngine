@@ -1,0 +1,22 @@
+[18:44:48] [trace] ENGINE: Picked device: AMD RADV VEGA10 (ACO)
+[18:44:48] [trace] ENGINE: 
+[18:44:48] [trace] ENGINE: Loading shaders/base.vert.spv
+[18:44:48] [trace] ENGINE: -----UNIFORM BUFFERS-----
+[18:44:48] [trace] ENGINE: UniformBufferObject
+[18:44:48] [trace] ENGINE:    Size: 64
+[18:44:48] [trace] ENGINE:    Location: 0
+[18:44:48] [trace] ENGINE:    Binding: 0
+[18:44:48] [trace] ENGINE:    Set: 0
+[18:44:48] [trace] ENGINE: 
+[18:44:48] [trace] ENGINE: Loading shaders/base.frag.spv
+[18:44:48] [trace] ENGINE: -----IMAGE SAMPLERS-----
+[18:44:48] [trace] ENGINE: texSampler
+[18:44:48] [trace] ENGINE:    Binding: 1
+[18:44:48] [trace] ENGINE: 
+[18:44:48] [trace] ENGINE: Loading shaders/depth.vert.spv
+[18:44:48] [trace] ENGINE: -----UNIFORM BUFFERS-----
+[18:44:48] [trace] ENGINE: UniformBufferObject
+[18:44:48] [trace] ENGINE:    Size: 64
+[18:44:48] [trace] ENGINE:    Location: 0
+[18:44:48] [trace] ENGINE:    Binding: 0
+[18:44:48] [trace] ENGINE:    Set: 0
