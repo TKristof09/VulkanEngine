@@ -17,6 +17,7 @@
 #include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "Shader.hpp"
+#include "Memory/UniformBufferAllocator.hpp"
 
 
 class RendererSystem : public System<RendererSystem>
@@ -91,12 +92,19 @@ private:
 
 	struct PipelineInfo
 	{
+		bool isMaterial = false;
+		bool variableDescCount = false;
 		VkPipelineLayout layout;
 		VkPipeline pipeline;
 		VkDescriptorSetLayout descriptorSetLayout;
 		std::vector<Shader> shaders;
 	};
 	std::unordered_map<std::string, PipelineInfo> m_pipelines;
+	VkDescriptorSetLayout	m_globalLayout;
+
+	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader)
+
+
 	UniformBuffer			m_cameraUBO;
 	UniformBuffer			m_transformsUBO;
 
@@ -118,7 +126,9 @@ private:
 
 	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
-	std::vector<VkDescriptorSet> m_descriptorSets;
+	std::vector<VkDescriptorSet> m_globalDescSets;
+	// key: pipelineName + setNumber -> set 0 = global(this set is stored in m_globalDescSets); set 1 = material; set 2 = transforms; TODO add a set for static objects
+	std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
 	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
 
 	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program

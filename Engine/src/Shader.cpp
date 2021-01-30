@@ -46,16 +46,22 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 		uint32_t size = comp.get_declared_struct_size(type);
 		uint32_t arraySize = type.array[0];
 
-		if(type.array.size() != 1)
-			LOG_WARN("{0} is an array of {1} dimensions in {2}", resource.name, type.array.size(), filename);
+		if(type.array.size() > 1)
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
 
+		if(type.array.size() == 0)
+		{
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			arraySize = 1;
+		}
 
 		LOG_TRACE("-----UNIFORM BUFFERS-----");
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Size: {0}", size);
 		LOG_TRACE("   Location: {0}", location);
-		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Set: {0}", set);
+		LOG_TRACE("   Binding: {0}", binding);
+		LOG_TRACE("   Count: {0}", arraySize);
 
 		m_uniformBuffers[resource.name] = UniformBufferInfo();
 
@@ -70,19 +76,28 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 	for(auto& resource : resources.sampled_images)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
-	    unsigned binding = comp.get_decoration(resource.id, spv::DecorationBinding);
+	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
+		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 		uint32_t arraySize = type.array[0];
 
-		if(type.array.size() != 1)
-			LOG_WARN("{0} is an array of {1} dimensions in {2}", resource.name, type.array.size(), filename);
+		if(type.array.size() > 1)
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
 
+		if(type.array.size() == 0)
+		{
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			arraySize = 1;
+		}
 		LOG_TRACE("-----IMAGE SAMPLERS-----");
 		LOG_TRACE(resource.name);
+		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
+		LOG_TRACE("   Count: {0}", arraySize);
 		m_Textures[resource.name] = TextureInfo();
 
 		m_Textures[resource.name].stage = stage;
 		m_Textures[resource.name].binding = binding;
+		m_Textures[resource.name].set = set;
 		m_Textures[resource.name].count = arraySize;
 	}
 

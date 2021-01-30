@@ -109,12 +109,23 @@ void Buffer::CopyToImage(VkImage image, uint32_t width, uint32_t height, VkComma
     commandBuffer.SubmitIdle(queue);
 }
 
-void Buffer::Fill(void* data, VkDeviceSize size)
+void Buffer::Fill(void* data, VkDeviceSize size, uint32_t offset, bool manualFlush)
 {
     void* memory;
-    VK_CHECK(vkMapMemory(m_device, m_memory, 0, size, 0, &memory), "Failed to map memory for vertex buffer");
+    VK_CHECK(vkMapMemory(m_device, m_memory, offset, size, 0, &memory), "Failed to map memory for vertex buffer");
     memcpy(memory, data, (size_t)size);
-    vkUnmapMemory(m_device, m_memory);
+
+	if(manualFlush)
+	{
+		VkMappedMemoryRange range = {};
+		range.sType		= VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+		range.memory	= m_memory;
+		range.size		= size;
+		range.offset	= offset;
+
+		vkFlushMappedMemoryRanges(m_device, 1, &range);
+	}
+	vkUnmapMemory(m_device, m_memory);
 
 }
 

@@ -51,7 +51,13 @@ public:
 	T* GetSystem() const
 	{
 		auto it = m_registry.find(T::STATIC_SYSTEM_TYPE_ID);
-		return it != m_registry.end() ? (T*)it->second : nullptr;
+		if(it == m_registry.end())
+		{
+			LOG_ERROR("System {0} isn't registered", typeid(T).name());
+			return nullptr;
+
+		}
+		return (T*)it->second;;
 	}
 
 	template<typename T>

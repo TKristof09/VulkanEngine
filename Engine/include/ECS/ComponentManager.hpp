@@ -130,7 +130,10 @@ public:
 		auto it = m_entityComponentMap[entityId].find(typeId);
 
 		if(it == m_entityComponentMap[entityId].end())
+		{
+			LOG_ERROR("Entity with id: {0} doesn't have a {1} component", entityId, typeid(T).name());
 			return nullptr;
+		}
 
 		return (T*)m_componentMap[it->second];
 	}

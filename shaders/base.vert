@@ -7,7 +7,7 @@ layout(location = 1) in vec2 inTexCoord;
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
-layout(binding = 0) uniform UniformBufferObject {
+layout(binding = 0, set = 0) uniform UniformBufferObject {
     mat4 model;
 } ubo;
 layout(push_constant) uniform PushConsts {

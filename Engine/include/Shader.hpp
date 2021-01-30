@@ -30,7 +30,7 @@ private:
 		VkPipelineStageFlags stage;
 
 		uint32_t binding;
-		// uint32_t set; is this a thing?
+		uint32_t set;
 		uint32_t count;
 	};
 	VkShaderModule m_shaderModule;

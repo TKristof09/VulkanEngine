@@ -6,6 +6,7 @@ compile_commands.json
 
 # clagnd cache
 .clangd/
+.cache/
 
 # renderdoc settings
 *.cap

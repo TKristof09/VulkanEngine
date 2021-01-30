@@ -25,7 +25,7 @@ public:
 	void Free();
 	void Copy(Buffer* dst, VkDeviceSize size, VkQueue queue, VkCommandPool commandPool);
 	void CopyToImage(VkImage image, uint32_t width, uint32_t height, VkCommandPool commandPool, VkQueue queue);
-	void Fill(void* data, VkDeviceSize size);
+	void Fill(void* data, VkDeviceSize size, uint32_t offset = 0, bool manualFlush = false); // TODO change the manual flush to true by default i think
 	void Bind(const CommandBuffer& commandBuffer);
 	const VkBuffer& GetVkBuffer() const
 	{
