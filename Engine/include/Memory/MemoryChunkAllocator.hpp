@@ -27,6 +27,7 @@ public:
 			chunkEnd = chunkStart + ALLOC_SIZE;
 			objects.clear();
 		}
+
 	};
 
 	using MemoryChunks = std::list<MemoryChunk*>;
@@ -147,6 +148,7 @@ public:
 			}
 		}
 	}
+
 
 	inline iterator begin() { return iterator(m_chunks.begin(), m_chunks.end()); }
 	inline iterator end() { return iterator(m_chunks.end(), m_chunks.end()); }

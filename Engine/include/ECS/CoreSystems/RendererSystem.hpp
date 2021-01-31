@@ -16,6 +16,7 @@
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
+#include "ECS/CoreComponents/Material.hpp"
 #include "Shader.hpp"
 #include "Memory/UniformBufferAllocator.hpp"
 
@@ -31,6 +32,7 @@ public:
 private:
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
 	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
+	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
 
 	// vulkan initialization stuff
 	void CreateDebugUI();

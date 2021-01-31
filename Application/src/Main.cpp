@@ -7,6 +7,7 @@
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Material.hpp"
+#include "ECS/CoreSystems/TransformHierarchySystem.hpp"
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
 
@@ -44,9 +45,11 @@ int main()
     GLFWwindow* w = window->GetWindow();
     ECSEngine* engine = new ECSEngine();
     engine->systemManager->AddSystem<RendererSystem>(window);
+	engine->systemManager->AddSystem<TransformHierarchySystem>();
+
     EntityID id = engine->entityManager->CreateEntity();
     engine->componentManager->AddComponent<Mesh>(id, vertices, indices);
-	EntityID id2 = engine->entityManager->CreateEntity();
+	EntityID id2 = engine->entityManager->CreateChild(id);
     engine->componentManager->AddComponent<Mesh>(id2, vertices2, indices2);
 	AssimpImporter importer;
 	//importer.LoadFile("models/chalet.obj", engine);
@@ -57,8 +60,8 @@ int main()
 
     Transform* t1 = engine->componentManager->AddComponent<Transform>(id);
     Transform* t2 = engine->componentManager->AddComponent<Transform>(id2);
-	t1->wPosition = {0.0f, 2.0f,0.0f};
-	t2->wPosition = {0.0f, -2.0f,0.0f};
+	t1->wPosition = {3.0f, 2.0f,0.0f};
+	t2->lPosition = {0.0f, -2.0f,0.0f};
 
 	Material* mat1 = engine->componentManager->AddComponent<Material>(id);
 	mat1->shaderName = "base";

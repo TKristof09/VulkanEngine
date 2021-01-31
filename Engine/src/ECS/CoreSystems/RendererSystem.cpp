@@ -77,6 +77,7 @@ RendererSystem::RendererSystem(std::shared_ptr<Window> window):
 {
 	Subscribe(&RendererSystem::OnMeshComponentAdded);
 	Subscribe(&RendererSystem::OnMeshComponentRemoved);
+	Subscribe(&RendererSystem::OnMaterialComponentAdded);
 
 	CreateInstance();
 	SetupDebugMessenger();
@@ -1378,6 +1379,7 @@ void RendererSystem::Update(float dt)
 	else if(result != VK_SUCCESS)
 		throw std::runtime_error("Failed to present swap chain image");
 	m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
+
 }
 
 
@@ -1428,6 +1430,14 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 void RendererSystem::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
 {
 	m_ecsEngine->componentManager->RemoveComponent<Renderable>(e->entity);
+}
+
+void RendererSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
+{
+	m_ecsEngine->componentManager->Sort<Material>([](Material* lhs, Material* rhs)
+			{
+				return lhs->shaderName <= rhs->shaderName;
+			});
 }
 
 

@@ -9,6 +9,7 @@
 #include "ECS/EventHandler.hpp"
 #include "ECS/ECSEngine.hpp"
 #include <unordered_map>
+#include <forward_list>
 
 #define CHUNK_SIZE 512
 
@@ -27,6 +28,7 @@ class ComponentManager
 	template<typename T>
 	class ComponentContainer : public IComponentContainer, public MemoryChunkAllocator<T, CHUNK_SIZE>
 	{
+		friend class ComponentManager;
 	public:
 		ComponentContainer() {}
 		virtual ~ComponentContainer() {}
@@ -163,14 +165,28 @@ public:
 		return GetComponentContainer<T>();
 	}
 
+	// TODO Improve this (really not happy with the implementation)
+	// WARNING: This copies(or moves) the components around, also O(n log n)
 	template<typename T, typename Compare>
 	void Sort(Compare comp)
 	{
 		auto container = GetComponentContainer<T>();
-		//std::comb_sort(container->begin(), container->end(), comp);
-		for (auto it = container->begin(); it != container->end(); ++it)
+		std::forward_list<T*> objList(container->begin(), container->end());
+		objList.sort(comp);
+		std::list<T> copyList;
+		for (auto* obj : objList)
 		{
-			m_componentMap[it->m_id] = (IComponent*)(*it);
+			copyList.push_back(*obj);
+		}
+		auto itList = copyList.begin();
+		for (auto* chunk : container->m_chunks)
+		{
+			for (auto* obj : chunk->objects)
+			{
+				*obj = *itList;
+				m_componentMap[obj->m_id] = (IComponent*)(obj);
+				itList++;
+			}
 		}
 	}
 

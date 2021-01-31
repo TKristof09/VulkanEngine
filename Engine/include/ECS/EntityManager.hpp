@@ -9,6 +9,7 @@
 #include "ECS/EventHandler.hpp"
 #include "ECS/CoreEvents/EntityEvents.hpp"
 #include "ECS/ECSEngine.hpp"
+#include "ECS/CoreComponents/Transform.hpp"
 
 #define CHUNK_SIZE 512
 
@@ -59,7 +60,7 @@ public:
 	{
 		EntityID entity = CreateEntity(std::forward<Args>(args)...);
 
-		Relationship* relationshipComp = m_ecsEngine->componentManager->AddComponent<Relationship>(entity);
+		Relationship* relationshipComp = m_ecsEngine->componentManager->GetComponent<Relationship>(entity);
 
 		Relationship* relationshipParent = m_ecsEngine->componentManager->GetComponent<Relationship>(parent);
 		relationshipParent->numChildren++;
