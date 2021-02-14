@@ -17,5 +17,5 @@ layout(push_constant) uniform PushConsts {
 void main() {
     gl_Position = pushConsts.viewProj * ubo.model * vec4(inPosition, 1.0);
     fragTexCoord = inTexCoord;
-	fragColor = (pushConsts.viewProj * ubo.model * vec4(inPosition, 1.0f)).rgb;
+	fragColor = (vec4(inPosition + 0.1f, 1.0f)).rgb;
 }

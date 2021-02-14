@@ -3,10 +3,12 @@
 #include "ECS/System.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 
+#include <bits/stdint-uintn.h>
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
+#include <set>
 
 #include "VulkanContext.hpp"
 #include "Window.hpp"
@@ -19,6 +21,10 @@
 #include "ECS/CoreComponents/Material.hpp"
 #include "Shader.hpp"
 #include "Memory/UniformBufferAllocator.hpp"
+#include "Pipeline.hpp"
+#include "RenderPass.hpp"
+#include "Framebuffer.hpp"
+
 
 
 class RendererSystem : public System<RendererSystem>
@@ -72,7 +78,7 @@ private:
 	std::shared_ptr<DebugUI> m_debugUI;
 
 
-	VkInstance				m_instance;
+	VkInstance&				m_instance;
 	VkPhysicalDevice&		m_gpu;
 	VkDevice&				m_device;
 
@@ -82,26 +88,15 @@ private:
 	VkSurfaceKHR			m_surface;
 
 	VkSwapchainKHR			m_swapchain;
-	std::vector<VkImage>	m_swapchainImages;
-	std::vector<VkImageView> m_swapchainImageViews;
+	std::vector<Image>		m_swapchainImages;
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
-	std::vector<VkFramebuffer> m_swapchainFramebuffers;
-	VkFramebuffer m_depthFramebuffers;
 
-	VkRenderPass			m_renderPass;
-	VkRenderPass			m_prePassRenderPass;
+	RenderPass			m_renderPass;
+	RenderPass			m_prePassRenderPass;
 
-	struct PipelineInfo
-	{
-		bool isMaterial = false;
-		bool variableDescCount = false;
-		VkPipelineLayout layout;
-		VkPipeline pipeline;
-		VkDescriptorSetLayout descriptorSetLayout;
-		std::vector<Shader> shaders;
-	};
-	std::unordered_map<std::string, PipelineInfo> m_pipelines;
+	std::multiset<Pipeline> m_pipelines;
+	std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
 	VkDescriptorSetLayout	m_globalLayout;
 
 	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader)
@@ -109,12 +104,6 @@ private:
 
 	UniformBuffer			m_cameraUBO;
 	UniformBuffer			m_transformsUBO;
-
-	VkPipelineLayout		m_pipelineLayout;
-	VkPipeline				m_graphicsPipeline;
-
-	VkPipelineLayout		m_prePassPipelineLayout;
-	VkPipeline				m_prePassPipeline;
 
 	VkCommandPool			m_commandPool;
 	std::vector<CommandBuffer> m_depthCommandBuffers;
@@ -126,7 +115,6 @@ private:
 	std::vector<VkFence>     m_inFlightFences;
 	std::vector<VkFence>     m_imagesInFlight;
 
-	VkDescriptorSetLayout	m_descriptorSetLayout;
 	VkDescriptorPool		m_descriptorPool;
 	std::vector<VkDescriptorSet> m_globalDescSets;
 	// key: pipelineName + setNumber -> set 0 = global(this set is stored in m_globalDescSets); set 1 = material; set 2 = transforms; TODO add a set for static objects
@@ -136,11 +124,11 @@ private:
 	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
 	std::unique_ptr<Texture> m_texture;
 
-	std::unique_ptr<Image>   m_depthImage;
+	std::shared_ptr<Image>   m_depthImage;
 
 
 	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	std::unique_ptr<Image>  m_colorImage; // for MSAA
+	std::shared_ptr<Image>  m_colorImage; // for MSAA
 
 	size_t m_currentFrame = 0;
 

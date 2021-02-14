@@ -1,13 +1,51 @@
 #pragma once
-#include <vulkan/vulkan.h>
+#include "VulkanContext.hpp"
+
+struct ImageCreateInfo
+{
+	VkFormat format;
+	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+	VkImageUsageFlags usage;
+	VkImageLayout layout;
+	VkImageAspectFlags aspectFlags;
+	VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+
+	VkImage image = VK_NULL_HANDLE; // just to make it so that we can create an Image from the swapchain images
+};
 class Image {
 
 public:
-    Image(VkPhysicalDevice gpu, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
-          VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT);
-    Image(VkPhysicalDevice gpu, VkDevice device, std::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
-          VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT);
-    virtual ~Image();
+    Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo);
+    Image(VkExtent2D extent, ImageCreateInfo createInfo);
+    Image(std::pair<uint32_t, uint32_t> widthHeight, ImageCreateInfo createInfo);
+
+	Image(const Image& other) = default;
+	Image(Image&& other) noexcept
+	{
+		m_image			= other.m_image;
+		m_mipLevels		= other.m_mipLevels;
+		m_width			= other.m_width;
+		m_height		= other.m_height;
+		m_imageView		= other.m_imageView;
+		m_format		= other.m_format;
+		m_memory		= other.m_memory;
+		m_layout		= other.m_layout;
+
+		other.m_image		= VK_NULL_HANDLE;
+		other.m_mipLevels	= 0;
+		other.m_width		= 0;
+		other.m_height		= 0;
+		other.m_imageView	= VK_NULL_HANDLE;
+		other.m_format		= VK_FORMAT_UNDEFINED;
+		other.m_memory		= VK_NULL_HANDLE;
+		other.m_layout		= VK_IMAGE_LAYOUT_UNDEFINED;
+
+
+	}
+	virtual ~Image();
     void TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue);
     void GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue);
     const VkImageView& GetImageView() const
@@ -25,8 +63,7 @@ public:
 
 protected:
     uint32_t        m_mipLevels;
-    VkDevice        m_device;
-	VkPhysicalDevice m_gpu;
+
     uint32_t        m_width;
     uint32_t        m_height;
     VkImage         m_image;

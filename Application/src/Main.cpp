@@ -61,7 +61,7 @@ int main()
     Transform* t1 = engine->componentManager->AddComponent<Transform>(id);
     Transform* t2 = engine->componentManager->AddComponent<Transform>(id2);
 	t1->wPosition = {3.0f, 2.0f,0.0f};
-	t2->lPosition = {0.0f, -2.0f,0.0f};
+	t2->lPosition = {0.0f, -0.5f,-1.0f};
 
 	Material* mat1 = engine->componentManager->AddComponent<Material>(id);
 	mat1->shaderName = "base";

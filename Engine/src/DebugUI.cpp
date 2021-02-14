@@ -1,43 +1,43 @@
 #include "DebugUI.hpp"
 
-DebugUI::DebugUI(DebugUIInitInfo* initInfo):
-m_initInfo(*initInfo),
+DebugUI::DebugUI(DebugUIInitInfo initInfo):
 m_show_demo_window(true)
 {
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForVulkan(initInfo->pWindow->GetWindow(), true);
+	ImGui_ImplGlfw_InitForVulkan(initInfo.pWindow->GetWindow(), true);
 
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
-	imguiInitInfo.Instance = initInfo->instance;
-	imguiInitInfo.PhysicalDevice = initInfo->gpu;
-    imguiInitInfo.Device = initInfo->device;
-    imguiInitInfo.QueueFamily = initInfo->queueFamily;
-    imguiInitInfo.Queue = initInfo->queue;
-    imguiInitInfo.PipelineCache = initInfo->pipelineCache;
-    imguiInitInfo.DescriptorPool = initInfo->descriptorPool;
-    imguiInitInfo.Allocator = initInfo->allocator;
+	imguiInitInfo.Instance = VulkanContext::GetInstance();
+	imguiInitInfo.PhysicalDevice = VulkanContext::GetPhysicalDevice();
+    imguiInitInfo.Device = VulkanContext::GetDevice();
+    imguiInitInfo.QueueFamily = initInfo.queueFamily;
+    imguiInitInfo.Queue = initInfo.queue;
+    imguiInitInfo.PipelineCache = initInfo.pipelineCache;
+    imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
+    imguiInitInfo.Allocator = initInfo.allocator;
     imguiInitInfo.MinImageCount = 2;
-    imguiInitInfo.ImageCount = initInfo->imageCount;
-	imguiInitInfo.MSAASamples = initInfo->msaaSamples;
+    imguiInitInfo.ImageCount = initInfo.imageCount;
+	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
 
-	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo->renderPass);
+	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
 
 	// upload font textures
-	CommandBuffer cb(initInfo->device, initInfo->commandPool);
+	CommandBuffer cb(VulkanContext::GetDevice(), initInfo.commandPool);
 	cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
-	cb.SubmitIdle(initInfo->queue);
+	cb.SubmitIdle(initInfo.queue);
 	ImGui_ImplVulkan_DestroyFontUploadObjects();
 
-
-	m_commandBuffers.resize(initInfo->imageCount);
+	/*
+	m_commandBuffers.resize(initInfo.imageCount);
 	for(size_t i = 0; i < m_commandBuffers.size(); i++)
 	{
-		m_commandBuffers[i] = std::make_unique<CommandBuffer>(initInfo->device, initInfo->commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		m_commandBuffers[i] = std::make_unique<CommandBuffer>(VulkanContext::GetDevice(), initInfo.commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
+	*/
 }
 
 DebugUI::~DebugUI()
@@ -47,37 +47,37 @@ DebugUI::~DebugUI()
 	ImGui::DestroyContext();
 }
 
-void DebugUI::ReInit(DebugUIInitInfo* initInfo)
+void DebugUI::ReInit(DebugUIInitInfo initInfo)
 {
-	m_initInfo = *initInfo;
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
-	imguiInitInfo.Instance = initInfo->instance;
-	imguiInitInfo.PhysicalDevice = initInfo->gpu;
-    imguiInitInfo.Device = initInfo->device;
-    imguiInitInfo.QueueFamily = initInfo->queueFamily;
-    imguiInitInfo.Queue = initInfo->queue;
-    imguiInitInfo.PipelineCache = initInfo->pipelineCache;
-    imguiInitInfo.DescriptorPool = initInfo->descriptorPool;
-    imguiInitInfo.Allocator = initInfo->allocator;
+	imguiInitInfo.Instance = VulkanContext::GetInstance();
+	imguiInitInfo.PhysicalDevice = VulkanContext::GetPhysicalDevice();
+    imguiInitInfo.Device = VulkanContext::GetDevice();
+    imguiInitInfo.QueueFamily = initInfo.queueFamily;
+    imguiInitInfo.Queue = initInfo.queue;
+    imguiInitInfo.PipelineCache = initInfo.pipelineCache;
+    imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
+    imguiInitInfo.Allocator = initInfo.allocator;
     imguiInitInfo.MinImageCount = 2;
-    imguiInitInfo.ImageCount = initInfo->imageCount;
-	imguiInitInfo.MSAASamples = initInfo->msaaSamples;
+    imguiInitInfo.ImageCount = initInfo.imageCount;
+	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
 
-	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo->renderPass);
-	CommandBuffer cb(initInfo->device, initInfo->commandPool);
+
+	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
+	CommandBuffer cb(VulkanContext::GetDevice(), initInfo.commandPool);
 	cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
-	cb.SubmitIdle(initInfo->queue);
+	cb.SubmitIdle(initInfo.queue);
 	ImGui_ImplVulkan_DestroyFontUploadObjects();
 
 
 }
-void DebugUI::SetupFrame(uint32_t imageIndex, uint32_t subpass, VkFramebuffer framebuffer)
+void DebugUI::SetupFrame(CommandBuffer* cb)
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
@@ -87,14 +87,16 @@ void DebugUI::SetupFrame(uint32_t imageIndex, uint32_t subpass, VkFramebuffer fr
 
 	ImGui::Render();
 
-	VkCommandBufferInheritanceInfo inheritanceInfo = {};
+	/*VkCommandBufferInheritanceInfo inheritanceInfo = {};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-	inheritanceInfo.renderPass = m_initInfo.renderPass;
+	inheritanceInfo.renderPass = renderPass->GetRenderPass();
 	inheritanceInfo.subpass = subpass;
-	inheritanceInfo.framebuffer = framebuffer;
+	inheritanceInfo.framebuffer = renderPass->GetFramebuffer(imageIndex);
 
 	m_commandBuffers[imageIndex]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), GetCommandBuffer(imageIndex));
-	m_commandBuffers[imageIndex]->End();
+	m_commandBuffers[imageIndex]->End();*/
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb->GetCommandBuffer());
 
 }

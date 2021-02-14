@@ -3,18 +3,28 @@
 #include <spirv_cross.hpp>
 #include "VulkanContext.hpp"
 #include <filesystem>
+#include <vulkan/vulkan_core.h>
 
 
-Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
+Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 {
 	std::vector<uint32_t> data;
 	{
 
 		std::filesystem::path path;
 		if(stage & VK_SHADER_STAGE_VERTEX_BIT)
+		{
 			path = "./shaders/" + filename + ".vert.spv";
+			m_stage = VK_SHADER_STAGE_VERTEX_BIT;
+		}
 		else if(stage & VK_SHADER_STAGE_FRAGMENT_BIT)
+		{
 			path = "./shaders/" + (filename + ".frag.spv");
+			m_stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		}
+
+		LOG_TRACE("");
+		LOG_TRACE("Loading {0}", path);
 
 		// TODO make this work better(not hardcodign file path)
 		std::ifstream file(path.c_str(), std::ios::ate | std::ios::binary);
@@ -35,8 +45,23 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 	spirv_cross::Compiler comp(data);
 
 	spirv_cross::ShaderResources resources = comp.get_shader_resources();
-	LOG_TRACE("");
-	LOG_TRACE("Loading {0}", filename);
+		for(auto& resource : resources.push_constant_buffers)
+	{
+		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
+		uint32_t size = comp.get_declared_struct_size(type);
+		uint32_t offset = comp.get_decoration(resource.id, spv::DecorationOffset);
+
+		LOG_TRACE("-----PUSH CONSTANTS-----");
+		LOG_TRACE(resource.name);
+		LOG_TRACE("   Size: {0}", size);
+		LOG_TRACE("   Offset: {0}", offset);
+
+		m_pushConstants.used = true;
+		m_pushConstants.size = size;
+		m_pushConstants.offset = offset;
+
+	}
+
 	for(auto& resource : resources.uniform_buffers)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
@@ -73,6 +98,10 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 		m_uniformBuffers[resource.name].count = arraySize;
 
 	}
+
+	uint32_t maxBinding = 0;
+	std::string maxName = "";
+
 	for(auto& resource : resources.sampled_images)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
@@ -99,7 +128,18 @@ Shader::Shader(const std::string& filename, VkPipelineStageFlags stage)
 		m_Textures[resource.name].binding = binding;
 		m_Textures[resource.name].set = set;
 		m_Textures[resource.name].count = arraySize;
+
+
+		if(binding > maxBinding)
+		{
+			maxBinding = binding;
+			maxName = resource.name;
+		}
+
 	}
+
+	if(maxName != "")
+		m_Textures[maxName].isLast = true;
 
 
 

@@ -8,51 +8,51 @@ bool hasStencilComponent(VkFormat format)
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-Image::Image(VkPhysicalDevice gpu, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
-             VkImageUsageFlags usage, VkImageLayout layout,VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples):
-m_device(device),
-m_gpu(gpu),
+Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo):
 m_width(width),
 m_height(height),
-m_format(format),
-m_image(VK_NULL_HANDLE),
+m_format(createInfo.format),
+m_image(createInfo.image),
 m_imageView(VK_NULL_HANDLE),
 m_memory(VK_NULL_HANDLE),
-m_layout(layout)
+m_layout(createInfo.layout)
 {
 
-    if(numSamples == VK_SAMPLE_COUNT_1_BIT)
-		m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(m_width, m_height)))) + 1;
-	else
-		m_mipLevels = 1;
+	if(createInfo.image == VK_NULL_HANDLE)
+	{
+		if(createInfo.msaaSamples == VK_SAMPLE_COUNT_1_BIT)
+			m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(m_width, m_height)))) + 1;
+		else
+			m_mipLevels = 1;
 
-    VkImageCreateInfo createInfo            = {};
-    createInfo.sType                        = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    createInfo.imageType                    = VK_IMAGE_TYPE_2D;
-    createInfo.extent.width                 = width;
-    createInfo.extent.height                = height;
-    createInfo.extent.depth                 = 1;
-    createInfo.mipLevels                    = m_mipLevels;
-    createInfo.arrayLayers                  = 1;
-    createInfo.format                       = format;
-    createInfo.tiling                       = tiling;
-    createInfo.initialLayout                = layout;
-    createInfo.usage                        = usage; // TODO possibly add transfer dst bit to not need to specify it when constructing an image
-    createInfo.sharingMode                  = VK_SHARING_MODE_EXCLUSIVE;
-    createInfo.samples                      = numSamples; // msaa
-    createInfo.flags                        = 0;
+		VkImageCreateInfo ci		            = {};
+		ci.sType                        = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		ci.imageType                    = VK_IMAGE_TYPE_2D;
+		ci.extent.width                 = width;
+		ci.extent.height                = height;
+		ci.extent.depth                 = 1;
+		ci.mipLevels                    = m_mipLevels;
+		ci.arrayLayers                  = 1;
+		ci.format                       = createInfo.format;
+		ci.tiling                       = createInfo.tiling;
+		ci.initialLayout                = createInfo.layout;
+		ci.usage                        = createInfo.usage; // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+		ci.sharingMode                  = VK_SHARING_MODE_EXCLUSIVE;
+		ci.samples                      = createInfo.msaaSamples; // msaa
+		ci.flags                        = 0;
 
-    VK_CHECK(vkCreateImage(m_device, &createInfo, nullptr, &m_image), "Failed to create texture image");
+		VK_CHECK(vkCreateImage(VulkanContext::GetDevice(), &ci, nullptr, &m_image), "Failed to create texture image");
 
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(m_device, m_image, &memRequirements);
-    VkMemoryAllocateInfo allocInfo          = {};
-    allocInfo.sType                         = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize                = memRequirements.size;
-    allocInfo.memoryTypeIndex               = FindMemoryType(gpu, memRequirements.memoryTypeBits, properties);
-    VK_CHECK(vkAllocateMemory(m_device, &allocInfo, nullptr, &m_memory), "Failed to allocate memory for texture");
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(VulkanContext::GetDevice(), m_image, &memRequirements);
+		VkMemoryAllocateInfo allocInfo          = {};
+		allocInfo.sType                         = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize                = memRequirements.size;
+		allocInfo.memoryTypeIndex               = FindMemoryType(VulkanContext::GetPhysicalDevice(), memRequirements.memoryTypeBits, createInfo.memoryProperties);
+		VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate memory for texture");
+		vkBindImageMemory(VulkanContext::GetDevice(), m_image, m_memory, 0);
+	}
 
-    vkBindImageMemory(m_device, m_image, m_memory, 0);
 
     VkImageViewCreateInfo viewCreateInfo    = {};
     viewCreateInfo.sType                    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -65,33 +65,39 @@ m_layout(layout)
     viewCreateInfo.components.b             = VK_COMPONENT_SWIZZLE_IDENTITY;
     viewCreateInfo.components.a             = VK_COMPONENT_SWIZZLE_IDENTITY;
 
-    viewCreateInfo.subresourceRange.aspectMask      = aspectFlags;
+    viewCreateInfo.subresourceRange.aspectMask      = createInfo.aspectFlags;
     viewCreateInfo.subresourceRange.baseMipLevel    = 0;
     viewCreateInfo.subresourceRange.levelCount      = 1;
     viewCreateInfo.subresourceRange.baseArrayLayer  = 0;
     viewCreateInfo.subresourceRange.layerCount      = 1;
 
-    VK_CHECK(vkCreateImageView(m_device, &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
+    VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
 }
 
-Image::Image(VkPhysicalDevice gpu, VkDevice device, std::pair<uint32_t, uint32_t> widthHeight, VkFormat format, VkImageTiling tiling,
-             VkImageUsageFlags usage, VkImageLayout layout, VkMemoryPropertyFlags properties, VkImageAspectFlags aspectFlags, VkSampleCountFlagBits numSamples):
-Image(gpu, device, widthHeight.first, widthHeight.second, format, tiling, usage, layout, properties, aspectFlags, numSamples)
+Image::Image(VkExtent2D extent, ImageCreateInfo createInfo):
+Image(extent.width, extent.height, createInfo)
 {
 
 }
 
+Image::Image(std::pair<uint32_t, uint32_t> widthHeight, ImageCreateInfo createInfo):
+Image(widthHeight.first, widthHeight.second, createInfo)
+{
+}
 
 Image::~Image()
 {
-    vkDestroyImageView(m_device, m_imageView, nullptr);
-    vkDestroyImage(m_device, m_image, nullptr);
-    vkFreeMemory(m_device, m_memory, nullptr);
+	if(m_image == VK_NULL_HANDLE)
+		return;
+
+    vkDestroyImageView(VulkanContext::GetDevice(), m_imageView, nullptr);
+    vkDestroyImage(VulkanContext::GetDevice(), m_image, nullptr);
+    vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
 }
 
 void Image::TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue)
 {
-    CommandBuffer commandBuffer(m_device, commandPool);
+    CommandBuffer commandBuffer(VulkanContext::GetDevice(), commandPool);
     commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VkImageMemoryBarrier barrier    = {};
@@ -166,14 +172,14 @@ void Image::GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, 
 
 	// Check if image format supports linear blitting
     VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(m_gpu, m_format, &formatProperties);
+    vkGetPhysicalDeviceFormatProperties(VulkanContext::GetPhysicalDevice(), m_format, &formatProperties);
 	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
 	{
 		throw std::runtime_error("Texture image format does not support linear blitting!");
 	}
 
 
-    CommandBuffer commandBuffer(m_device, commandPool);
+    CommandBuffer commandBuffer(VulkanContext::GetDevice(), commandPool);
     commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VkImageMemoryBarrier barrier            = {};
