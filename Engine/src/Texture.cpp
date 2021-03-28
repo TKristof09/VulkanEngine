@@ -1,13 +1,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "Texture.hpp"
 #include "Buffer.hpp"
-Texture::Texture(const std::string& fileName, VkPhysicalDevice gpu, VkDevice device, VkCommandPool commandPool, VkQueue queue):
+Texture::Texture(const std::string& fileName):
 Image(LoadFile(fileName), {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_ASPECT_COLOR_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT} )
 {
 
     VkDeviceSize imageSize = m_width * m_height * 4;
 
-    Buffer stagingBuffer(gpu, device, imageSize,
+    Buffer stagingBuffer(imageSize,
                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
@@ -15,9 +15,9 @@ Image(LoadFile(fileName), {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK
     stbi_image_free(m_pixels);
     m_pixels = nullptr;
 
-    TransitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, commandPool, queue);
-    stagingBuffer.CopyToImage(m_image, m_width, m_height, commandPool, queue);
-    GenerateMipmaps(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, commandPool, queue);
+    TransitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    stagingBuffer.CopyToImage(m_image, m_width, m_height);
+    GenerateMipmaps(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 
 

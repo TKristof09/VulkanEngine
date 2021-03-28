@@ -8,6 +8,7 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 #include "ECS/CoreSystems/TransformHierarchySystem.hpp"
+#include "ECS/CoreSystems/MaterialSystem.hpp"
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
 
@@ -45,6 +46,7 @@ int main()
     GLFWwindow* w = window->GetWindow();
     ECSEngine* engine = new ECSEngine();
     engine->systemManager->AddSystem<RendererSystem>(window);
+	engine->systemManager->AddSystem<MaterialSystem>();
 	engine->systemManager->AddSystem<TransformHierarchySystem>();
 
     EntityID id = engine->entityManager->CreateEntity();
@@ -63,11 +65,16 @@ int main()
 	t1->wPosition = {3.0f, 2.0f,0.0f};
 	t2->lPosition = {0.0f, -0.5f,-1.0f};
 
+	Texture albedo1("./textures/chalet.jpg");
+	Texture albedo2("./textures/texture.jpg");
+
 	Material* mat1 = engine->componentManager->AddComponent<Material>(id);
 	mat1->shaderName = "base";
+	mat1->textures["albedo"] = std::move(albedo1);
 
 	Material* mat2 = engine->componentManager->AddComponent<Material>(id2);
 	mat2->shaderName = "base";
+	mat2->textures["albedo"] = std::move(albedo2);
     while(!glfwWindowShouldClose(w) )
     {
 		glfwPollEvents();

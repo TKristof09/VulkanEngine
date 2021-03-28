@@ -12,7 +12,7 @@ m_width(width), m_height(height), m_title(title)
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     m_window = glfwCreateWindow(width, height, title.data(), nullptr, nullptr);
 	glfwSetWindowUserPointer(m_window, this);

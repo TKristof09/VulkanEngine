@@ -34,8 +34,11 @@ public:
 	~RendererSystem();
 	virtual	void Update(float dt) override;
 
+	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 
 private:
+	friend class MaterialSystem;
+
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
 	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
@@ -82,13 +85,13 @@ private:
 	VkPhysicalDevice&		m_gpu;
 	VkDevice&				m_device;
 
-	VkQueue					m_graphicsQueue;
+	VkQueue&				m_graphicsQueue;
 	VkQueue					m_presentQueue;
 
 	VkSurfaceKHR			m_surface;
 
 	VkSwapchainKHR			m_swapchain;
-	std::vector<Image>		m_swapchainImages;
+	std::vector<std::shared_ptr<Image>>	m_swapchainImages;
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
 
@@ -97,15 +100,14 @@ private:
 
 	std::multiset<Pipeline> m_pipelines;
 	std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
-	VkDescriptorSetLayout	m_globalLayout;
 
-	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader)
+	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
 
 	UniformBuffer			m_cameraUBO;
 	UniformBuffer			m_transformsUBO;
 
-	VkCommandPool			m_commandPool;
+	VkCommandPool&			m_commandPool;
 	std::vector<CommandBuffer> m_depthCommandBuffers;
 	std::vector<CommandBuffer> m_mainCommandBuffers;
 
@@ -116,8 +118,9 @@ private:
 	std::vector<VkFence>     m_imagesInFlight;
 
 	VkDescriptorPool		m_descriptorPool;
-	std::vector<VkDescriptorSet> m_globalDescSets;
-	// key: pipelineName + setNumber -> set 0 = global(this set is stored in m_globalDescSets); set 1 = material; set 2 = transforms; TODO add a set for static objects
+	std::vector<VkDescriptorSet> m_cameraDescSets;
+	std::vector<VkDescriptorSet> m_transformDescSets;
+	// key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
 	std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
 	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
 

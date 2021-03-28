@@ -4,7 +4,7 @@
 #include "Shader.hpp"
 #include "RenderPass.hpp"
 
-const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 500;
+const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 32;
 class Pipeline;
 
 struct PipelineCreateInfo
@@ -56,9 +56,12 @@ public:
 	}
 private:
 	friend class RendererSystem;
+	friend class MaterialSystem;
+	friend class DescriptorSetAllocator;
 
 	void CreateDescriptorSetLayout(bool useVariableDescriptorCount);
 	void CreatePipeline(PipelineCreateInfo createInfo);
+	void AllocateDescriptors();
 
 	uint16_t				m_priority;
 	bool					m_isGlobal;
@@ -69,5 +72,7 @@ private:
 	VkPipelineLayout		m_layout;
 	std::array<VkDescriptorSetLayout, 4> m_descSetLayouts;
 	uint8_t					m_numDescSets; //TODO in the future this will not be needed as every shader will be required to use 4 sets
+
+	std::unordered_map<std::string, VkDescriptorSet> m_descSets;
 };
 

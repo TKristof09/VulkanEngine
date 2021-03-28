@@ -4,6 +4,7 @@
 #include "ECS/Types.hpp"
 #include "ECS/ISystem.hpp"
 #include "ECS/ECSEngine.hpp"
+#include "ECS/CoreEvents/SystemEvents.hpp"
 
 #include <unordered_map>
 
@@ -44,6 +45,11 @@ public:
 
 
 		m_registry[id] = system;
+
+		SystemAdded<T> e;
+		e.ptr = (T*)system;
+		m_ecsEngine->eventHandler->Send<SystemAdded<T>>(e);
+
 		return (T*)system;
 	}
 

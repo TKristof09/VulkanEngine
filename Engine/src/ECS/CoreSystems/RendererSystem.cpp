@@ -6,6 +6,7 @@
 #include <limits>
 #include <chrono>
 #include <array>
+#include <string>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
@@ -28,7 +29,9 @@ const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 VkPhysicalDevice VulkanContext::m_gpu = VK_NULL_HANDLE;
 VkDevice VulkanContext::m_device = VK_NULL_HANDLE;
 VkInstance VulkanContext::m_instance = VK_NULL_HANDLE;
-
+VkPhysicalDeviceProperties VulkanContext::m_gpuProperties = {};
+VkQueue VulkanContext::m_graphicsQueue = VK_NULL_HANDLE;
+VkCommandPool VulkanContext::m_commandPool = VK_NULL_HANDLE;
 
 struct UniformBufferObject
 {
@@ -75,7 +78,9 @@ RendererSystem::RendererSystem(std::shared_ptr<Window> window):
 	m_window(window),
 	m_instance(VulkanContext::m_instance),
 	m_gpu(VulkanContext::m_gpu),
-	m_device(VulkanContext::m_device)
+	m_device(VulkanContext::m_device),
+	m_graphicsQueue(VulkanContext::m_graphicsQueue),
+	m_commandPool(VulkanContext::m_commandPool)
 {
 	Subscribe(&RendererSystem::OnMeshComponentAdded);
 	Subscribe(&RendererSystem::OnMeshComponentRemoved);
@@ -84,20 +89,17 @@ RendererSystem::RendererSystem(std::shared_ptr<Window> window):
 	CreateInstance();
 	SetupDebugMessenger();
 	CreateDevice();
-	m_ubAllocators["baseUniformBufferObject"] = std::move(std::make_unique<UniformBufferAllocator>(m_gpu, m_device, sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
-	m_ubAllocators["depthUniformBufferObject"] = std::move(std::make_unique<UniformBufferAllocator>(m_gpu, m_device, sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
 	CreateSwapchain();
+
 	CreateRenderPass();
 	CreatePipeline();
-	CreateDescriptorPool();
-	CreateDescriptorSets();
 	CreateCommandPool();
 	CreateColorResources();
 	CreateDepthResources();
 	CreateFramebuffers();
-	CreateTexture();
-	CreateSampler();
 	CreateUniformBuffers();
+	CreateDescriptorPool();
+	CreateDescriptorSets();
 	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
@@ -118,6 +120,8 @@ RendererSystem::~RendererSystem()
 	//vkDestroySampler(m_device, m_sampler, nullptr);
 
 	CleanupSwapchain();
+
+	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
 	vkDestroySampler(m_device, m_sampler, nullptr);
 
@@ -146,15 +150,14 @@ void RendererSystem::RecreateSwapchain()
 
 	CleanupSwapchain();
 
+	vkDeviceWaitIdle(m_device);
+
 	CreateSwapchain();
 	CreateRenderPass();
 	CreatePipeline();
 	CreateColorResources();
 	CreateDepthResources();
 	CreateFramebuffers();
-	CreateUniformBuffers();
-	CreateDescriptorPool();
-	CreateDescriptorSets();
 	CreateCommandBuffers();
 
 
@@ -172,7 +175,6 @@ void RendererSystem::RecreateSwapchain()
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
 	initInfo.msaaSamples = m_msaaSamples;
 	initInfo.allocator = nullptr;
-	initInfo.commandPool = m_commandPool;
 	m_debugUI->ReInit(initInfo);
 
 }
@@ -187,9 +189,16 @@ void RendererSystem::CleanupSwapchain()
 	m_mainCommandBuffers.clear();
 	m_uniformBuffers.clear();
 
-	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
+	m_renderPass.Destroy();
+	m_prePassRenderPass.Destroy();
 
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+	for(auto& img : m_swapchainImages)
+	{
+		img->Free(true);
+	}
+	m_swapchainImages.clear();
+
 }
 
 void RendererSystem::CreateDebugUI()
@@ -208,7 +217,6 @@ void RendererSystem::CreateDebugUI()
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
 	initInfo.msaaSamples = m_msaaSamples;
 	initInfo.allocator = nullptr;
-	initInfo.commandPool = m_commandPool;
 
 
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
@@ -219,8 +227,7 @@ void RendererSystem::CreateInstance()
 	VkApplicationInfo appinfo = {};
 	appinfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appinfo.pApplicationName = "VulkanEngine";
-	appinfo.apiVersion = VK_MAKE_VERSION(1, 1, 101);
-	;
+	appinfo.apiVersion = VK_API_VERSION_1_2;
 
 	VkInstanceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -242,8 +249,9 @@ void RendererSystem::CreateInstance()
 	vkEnumerateInstanceLayerProperties(&layerCount, instanceLayerProperties.data());
 
 	bool validationLayerPresent = false;
+	LOG_TRACE("Available layers");
 	for (VkLayerProperties layer : instanceLayerProperties) {
-		std::cout << layer.layerName << std::endl;
+		LOG_TRACE("    {0}", layer.layerName);
 		if (strcmp(layer.layerName, validationLayerName) == 0) {
 			validationLayerPresent = true;
 			break;
@@ -344,9 +352,8 @@ void RendererSystem::CreateDevice()
 
 	m_gpu = PickDevice(devices, m_surface, deviceExtensions);
 
-	VkPhysicalDeviceProperties deviceProperties;
-	vkGetPhysicalDeviceProperties(m_gpu, &deviceProperties);
-	LOG_TRACE("Picked device: {0}", deviceProperties.deviceName);
+	vkGetPhysicalDeviceProperties(m_gpu, &VulkanContext::m_gpuProperties);
+	LOG_TRACE("Picked device: {0}", VulkanContext::m_gpuProperties.deviceName);
 
 	m_msaaSamples = GetMaxUsableSampleCount(m_gpu);
 
@@ -377,6 +384,9 @@ void RendererSystem::CreateDevice()
 	descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 	descriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
+	descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+	descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
 	VkDeviceCreateInfo createInfo		= {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -449,7 +459,7 @@ void RendererSystem::CreateSwapchain()
 		ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 		ci.format = m_swapchainImageFormat;
 
-		m_swapchainImages.emplace_back(extent, ci);
+		m_swapchainImages.emplace_back(std::make_shared<Image>(extent, ci));
 	}
 
 	LOG_TRACE("Created swapchain and images");
@@ -548,10 +558,34 @@ void RendererSystem::CreateRenderPass()
 
 }
 
+Pipeline* RendererSystem::AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority)
+{
+	LOG_TRACE("Creating pipeline for {0}", name);
+
+	createInfo.renderPass = &m_renderPass;
+	createInfo.viewportExtent = m_swapchainExtent;
+	createInfo.msaaSamples = m_msaaSamples;
+	auto it = m_pipelines.emplace(name, createInfo, priority);
+	Pipeline* pipeline = const_cast<Pipeline*>(&(*it));
+	m_pipelinesRegistry[name] = pipeline;
+	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+	{
+		for(auto& shader : pipeline->m_shaders)
+		{
+			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
+			{
+				m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
+			}
+		}
+	}
+
+	return pipeline;
+}
 void RendererSystem::CreatePipeline()
 {
 
 	LOG_WARN("Creating base pipeline");
+#if 0
 	// Main graphics pipeline
 	PipelineCreateInfo mainPipeline;
 	mainPipeline.allowDerivatives	= true;
@@ -570,7 +604,6 @@ void RendererSystem::CreatePipeline()
 	auto mainIter = m_pipelines.emplace("base", mainPipeline, 1);
 	m_pipelinesRegistry["base"] = const_cast<Pipeline*>(&(*mainIter));
 
-#if 0
 	auto vsModule = m_pipelines["base"].shaders[0].GetShaderModule();
 	auto fsModule = m_pipelines["base"].shaders[1].GetShaderModule();
 
@@ -715,7 +748,7 @@ void RendererSystem::CreatePipeline()
 
 	LOG_WARN("Creating depth pipeline");
 	PipelineCreateInfo depthPipeline;
-	depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
+	//depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
 	depthPipeline.depthCompareOp	= VK_COMPARE_OP_LESS;
 	depthPipeline.depthWriteEnable	= true;
 	depthPipeline.useDepth			= true;
@@ -732,7 +765,22 @@ void RendererSystem::CreatePipeline()
 
 	auto depthIter = m_pipelines.emplace("depth", depthPipeline, 0);
 
-	m_pipelinesRegistry["depth"] = const_cast<Pipeline*>(&(*depthIter));
+	Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
+	m_pipelinesRegistry["depth"] = pipeline;
+
+	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+	{
+		for(auto& shader : pipeline->m_shaders)
+		{
+			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
+			{
+				if(m_ubAllocators[pipeline->m_name + name + std::to_string(i)] == nullptr)
+					m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
+			}
+		}
+	}
+
+
 #if 0
 	auto prePassVsModule = m_pipelines["depth"].shaders[0].GetShaderModule();
 	VkPipelineShaderStageCreateInfo prePassVertex = {};
@@ -805,11 +853,11 @@ void RendererSystem::CreateFramebuffers()
 
 			ci.attachmentDescriptions.push_back({ m_colorImage, {}});
 			ci.attachmentDescriptions.push_back({ m_depthImage, {}});
-			ci.attachmentDescriptions.push_back({ std::make_shared<Image>(m_swapchainImages[i]), {}});
+			ci.attachmentDescriptions.push_back({ m_swapchainImages[i], {}});
 		}
 		else
 		{
-			ci.attachmentDescriptions.push_back({ std::make_shared<Image>(m_swapchainImages[i]), {}});
+			ci.attachmentDescriptions.push_back({ m_swapchainImages[i], {}});
 			ci.attachmentDescriptions.push_back({ m_depthImage, {}});
 		}
 
@@ -840,9 +888,7 @@ void RendererSystem::CreateCommandBuffers()
 	for(size_t i = 0; i < m_swapchainImages.size(); i++)
 	{
 		m_mainCommandBuffers.push_back(CommandBuffer());
-		m_mainCommandBuffers[i].Allocate(m_device, m_commandPool);
 		m_depthCommandBuffers.push_back(CommandBuffer());
-		m_depthCommandBuffers[i].Allocate(m_device, m_commandPool);
 	}
 }
 
@@ -879,7 +925,7 @@ void RendererSystem::CreateDescriptorPool()
 	poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
 	poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size())+1; // +1 for imgui
+	poolSizes[1].descriptorCount                    = 1000; // +1 for imgui
 	poolSizes[2].type								= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	poolSizes[2].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
 
@@ -888,25 +934,116 @@ void RendererSystem::CreateDescriptorPool()
 	createInfo.sType                        = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	createInfo.poolSizeCount                = static_cast<uint32_t>(poolSizes.size());
 	createInfo.pPoolSizes                   = poolSizes.data();
-	createInfo.maxSets                      = 100;
+	createInfo.maxSets                      = 1000;
 	VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
 }
 
 void RendererSystem::CreateDescriptorSets()
 {
-	std::vector<VkDescriptorSetLayout> globalLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[0]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
+	Pipeline* pipeline = m_pipelinesRegistry["depth"];
 	VkDescriptorSetAllocateInfo allocInfo = {};
-	/*
-	   allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	   allocInfo.descriptorPool		= m_descriptorPool;
-	   allocInfo.descriptorSetCount	= static_cast<uint32_t>(globalLayouts.size());
-	   allocInfo.pSetLayouts			= globalLayouts.data();
+	std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size());
 
-	   m_globalDescSets.resize(m_swapchainImages.size());
-	   VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_globalDescSets.data()), "Failed to allocate global descriptor sets");
-	   */
+	for (int i = 0; i < m_swapchainImages.size(); ++i)
+	{
+		layouts[i] = pipeline->m_descSetLayouts[1];
+	}
+	allocInfo = {};
+	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool		= m_descriptorPool;
+	allocInfo.descriptorSetCount	= static_cast<uint32_t>(layouts.size());
+	allocInfo.pSetLayouts			= layouts.data();
+	m_descriptorSets[pipeline->m_name + std::to_string(1)].resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, m_descriptorSets[pipeline->m_name + std::to_string(1)].data()), "Failed to allocate descriptor sets");
 
+
+
+	std::vector<VkDescriptorSetLayout> cameraLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[0]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+
+	allocInfo = {};
+	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool		= m_descriptorPool;
+	allocInfo.descriptorSetCount	= static_cast<uint32_t>(cameraLayouts.size());
+	allocInfo.pSetLayouts			= cameraLayouts.data();
+
+	m_cameraDescSets.resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_cameraDescSets.data()), "Failed to allocate global descriptor sets");
+
+	std::vector<VkDescriptorSetLayout> transformLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[2]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+
+	allocInfo = {};
+	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool		= m_descriptorPool;
+	allocInfo.descriptorSetCount	= static_cast<uint32_t>(transformLayouts.size());
+	allocInfo.pSetLayouts			= transformLayouts.data();
+
+	m_transformDescSets.resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_transformDescSets.data()), "Failed to allocate global descriptor sets");
+
+	// TODO TEMP
+	std::vector<VkDescriptorSetLayout> depthLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[1]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+
+	allocInfo = {};
+	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool		= m_descriptorPool;
+	allocInfo.descriptorSetCount	= static_cast<uint32_t>(transformLayouts.size());
+	allocInfo.pSetLayouts			= transformLayouts.data();
+
+	m_transformDescSets.resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_descriptorSets["depth1"].data()), "Failed to allocate global descriptor sets");
+
+	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+	{
+		VkDescriptorBufferInfo bufferI = {};
+		bufferI.buffer	= m_ubAllocators["depthFiller" + std::to_string(i)]->GetBuffer(0);
+		bufferI.offset	= 0;
+		bufferI.range	= m_ubAllocators["depthFiller" + std::to_string(i)]->GetObjSize();
+
+		VkWriteDescriptorSet writeDS = {};
+		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS.dstSet			= m_descriptorSets["depth1"][i];
+		writeDS.dstBinding		= 0;
+		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDS.descriptorCount	= 1;
+		writeDS.pBufferInfo		= &bufferI;
+
+		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+
+
+
+		bufferI = {};
+		bufferI.buffer	= m_ubAllocators["transforms" + std::to_string(i)]->GetBuffer(0);
+		bufferI.offset	= 0;
+		bufferI.range	= m_ubAllocators["transforms" + std::to_string(i)]->GetObjSize();
+
+		writeDS = {};
+		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS.dstSet			= m_transformDescSets[i];
+		writeDS.dstBinding		= 0;
+		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDS.descriptorCount	= 1;
+		writeDS.pBufferInfo		= &bufferI;
+
+		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+
+		bufferI = {};
+		bufferI.buffer	= m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
+		bufferI.offset	= 0;
+		bufferI.range	= VK_WHOLE_SIZE;
+
+		writeDS = {};
+		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS.dstSet			= m_cameraDescSets[i];
+		writeDS.dstBinding		= 0;
+		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDS.descriptorCount	= 1;
+		writeDS.pBufferInfo		= &bufferI;
+
+		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+
+	}
+#if 0
 	// descriptors for the different materials
 	for(auto& pipeline : m_pipelines)
 	{
@@ -948,7 +1085,7 @@ void RendererSystem::CreateDescriptorSets()
 
 					vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
 				}
-				for(auto& [name, textureInfo] : shader.m_Textures)
+				for(auto& [name, textureInfo] : shader.m_textures)
 				{
 					VkDescriptorImageInfo imageInfo = {};
 					imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -970,17 +1107,25 @@ void RendererSystem::CreateDescriptorSets()
 			}
 		}
 	}
+#endif
 
 }
 
 void RendererSystem::CreateUniformBuffers()
 {
+	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+	{
+		m_ubAllocators["transforms" + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
+		m_ubAllocators["camera" + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
+	}
+	// TODO
 	VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
 	m_uniformBuffers.reserve(m_swapchainImages.size());
 
 	for(size_t i = 0; i < m_swapchainImages.size(); i++)
 	{
+		m_ubAllocators["camera" + std::to_string(i)]->Allocate();
 		m_uniformBuffers.push_back(std::make_unique<UniformBuffer>(m_gpu, m_device, bufferSize));
 	}
 
@@ -1160,29 +1305,42 @@ void RendererSystem::Update(float dt)
 
 		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 		glm::mat4 vp = camera.GetProjection() * glm::toMat4(glm::conjugate(cameraTransform->wRotation)) * glm::translate(cameraTransform->wPosition);
-		vkCmdPushConstants(cb, pipeline.m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vp);
+
+		uint32_t vpOffset = 0;
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
+		m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &vp);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
+
+
 		while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
 		{
 			Transform* transform = cm->GetComponent<Transform>(currentEntity);
 			Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
 
-			glm::mat4 vp = camera.GetProjection() * glm::toMat4(glm::conjugate(cameraTransform->wRotation)) * glm::translate(cameraTransform->wPosition);
-
 			UniformBufferObject ubo{};
 			ubo.model =  glm::translate(transform->wPosition) * glm::rotate(glm::mat4(1.0f), i * time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-			m_uniformBuffers[imageIndex]->Update(&ubo);
 
 			renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
 			renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
 
 			uint32_t offset;
-			m_ubAllocators[pipeline.m_name + "UniformBufferObject"]->GetBufferAndOffset(transform->ub_id, offset);
+			m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferAndOffset(transform->ub_id, offset);
 
-			m_ubAllocators[pipeline.m_name + "UniformBufferObject"]->UpdateBuffer(transform->ub_id, &ubo);
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_descriptorSets[pipeline.m_name + std::to_string(0)][imageIndex], 1, &offset);
+			m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &ubo);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex], 1, &offset);
 
+
+			if(!pipeline.m_isGlobal)
+			{
+				m_ubAllocators[pipeline.m_name + "Material" + std::to_string(imageIndex)]->GetBufferAndOffset(materialIterator->_ubSlot, offset);
+
+				glm::vec4 ubs[] = {{std::sin(time) * 0.5f + 0.5f, 0,0,1.0f}, {currentEntity, 0, 0, 0}};
+
+				m_ubAllocators[pipeline.m_name + "Material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
+				if(currentEntity > 1)
+					std::runtime_error("index > 1");
+			}
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][imageIndex], 1, &offset);
 			vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
 
 
@@ -1191,7 +1349,7 @@ void RendererSystem::Update(float dt)
 			if(materialIterator != end)
 				currentEntity = materialIterator->GetOwner();
 		}
-		if(pipeline.m_isGlobal)
+		if(pipeline.m_isGlobal && tempIt != end)
 		{
 			materialIterator = tempIt;
 			currentEntity = materialIterator->GetOwner();
@@ -1281,7 +1439,7 @@ void RendererSystem::Update(float dt)
 	clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
 	clearValues[1].depthStencil = {1.0f, 0};
 	beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-	beginInfo.pClearValues = clearValues.data();
+	beginInfo.pClearValues = clearValues.data();%T
 
 	vkCmdBeginRenderPass(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
@@ -1412,39 +1570,29 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
 
 	// create the vertex and index buffers on the gpu
-	Buffer stagingVertexBuffer(m_gpu, m_device, vBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	Buffer stagingVertexBuffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingVertexBuffer.Fill((void*)mesh->vertices.data(), vBufferSize);
 
 	VkDeviceSize iBufferSize = sizeof(mesh->indices[0]) * mesh->indices.size();
-	Buffer stagingIndexBuffer(m_gpu, m_device, iBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	Buffer stagingIndexBuffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
 
-	std::vector<CommandBuffer> cbs;
-	std::vector<CommandBuffer> prePassCbs;
-	for (int i = 0; i < m_swapchainImages.size(); ++i)
-	{
-		cbs.push_back(CommandBuffer());
-		prePassCbs.push_back(CommandBuffer());
-		cbs[i].Allocate(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
-		prePassCbs[i].Allocate(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
-	}
+
 	Renderable* comp = m_ecsEngine->componentManager->AddComponent<Renderable>(e->entity,
-			cbs,
-			prePassCbs,
-			Buffer(m_gpu, m_device, vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
-			Buffer(m_gpu, m_device, iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+			Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+			Buffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 			);
 
-	stagingVertexBuffer.Copy(&comp->vertexBuffer, vBufferSize, m_graphicsQueue, m_commandPool);
+	stagingVertexBuffer.Copy(&comp->vertexBuffer, vBufferSize);
 
-	stagingIndexBuffer.Copy(&comp->indexBuffer, iBufferSize, m_graphicsQueue, m_commandPool);
+	stagingIndexBuffer.Copy(&comp->indexBuffer, iBufferSize);
 
 	stagingVertexBuffer.Free();
 	stagingIndexBuffer.Free();
 
-	for (auto& pipeline : m_pipelines)
+	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		uint32_t id = m_ubAllocators[pipeline.m_name + "UniformBufferObject"]->Allocate();
+		uint32_t id = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
 		m_ecsEngine->componentManager->GetComponent<Transform>(e->entity)->ub_id = id;
 	}
 
@@ -1457,7 +1605,7 @@ void RendererSystem::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
 
 void RendererSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 {
-	auto it = m_pipelinesRegistry.find(e->component->shaderName);
+	/*auto it = m_pipelinesRegistry.find(e->component->shaderName);
 	if(it == m_pipelinesRegistry.end())
 	{
 		LOG_ERROR("Pipeline for {0} material doesn't exist", e->component->shaderName);
@@ -1466,8 +1614,9 @@ void RendererSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 
 	m_ecsEngine->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
 			{
-				return m_pipelinesRegistry[lhs->shaderName] < m_pipelinesRegistry[rhs->shaderName];
+				return *m_pipelinesRegistry[lhs->shaderName] < *m_pipelinesRegistry[rhs->shaderName];
 			});
+	*/
 }
 
 
@@ -1569,7 +1718,7 @@ int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<
 	{
 		return 0;
 	}
-	std::cout << "Device: " << deviceProperties.deviceName  << " score: " << score << std::endl;
+	LOG_TRACE("Device: {0}    Score: {1}", deviceProperties.deviceName, score);
 	return score;
 }
 
@@ -1750,5 +1899,6 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 		}
 	}
 	std::cerr << "\n\n";
+
 	return VK_TRUE;
 }

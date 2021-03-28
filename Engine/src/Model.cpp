@@ -10,7 +10,7 @@ Model::Model(const std::string& file, VkPhysicalDevice gpu, VkDevice device, VkC
 	m_commandBuffers.resize(numCommandBuffers);
 	for(size_t i = 0; i < numCommandBuffers; i++)
 	{
-		m_commandBuffers[i] = std::make_unique<CommandBuffer>(device, commandPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+		m_commandBuffers[i] = std::make_unique<CommandBuffer>(VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	}
 
 	LoadModel(file);
@@ -69,19 +69,19 @@ void Model::CreateBuffers(VkPhysicalDevice gpu, VkDevice device, VkCommandPool c
 {
 	VkDeviceSize bufferSize = sizeof(m_vertices[0]) * m_vertices.size();
 
-	Buffer stagingVertexBuffer(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	Buffer stagingVertexBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingVertexBuffer.Fill((void*)m_vertices.data(), bufferSize);
 
-	m_vertexBuffer = std::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	stagingVertexBuffer.Copy(m_vertexBuffer.get(), bufferSize, queue, commandPool);
+	m_vertexBuffer = std::make_unique<Buffer>(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	stagingVertexBuffer.Copy(m_vertexBuffer.get(), bufferSize);
 
 
 	bufferSize = sizeof(m_indices[0]) * m_indices.size();
-	Buffer stagingIndexBuffer(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	Buffer stagingIndexBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingIndexBuffer.Fill((void*)m_indices.data(), bufferSize);
 
-	m_indexBuffer = std::make_unique<Buffer>(gpu, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize, queue, commandPool);
+	m_indexBuffer = std::make_unique<Buffer>(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	stagingIndexBuffer.Copy(m_indexBuffer.get(), bufferSize);
 
 }
 void Model::SetupCommandBuffer(uint32_t index, VkPipeline pipeline, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkFramebuffer framebuffer, VkDescriptorSet descriptorSet, uint32_t pushConstantsSize,void* pushConstantsData)

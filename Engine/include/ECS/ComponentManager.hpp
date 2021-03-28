@@ -10,6 +10,7 @@
 #include "ECS/ECSEngine.hpp"
 #include <unordered_map>
 #include <forward_list>
+#include <queue>
 
 #define CHUNK_SIZE 512
 
@@ -40,13 +41,6 @@ class ComponentManager
 		}
 	};
 
-
-	std::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
-	std::unordered_map<EntityID, std::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
-	std::unordered_map<ComponentID, IComponent*> m_componentMap;
-
-	ECSEngine* m_ecsEngine;
-
 	template<typename T>
 	ComponentContainer<T>* GetComponentContainer()
 	{
@@ -66,12 +60,21 @@ class ComponentManager
 		return container;
 	}
 
-	uint64_t m_lastID;
 
+
+	std::unordered_map<ComponentTypeID, IComponentContainer*> m_registry;
+	std::unordered_map<EntityID, std::unordered_map<ComponentTypeID, ComponentID>> m_entityComponentMap;
+	std::unordered_map<ComponentID, IComponent*> m_componentMap;
+	std::queue<IComponent*> m_componentsToRemove;
+
+	ECSEngine* m_ecsEngine;
+	uint64_t m_lastID;
 
 public:
 	ComponentManager(ECSEngine* ecsEngine);
 	~ComponentManager();
+
+	void DestroyRemovedComponents();
 
 	template<typename T, typename ...Args>
 	T* AddComponent(const EntityID entityId, Args... args)
@@ -111,7 +114,7 @@ public:
 
 		assert(component != nullptr);
 
-		GetComponentContainer<T>()->DestroyComponent(component);
+		m_componentsToRemove.push(component);
 
 		m_entityComponentMap[entityId].erase(typeId);
 
@@ -119,6 +122,7 @@ public:
 
 		ComponentRemoved<T> e;
 		e.entity = entityId;
+		e.component = (T*)component;
 		m_ecsEngine->eventHandler->Send<ComponentRemoved<T>>(e);
 
 	}
@@ -176,14 +180,14 @@ public:
 		std::list<T> copyList;
 		for (auto* obj : objList)
 		{
-			copyList.push_back(*obj);
+			copyList.push_back(std::move(*obj));
 		}
 		auto itList = copyList.begin();
 		for (auto* chunk : container->m_chunks)
 		{
 			for (auto* obj : chunk->objects)
 			{
-				*obj = *itList;
+				*obj = std::move(*itList);
 				m_componentMap[obj->m_id] = (IComponent*)(obj);
 				itList++;
 			}

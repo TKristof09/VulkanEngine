@@ -23,5 +23,6 @@ ECSEngine::~ECSEngine()
 void ECSEngine::Update(float dt)
 {
 	eventHandler->DispatchEvents();
+	componentManager->DestroyRemovedComponents();
 	systemManager->Update(dt);
 }

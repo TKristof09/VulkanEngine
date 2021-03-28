@@ -30,69 +30,6 @@ Pipeline::~Pipeline()
 	vkDestroyPipelineLayout(VulkanContext::GetDevice(), m_layout, nullptr);
 
 }
-void Pipeline::CreateDescriptorSetLayout(bool useVariableDescriptorCount)
-{
-	std::array<std::vector<VkDescriptorSetLayoutBinding>, 4> bindings;
-	for(auto& shader : m_shaders)
-	{
-		for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
-		{
-			VkDescriptorSetLayoutBinding layoutBinding  = {};
-			layoutBinding.binding                       = bufferInfo.binding;
-			layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-			layoutBinding.descriptorCount               = bufferInfo.count;
-			layoutBinding.stageFlags                    = bufferInfo.stage;
-			layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
-
-			bindings[bufferInfo.set].push_back(layoutBinding);
-
-		}
-		for(auto& [name, textureInfo] : shader.m_Textures)
-		{
-			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
-			samplerLayoutBinding.binding                       = textureInfo.binding;
-			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			if(textureInfo.isLast && useVariableDescriptorCount)
-			{
-				textureInfo.count = textureInfo.count * OBJECTS_PER_DESCRIPTOR_CHUNK;
-				samplerLayoutBinding.descriptorCount           = textureInfo.count;
-			}
-			else
-				samplerLayoutBinding.descriptorCount           = textureInfo.count;
-			samplerLayoutBinding.stageFlags                    = textureInfo.stage;
-			samplerLayoutBinding.pImmutableSamplers            = nullptr;
-
-			bindings[textureInfo.set].push_back(samplerLayoutBinding);
-
-		}
-	}
-	for(uint32_t i = 0; i < bindings.size(); ++i)
-	{
-		if(bindings[i].size() == 0)
-		{
-			m_numDescSets = i; // temporary see TODO in the hpp file
-			break;
-		}
-		VkDescriptorSetLayoutCreateInfo createInfo  = {};
-		createInfo.sType                            = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		createInfo.bindingCount                     = static_cast<uint32_t>(bindings[i].size());
-		createInfo.pBindings                        = bindings[i].data();
-		createInfo.pNext = nullptr;
-		if(useVariableDescriptorCount && i == 1) // TODO for now we only allow this in set 1 which is the set for materials
-		{
-			VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {};
-			flags.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-			flags.bindingCount		= bindings[i].size();
-
-			std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size() - 1, 0);
-			bindingFlags.push_back(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
-
-			flags.pBindingFlags		= bindingFlags.data();
-			createInfo.pNext		= &flags;
-		}
-		VK_CHECK(vkCreateDescriptorSetLayout(VulkanContext::GetDevice(), &createInfo, nullptr, &m_descSetLayouts[i]), "Failed to create descriptor set layout");
-	}
-}
 
 void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
 {
@@ -248,4 +185,70 @@ void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
 
 	VK_CHECK(vkCreateGraphicsPipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline), "Failed to create graphics pipeline");
 
+}
+
+void Pipeline::CreateDescriptorSetLayout(bool useVariableDescriptorCount)
+{
+	std::array<std::vector<VkDescriptorSetLayoutBinding>, 4> bindings;
+	for(auto& shader : m_shaders)
+	{
+		for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
+		{
+			VkDescriptorSetLayoutBinding layoutBinding  = {};
+			layoutBinding.binding                       = bufferInfo.binding;
+			layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			layoutBinding.descriptorCount               = bufferInfo.count;
+			layoutBinding.stageFlags                    = bufferInfo.stage;
+			layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
+
+			bindings[bufferInfo.set].push_back(layoutBinding);
+
+		}
+		for(auto& [name, textureInfo] : shader.m_textures)
+		{
+			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
+			samplerLayoutBinding.binding                       = textureInfo.binding;
+			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			if(textureInfo.isLast && useVariableDescriptorCount)
+			{
+				textureInfo.count = textureInfo.count * OBJECTS_PER_DESCRIPTOR_CHUNK;
+			}
+
+			samplerLayoutBinding.descriptorCount				= textureInfo.count;
+			samplerLayoutBinding.stageFlags                    	= textureInfo.stage;
+			samplerLayoutBinding.pImmutableSamplers            	= nullptr;
+
+			bindings[textureInfo.set].push_back(samplerLayoutBinding);
+
+		}
+	}
+	for(uint32_t i = 0; i < bindings.size(); ++i)
+	{
+		if(bindings[i].size() == 0)
+		{
+			m_numDescSets = i; // temporary see TODO in the hpp file
+			break;
+		}
+		VkDescriptorSetLayoutCreateInfo createInfo  = {};
+		createInfo.sType                            = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		createInfo.bindingCount                     = static_cast<uint32_t>(bindings[i].size());
+		createInfo.pBindings                        = bindings[i].data();
+		createInfo.pNext = nullptr;
+
+		// need to define these outside of the if statement otherwise they get cleaned up before we create the layout
+		VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {};
+		std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size() - 1, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+
+		if(useVariableDescriptorCount && i == 1) // TODO for now we only allow this in set 1 which is the set for materials
+		{
+			flags.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+
+			bindingFlags.push_back(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+
+			flags.pBindingFlags		= bindingFlags.data();
+			flags.bindingCount		= bindingFlags.size();
+			createInfo.pNext		= &flags;
+		}
+		VK_CHECK(vkCreateDescriptorSetLayout(VulkanContext::GetDevice(), &createInfo, nullptr, &m_descSetLayouts[i]), "Failed to create descriptor set layout");
+	}
 }

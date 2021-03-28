@@ -25,7 +25,7 @@ m_show_demo_window(true)
 	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
 
 	// upload font textures
-	CommandBuffer cb(VulkanContext::GetDevice(), initInfo.commandPool);
+	CommandBuffer cb;
 	cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
 	cb.SubmitIdle(initInfo.queue);
@@ -69,7 +69,7 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 
 
 	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
-	CommandBuffer cb(VulkanContext::GetDevice(), initInfo.commandPool);
+	CommandBuffer cb;
 	cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
 	cb.SubmitIdle(initInfo.queue);

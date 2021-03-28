@@ -7,15 +7,15 @@ layout(location = 1) in vec2 inTexCoord;
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
-layout(binding = 0, set = 0) uniform UniformBufferObject {
+layout(binding = 0, set = 0) uniform ViewProjMatrix {
+    mat4 viewProj;
+} vp;
+layout(binding = 0, set = 2) uniform  ModelMatrix {
     mat4 model;
-} ubo;
-layout(push_constant) uniform PushConsts {
-	mat4 viewProj;
-} pushConsts;
+} model;
 
 void main() {
-    gl_Position = pushConsts.viewProj * ubo.model * vec4(inPosition, 1.0);
+    gl_Position = vp.viewProj * model.model * vec4(inPosition, 1.0);
     fragTexCoord = inTexCoord;
 	fragColor = (vec4(inPosition + 0.1f, 1.0f)).rgb;
 }

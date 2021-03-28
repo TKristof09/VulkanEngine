@@ -45,9 +45,34 @@ public:
 
 
 	}
+	Image& operator=(Image&& other) noexcept
+	{
+		Free();
+
+		m_image			= other.m_image;
+		m_mipLevels		= other.m_mipLevels;
+		m_width			= other.m_width;
+		m_height		= other.m_height;
+		m_imageView		= other.m_imageView;
+		m_format		= other.m_format;
+		m_memory		= other.m_memory;
+		m_layout		= other.m_layout;
+
+		other.m_image		= VK_NULL_HANDLE;
+		other.m_mipLevels	= 0;
+		other.m_width		= 0;
+		other.m_height		= 0;
+		other.m_imageView	= VK_NULL_HANDLE;
+		other.m_format		= VK_FORMAT_UNDEFINED;
+		other.m_memory		= VK_NULL_HANDLE;
+		other.m_layout		= VK_IMAGE_LAYOUT_UNDEFINED;
+
+		return *this;
+	}
 	virtual ~Image();
-    void TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue);
-    void GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue);
+	void Free(bool destroyOnlyImageView = false);
+    void TransitionLayout(VkImageLayout newLayout);
+    void GenerateMipmaps(VkImageLayout newLayout);
     const VkImageView& GetImageView() const
     {
         return m_imageView;
@@ -62,6 +87,8 @@ public:
     }
 
 protected:
+
+
     uint32_t        m_mipLevels;
 
     uint32_t        m_width;

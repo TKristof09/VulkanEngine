@@ -2,6 +2,7 @@
 #include "Buffer.hpp"
 #include "CommandBuffer.hpp"
 #include <algorithm>
+#include <vulkan/vulkan_core.h>
 
 bool hasStencilComponent(VkFormat format)
 {
@@ -17,6 +18,8 @@ m_imageView(VK_NULL_HANDLE),
 m_memory(VK_NULL_HANDLE),
 m_layout(createInfo.layout)
 {
+	if(width == 0 && height == 0)
+		return;
 
 	if(createInfo.image == VK_NULL_HANDLE)
 	{
@@ -87,17 +90,29 @@ Image(widthHeight.first, widthHeight.second, createInfo)
 
 Image::~Image()
 {
-	if(m_image == VK_NULL_HANDLE)
+	Free();
+}
+
+void Image::Free(bool destroyOnlyImageView)
+{
+	if(m_image == VK_NULL_HANDLE || m_imageView == VK_NULL_HANDLE)
 		return;
 
     vkDestroyImageView(VulkanContext::GetDevice(), m_imageView, nullptr);
-    vkDestroyImage(VulkanContext::GetDevice(), m_image, nullptr);
-    vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
+    m_imageView = VK_NULL_HANDLE;
+
+	if(!destroyOnlyImageView)
+	{
+		vkDestroyImage(VulkanContext::GetDevice(), m_image, nullptr);
+        m_image = VK_NULL_HANDLE;
+        
+	    vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
+	}
 }
 
-void Image::TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue)
+void Image::TransitionLayout(VkImageLayout newLayout)
 {
-    CommandBuffer commandBuffer(VulkanContext::GetDevice(), commandPool);
+    CommandBuffer commandBuffer;
     commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VkImageMemoryBarrier barrier    = {};
@@ -163,11 +178,11 @@ void Image::TransitionLayout(VkImageLayout newLayout, VkCommandPool commandPool,
                          0, nullptr, 0, nullptr, // these are for other types of barriers
                          1, &barrier);
 
-    commandBuffer.SubmitIdle(queue);
+    commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
     m_layout = newLayout;
 }
 
-void Image::GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, VkQueue queue)
+void Image::GenerateMipmaps(VkImageLayout newLayout)
 {
 
 	// Check if image format supports linear blitting
@@ -179,7 +194,7 @@ void Image::GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, 
 	}
 
 
-    CommandBuffer commandBuffer(VulkanContext::GetDevice(), commandPool);
+    CommandBuffer commandBuffer;
     commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VkImageMemoryBarrier barrier            = {};
@@ -255,5 +270,5 @@ void Image::GenerateMipmaps(VkImageLayout newLayout, VkCommandPool commandPool, 
                             0, nullptr,
                             1, &barrier);
 
-    commandBuffer.SubmitIdle(queue);
+    commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
 }

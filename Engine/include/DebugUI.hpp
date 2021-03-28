@@ -23,8 +23,6 @@ struct DebugUIInitInfo
     VkSampleCountFlagBits        msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     const VkAllocationCallbacks* allocator = nullptr;
 
-	VkCommandPool       commandPool;
-
 };
 
 class DebugUI

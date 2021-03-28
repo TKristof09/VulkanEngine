@@ -45,13 +45,14 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	spirv_cross::Compiler comp(data);
 
 	spirv_cross::ShaderResources resources = comp.get_shader_resources();
-		for(auto& resource : resources.push_constant_buffers)
+	LOG_TRACE("-----PUSH CONSTANTS-----");
+
+	for(auto& resource : resources.push_constant_buffers)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 		uint32_t size = comp.get_declared_struct_size(type);
 		uint32_t offset = comp.get_decoration(resource.id, spv::DecorationOffset);
 
-		LOG_TRACE("-----PUSH CONSTANTS-----");
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Size: {0}", size);
 		LOG_TRACE("   Offset: {0}", offset);
@@ -62,6 +63,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 
 	}
 
+	LOG_TRACE("-----UNIFORM BUFFERS-----");
 	for(auto& resource : resources.uniform_buffers)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
@@ -80,7 +82,6 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 			arraySize = 1;
 		}
 
-		LOG_TRACE("-----UNIFORM BUFFERS-----");
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Size: {0}", size);
 		LOG_TRACE("   Location: {0}", location);
@@ -102,6 +103,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	uint32_t maxBinding = 0;
 	std::string maxName = "";
 
+	LOG_TRACE("-----IMAGE SAMPLERS-----");
 	for(auto& resource : resources.sampled_images)
 	{
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
@@ -117,17 +119,22 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
 			arraySize = 1;
 		}
-		LOG_TRACE("-----IMAGE SAMPLERS-----");
+
+		if(arraySize == 0)
+		{
+			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", resource.name);
+			arraySize = 1;
+		}
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
-		m_Textures[resource.name] = TextureInfo();
+		m_textures[resource.name] = TextureInfo();
 
-		m_Textures[resource.name].stage = stage;
-		m_Textures[resource.name].binding = binding;
-		m_Textures[resource.name].set = set;
-		m_Textures[resource.name].count = arraySize;
+		m_textures[resource.name].stage = stage;
+		m_textures[resource.name].binding = binding;
+		m_textures[resource.name].set = set;
+		m_textures[resource.name].count = arraySize;
 
 
 		if(binding > maxBinding)
@@ -139,7 +146,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	}
 
 	if(maxName != "")
-		m_Textures[maxName].isLast = true;
+		m_textures[maxName].isLast = true;
 
 
 

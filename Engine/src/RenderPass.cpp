@@ -8,8 +8,13 @@ RenderPass::RenderPass(RenderPassCreateInfo createInfo)
 
 RenderPass::~RenderPass()
 {
+	Destroy();
+}
+void RenderPass::Destroy()
+{
 	if(m_renderPass != VK_NULL_HANDLE)
 		vkDestroyRenderPass(VulkanContext::GetDevice(), m_renderPass, nullptr);
+	m_framebuffers.clear();
 }
 void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 {

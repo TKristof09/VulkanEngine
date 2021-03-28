@@ -20,11 +20,23 @@ void ComponentManager::RemoveAllComponents(const EntityID entityId)
 	{
 		IComponent* component = m_componentMap[it.second];
 
-		m_registry[it.first]->DestroyComponent(component);
+		m_componentsToRemove.push(component);
 
 		m_componentMap.erase(it.second);
 
 	}
 	m_entityComponentMap.erase(entityId);
 
+}
+
+void ComponentManager::DestroyRemovedComponents()
+{
+	while(!m_componentsToRemove.empty())
+	{
+		IComponent* comp = m_componentsToRemove.front();
+
+		m_registry[comp->m_typeID]->DestroyComponent(comp);
+
+		m_componentsToRemove.pop();
+	}
 }

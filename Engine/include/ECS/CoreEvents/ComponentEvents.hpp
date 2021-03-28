@@ -16,4 +16,5 @@ template<typename T>
 struct ComponentRemoved : public Event<ComponentRemoved<T>>
 {
 	EntityID entity;
+	T* component;
 };

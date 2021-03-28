@@ -1,13 +1,11 @@
 #pragma once
-#include <vulkan/vulkan.h>
+#include "VulkanContext.hpp"
 
 class CommandBuffer
 {
 
 public:
-    CommandBuffer();
-    CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-    void Allocate(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    CommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     void Free();
 	void Begin(VkCommandBufferUsageFlags usage);
 	void Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo);
@@ -21,9 +19,9 @@ public:
         return m_commandBuffer;
     }
 private:
+    void Allocate(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
     bool                m_running;
     VkCommandBuffer     m_commandBuffer;
-    VkCommandPool       m_commandPool;
-    VkDevice            m_device;
 
 };

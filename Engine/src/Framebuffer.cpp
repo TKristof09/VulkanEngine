@@ -1,8 +1,9 @@
 #include "Framebuffer.hpp"
 #include "RenderPass.hpp"
+#include <vulkan/vulkan_core.h>
 
 Framebuffer::Framebuffer(FramebufferCreateInfo createInfo, RenderPass* renderPass):
-	m_width(createInfo.width), m_height(createInfo.height)
+	m_width(createInfo.width), m_height(createInfo.height), m_fb(VK_NULL_HANDLE)
 {
 	std::vector<VkImageView> imageViews;
 	for(auto attachment : createInfo.attachmentDescriptions)

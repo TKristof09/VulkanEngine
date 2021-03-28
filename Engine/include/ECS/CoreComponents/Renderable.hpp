@@ -7,14 +7,11 @@
 
 struct Renderable : public Component<Renderable>
 {
-    std::vector<CommandBuffer> commandBuffers;
-    std::vector<CommandBuffer> prePassCommandBuffers;
+
     Buffer vertexBuffer;
     Buffer indexBuffer;
 
-    Renderable(const std::vector<CommandBuffer>& cbs, const std::vector<CommandBuffer>& prePassCbs, const Buffer& vb, const Buffer& ib):
-        commandBuffers(cbs),
-		prePassCommandBuffers(prePassCbs),
+    Renderable(const Buffer& vb, const Buffer& ib):
         vertexBuffer(vb),
         indexBuffer(ib) {};
 };

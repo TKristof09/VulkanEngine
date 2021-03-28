@@ -1,41 +1,31 @@
 #include "CommandBuffer.hpp"
 #include <limits>
 
-CommandBuffer::CommandBuffer():
+CommandBuffer::CommandBuffer(VkCommandBufferLevel level):
 m_running(false),
-m_commandBuffer(VK_NULL_HANDLE),
-m_device(VK_NULL_HANDLE),
-m_commandPool(VK_NULL_HANDLE){}
-
-CommandBuffer::CommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level):
-m_running(false),
-m_commandBuffer(VK_NULL_HANDLE),
-m_device(device),
-m_commandPool(commandPool)
+m_commandBuffer(VK_NULL_HANDLE)
 {
-    Allocate(device, commandPool, level);
+    Allocate(level);
 }
 
-void CommandBuffer::Allocate(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level)
+void CommandBuffer::Allocate(VkCommandBufferLevel level)
 {
     m_running = false;
-    m_commandPool = commandPool;
-    m_device = device;
 
     VkCommandBufferAllocateInfo allocInfo       = {};
     allocInfo.sType                             = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool                       = commandPool;
+    allocInfo.commandPool                       = VulkanContext::GetCommandPool();
     allocInfo.level                             = level;
     allocInfo.commandBufferCount                = 1;
 
-    VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");
+    VK_CHECK(vkAllocateCommandBuffers(VulkanContext::GetDevice(), &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");
 
 
 }
 
 void CommandBuffer::Free()
 {
-    vkFreeCommandBuffers(m_device, m_commandPool, 1, &m_commandBuffer);
+    vkFreeCommandBuffers(VulkanContext::GetDevice(), VulkanContext::GetCommandPool(), 1, &m_commandBuffer);
 }
 
 void CommandBuffer::Begin(VkCommandBufferUsageFlags usage)
@@ -82,11 +72,11 @@ void CommandBuffer::SubmitIdle(VkQueue queue)
     fenceInfo.sType                     = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence fence;
 
-    VK_CHECK(vkCreateFence(m_device, &fenceInfo, nullptr, &fence), "Failed to create fence");
-    VK_CHECK(vkResetFences(m_device, 1, &fence), "Failed to reset fence");
+    VK_CHECK(vkCreateFence(VulkanContext::GetDevice(), &fenceInfo, nullptr, &fence), "Failed to create fence");
+    VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
     VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit queue");
-    VK_CHECK(vkWaitForFences(m_device, 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "Failed to wait for fence");
-    vkDestroyFence(m_device, fence, nullptr);
+    VK_CHECK(vkWaitForFences(VulkanContext::GetDevice(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "Failed to wait for fence");
+    vkDestroyFence(VulkanContext::GetDevice(), fence, nullptr);
 
 }
 
@@ -118,7 +108,7 @@ void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineS
     }
     if(fence != VK_NULL_HANDLE)
     {
-        VK_CHECK(vkResetFences(m_device, 1, &fence), "Failed to reset fence");
+        VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
     }
 
     VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit command buffer");

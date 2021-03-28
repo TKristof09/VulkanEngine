@@ -45,6 +45,8 @@ public:
 	RenderPass() = default;
 	RenderPass(RenderPassCreateInfo createInfo);
 	~RenderPass();
+	void Destroy();
+	
 	void AddFramebuffer(FramebufferCreateInfo createInfo);
 
 	VkRenderPass GetRenderPass() const { return m_renderPass; }
@@ -58,7 +60,10 @@ public:
 	RenderPass& operator=(RenderPass&& other)
 	{
 		m_renderPass = other.m_renderPass;
-		m_framebuffers = std::move(other.m_framebuffers);
+		if(other.m_framebuffers.size() > 0)
+			m_framebuffers = std::move(other.m_framebuffers);
+		else
+			m_framebuffers.clear();
 		m_clearValues = other.m_clearValues;
 
 		other.m_renderPass = VK_NULL_HANDLE;
