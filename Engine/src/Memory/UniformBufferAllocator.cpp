@@ -55,12 +55,12 @@ uint32_t UniformBufferAllocator::Allocate()
 		return freeSlot;
 	}
 }
-VkBuffer UniformBufferAllocator::GetBufferAndOffset(uint32_t slot, uint32_t& outOffset)
+uint32_t UniformBufferAllocator::GetBufferIndexAndOffset(uint32_t slot, uint32_t& outOffset)
 {
 	uint32_t bufferNumber = slot / m_objPerChunk;
 	outOffset = (slot - bufferNumber * m_objPerChunk) * m_alignedSize;
 
-	return m_buffers[bufferNumber].GetVkBuffer();
+	return bufferNumber;
 }
 void UniformBufferAllocator::UpdateBuffer(uint32_t slot, void* data)
 {

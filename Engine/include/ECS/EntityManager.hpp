@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "ECS/Entity.hpp"
+#include "ECS/Types.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
 #include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/EventHandler.hpp"
@@ -45,7 +46,8 @@ public:
 
 		Entity* entity = new(pMemory) Entity(std::forward<Args>(args)...);
 
-		m_ecsEngine->componentManager->AddComponent<Relationship>(entity->GetEntityID());
+		Relationship* comp = m_ecsEngine->componentManager->AddComponent<Relationship>(entity->GetEntityID());
+		comp->parent = INVALID_ENTITY_ID;
 		// TODO: maybe make entities have transform component by default too
 
 		EntityCreated e;

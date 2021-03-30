@@ -6,8 +6,10 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/EntityManager.hpp"
+#include "TextureManager.hpp"
+#include "ECS/CoreComponents/Material.hpp"
 
-bool AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
+EntityID AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
 {
 	Assimp::Importer importer;
 	const aiScene* scene = importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality);
@@ -16,11 +18,13 @@ bool AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
 	if(!scene)
 	{
 		std::cerr << importer.GetErrorString() << std::endl;
-		return false;
+		return INVALID_ENTITY_ID;
 	}
 
-	ProcessNode(scene->mRootNode, scene, ecsEngine, ecsEngine->entityManager->CreateEntity());
-	return true;
+	EntityID rootEntity = ecsEngine->entityManager->CreateEntity();
+	ProcessNode(scene->mRootNode, scene, ecsEngine, rootEntity);
+	LOG_TRACE("Loaded {0}", file);
+	return rootEntity;
 }
 
 glm::vec3 ToGLM(const aiVector3D& v) { return glm::vec3(v.x, v.y, v.z); }
@@ -29,6 +33,7 @@ glm::quat ToGLM(const aiQuaternion& q) { return glm::quat(q.w, q.x, q.y, q.z); }
 
 void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, EntityID entity)
 {
+
 	aiVector3D pos, scale;
 	aiQuaternion rot;
 	node->mTransformation.Decompose(scale, rot, pos);
@@ -37,6 +42,8 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 	transform.lPosition = ToGLM(pos);
 	transform.lRotation = ToGLM(rot);
 	transform.lScale    = ToGLM(scale);
+
+	ecsEngine->componentManager->AddComponent<Transform>(entity, transform);
 
 	for (int i = 0; i < node->mNumMeshes; ++i)
 	{
@@ -64,6 +71,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, EntityID entity, ECSEngine* ec
 		if(mesh->HasTextureCoords(0))
 		{
 			vertex.texCoord = ToGLM(mesh->mTextureCoords[0][i]);
+			vertex.texCoord.y = 1 - vertex.texCoord.y; // need this fix because of vulkan's weird coordinates
 		}
 		else
 		{
@@ -85,4 +93,8 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, EntityID entity, ECSEngine* ec
 		}
 	}
 	ecsEngine->componentManager->AddComponent<Mesh>(entity, vertices, indices );
+	TextureManager::LoadTexture("./textures/uv_checker.png");
+	Material* mat2 = ecsEngine->componentManager->AddComponent<Material>(entity);
+	mat2->shaderName = "base";
+	mat2->textures["albedo"] = "./textures/uv_checker.png";
 }

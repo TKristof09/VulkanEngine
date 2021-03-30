@@ -13,7 +13,7 @@ class Mesh;
 class AssimpImporter
 {
 public:
-	bool LoadFile(const std::string& file, ECSEngine* ecsEngine);
+	EntityID LoadFile(const std::string& file, ECSEngine* ecsEngine);
 
 private:
 	void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, EntityID entity);

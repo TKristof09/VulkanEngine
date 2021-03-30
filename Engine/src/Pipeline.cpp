@@ -17,7 +17,7 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 	}
 
 
-	CreateDescriptorSetLayout(createInfo.useVariableDescriptorCount);
+	CreateDescriptorSetLayout();
 	CreatePipeline(createInfo);
 
 }
@@ -187,7 +187,7 @@ void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
 
 }
 
-void Pipeline::CreateDescriptorSetLayout(bool useVariableDescriptorCount)
+void Pipeline::CreateDescriptorSetLayout()
 {
 	std::array<std::vector<VkDescriptorSetLayoutBinding>, 4> bindings;
 	for(auto& shader : m_shaders)
@@ -209,10 +209,6 @@ void Pipeline::CreateDescriptorSetLayout(bool useVariableDescriptorCount)
 			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
 			samplerLayoutBinding.binding                       = textureInfo.binding;
 			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			if(textureInfo.isLast && useVariableDescriptorCount)
-			{
-				textureInfo.count = textureInfo.count * OBJECTS_PER_DESCRIPTOR_CHUNK;
-			}
 
 			samplerLayoutBinding.descriptorCount				= textureInfo.count;
 			samplerLayoutBinding.stageFlags                    	= textureInfo.stage;
@@ -237,18 +233,15 @@ void Pipeline::CreateDescriptorSetLayout(bool useVariableDescriptorCount)
 
 		// need to define these outside of the if statement otherwise they get cleaned up before we create the layout
 		VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {};
-		std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size() - 1, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
 
-		if(useVariableDescriptorCount && i == 1) // TODO for now we only allow this in set 1 which is the set for materials
-		{
-			flags.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
 
-			bindingFlags.push_back(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		flags.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
 
-			flags.pBindingFlags		= bindingFlags.data();
-			flags.bindingCount		= bindingFlags.size();
-			createInfo.pNext		= &flags;
-		}
+		flags.pBindingFlags		= bindingFlags.data();
+		flags.bindingCount		= bindingFlags.size();
+		createInfo.pNext		= &flags;
+
 		VK_CHECK(vkCreateDescriptorSetLayout(VulkanContext::GetDevice(), &createInfo, nullptr, &m_descSetLayouts[i]), "Failed to create descriptor set layout");
 	}
 }

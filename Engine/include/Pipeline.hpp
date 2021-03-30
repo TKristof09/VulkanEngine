@@ -33,8 +33,6 @@ struct PipelineCreateInfo
 	RenderPass* renderPass = nullptr;
 	uint32_t subpass = 0;
 
-	bool useVariableDescriptorCount = false;
-
 	bool isGlobal = false;
 };
 
@@ -59,7 +57,7 @@ private:
 	friend class MaterialSystem;
 	friend class DescriptorSetAllocator;
 
-	void CreateDescriptorSetLayout(bool useVariableDescriptorCount);
+	void CreateDescriptorSetLayout();
 	void CreatePipeline(PipelineCreateInfo createInfo);
 	void AllocateDescriptors();
 

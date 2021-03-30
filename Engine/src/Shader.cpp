@@ -4,6 +4,7 @@
 #include "VulkanContext.hpp"
 #include <filesystem>
 #include <vulkan/vulkan_core.h>
+#include <Pipeline.hpp>
 
 
 Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
@@ -125,6 +126,10 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", resource.name);
 			arraySize = 1;
 		}
+
+		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
+			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", resource.name, OBJECTS_PER_DESCRIPTOR_CHUNK);
+
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);

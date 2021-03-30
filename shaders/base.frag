@@ -13,7 +13,7 @@ layout(binding = 0, set = 1) uniform Material {
     vec4 textureIndex;
 } material;
 
-layout(binding = 1, set = 1) uniform sampler2D albedo[];
+layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 void main() {
     //outColor = material.color;
     outColor = texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord);

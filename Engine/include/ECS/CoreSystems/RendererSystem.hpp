@@ -104,14 +104,9 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
 
-	UniformBuffer			m_cameraUBO;
-	UniformBuffer			m_transformsUBO;
-
 	VkCommandPool&			m_commandPool;
-	std::vector<CommandBuffer> m_depthCommandBuffers;
 	std::vector<CommandBuffer> m_mainCommandBuffers;
 
-	std::vector<VkSemaphore> m_prePassFinished;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished;
 	std::vector<VkFence>     m_inFlightFences;
@@ -122,13 +117,8 @@ private:
 	std::vector<VkDescriptorSet> m_transformDescSets;
 	// key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
 	std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
-	std::vector<std::unique_ptr<UniformBuffer>> m_uniformBuffers;
-
-	VkSampler m_sampler; // TODO samplers are independent from the image (i think) so maybe we could use 1 sampler for multiple (every?) texture in the program
-	std::unique_ptr<Texture> m_texture;
 
 	std::shared_ptr<Image>   m_depthImage;
-
 
 	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	std::shared_ptr<Image>  m_colorImage; // for MSAA
@@ -136,13 +126,4 @@ private:
 	size_t m_currentFrame = 0;
 
 	VkDebugUtilsMessengerEXT  m_messenger;
-
-
-	// one mesh has the same index in each of these vectors
-	// TODO: maybe this should be in some kind of "static" component? like in the overwatch yt video
-	// TODO: also maybe make the Buffer and CommandBuffer classes more cache friendly? not sure if needed tho
-	std::vector<Buffer> m_vertexBuffers;
-	std::vector<Buffer> m_indexBuffers;
-	std::vector<std::vector<CommandBuffer>> m_commandBuffers;
-
 };

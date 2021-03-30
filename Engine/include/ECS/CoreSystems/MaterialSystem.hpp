@@ -17,8 +17,6 @@ public:
 	~MaterialSystem();
 
 private:
-	friend class RendererSystem;
-	void BindMaterialInstance(Material* material);
 
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
 	void OnRendererSystemAdded(const SystemAdded<RendererSystem>* e);
@@ -30,8 +28,5 @@ private:
 	std::unordered_map<std::string, VkSampler> m_samplers; // key is materialName + name of sampler
 	std::unordered_map<std::string, std::queue<uint32_t>> m_freeTextureSlots; // key is materialName
 	RendererSystem* m_rendererSystem;
-
-	Texture m_errorTexture;
-	VkSampler m_errorSampler;
 
 };

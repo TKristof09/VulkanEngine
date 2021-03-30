@@ -11,10 +11,11 @@ public:
 	~UniformBufferAllocator();
 
 	uint32_t Allocate();
-	VkBuffer GetBufferAndOffset(uint32_t slot, uint32_t& outOffset);
+	uint32_t GetBufferIndexAndOffset(uint32_t slot, uint32_t& outOffset);
 	void UpdateBuffer(uint32_t slot, void* data);
 	void Free(uint32_t slot);
 	VkBuffer GetBuffer(uint32_t slot) { return m_buffers[slot / m_objPerChunk].GetVkBuffer(); }
+	VkBuffer GetBufferByIndex(uint32_t index) { return m_buffers[index].GetVkBuffer(); }
 	size_t GetSize() const { return m_alignedSize * m_objPerChunk; }
 	size_t GetObjSize() const { return m_alignedSize; }
 
