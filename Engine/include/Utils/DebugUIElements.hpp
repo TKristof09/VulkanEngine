@@ -11,13 +11,29 @@ class DebugUIElement
 public:
     virtual ~DebugUIElement() = default;
     virtual void Update() = 0;
+    virtual void Deselect(bool recursive = false) {};
+
     std::string GetName() const
     {
         return m_name;
     }
+    void SetName(const std::string& name)
+    {
+        m_name = name;
+    }
+    void* GetUserPtr() const
+    {
+        return m_userPtr;
+    }
+    template<typename T>
+    void SetUserPtr(const T& data)
+    {
+        m_userPtr = (void*)data;
+    }
 protected:
     std::string m_name;
     const void* m_id = nullptr;
+    void* m_userPtr = nullptr;
 };
 
 class Text : public DebugUIElement
@@ -305,21 +321,42 @@ private:
 class TreeNode : public DebugUIElement
 {
 public:
-    TreeNode(const std::string& text, bool* value,const void* id = nullptr):
-        m_value(value)
+    TreeNode(const std::string& name, bool* value = nullptr, const void* id = nullptr) :
+        m_value(value),
+        m_callback(nullptr)
     {
-        m_name = text;
+        m_name = name;
         m_id = id;
     }
 
+
     void Update() override
     {
+
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
+        if(m_isSelected)
+            flags |= ImGuiTreeNodeFlags_Selected;
+
+        if(m_elements.empty())
+            flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
         if (m_id)
             ImGui::PushID(m_id);
 
         ImGui::AlignTextToFramePadding();
-        *m_value = ImGui::TreeNode(m_name.c_str());
-        if(*m_value)
+        
+        bool isOpened = ImGui::TreeNodeEx(m_name.c_str(), flags) && (!m_elements.empty());
+        
+        if(m_value)
+            *m_value = isOpened;
+
+        if(ImGui::IsItemClicked())
+        {
+            if(m_callback)
+                m_callback(this);
+        }
+
+        if(isOpened)
         {
             for (DebugUIElement* element : m_elements)
             {
@@ -332,9 +369,28 @@ public:
             ImGui::PopID();
     }
 
+    virtual void Deselect(bool recursive = false) override
+    {
+        m_isSelected = false;
+
+        if(recursive)
+        {
+            for(auto& element : m_elements)
+            {
+                element->Deselect(true);
+            }
+        }
+
+    }
+
     void AddElement(DebugUIElement* element)
     {
         m_elements.push_back(element);
+    }
+
+    std::vector<DebugUIElement*> GetElements() const
+    {
+        return m_elements;
     }
 
     bool GetValue() const
@@ -342,9 +398,23 @@ public:
         return *m_value;
     }
 
+    void RegisterCallback(std::function<void(TreeNode*)> callback)
+    {
+        m_callback = callback;
+    }
+
+    void SetIsSelected(bool state)
+    {
+        m_isSelected = state;
+    }
+
 private:
     bool* m_value;
     std::vector<DebugUIElement*> m_elements;
+    std::function<void(TreeNode*)> m_callback;
+    
+    bool m_isSelected = false;
+
 };
 
 class Separator : public DebugUIElement
@@ -424,31 +494,42 @@ public:
         m_columnHeights.clear();
     }
 
+    void DeselectAll()
+    {
+        for(auto& [coords, element] : m_elements)
+        {
+            element->Deselect(true);
+        }
+    }
+
     void Update()
     {
+        m_opened = ImGui::Begin(m_name.c_str(), &m_opened);
         if(m_opened)
         {
-            ImGui::Begin(m_name.c_str(), &m_opened);
-            ImGui::BeginTable("table1", m_columnHeights.size());
-            
-            uint32_t lastRow = 0;
-            ImGui::TableNextRow();
-            for (auto& [coords, element] : m_elements)
+            if(!m_elements.empty())
             {
-                auto [x, y] = coords;
-                if (x != lastRow)
-                {
-                    lastRow = x;
-                    ImGui::TableNextRow();
-                }
+                ImGui::BeginTable("table1", m_columnHeights.size());
 
-                ImGui::TableSetColumnIndex(y - 1);
-                
-                element->Update();
+                uint32_t lastRow = 0;
+                ImGui::TableNextRow();
+                for(auto& [coords, element] : m_elements)
+                {
+                    auto [x, y] = coords;
+                    if(x != lastRow)
+                    {
+                        lastRow = x;
+                        ImGui::TableNextRow();
+                    }
+
+                    ImGui::TableSetColumnIndex(y - 1);
+
+                    element->Update();
+                }
+                ImGui::EndTable();
             }
-            ImGui::EndTable();
-            ImGui::End();
         }
+        ImGui::End();
     }
 
 

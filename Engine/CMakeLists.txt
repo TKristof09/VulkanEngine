@@ -6,6 +6,7 @@ add_library(Engine ${ENGINE_CPP_FILES} ${IMGUI_CPP_FILES})
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	set(glm_DIR C:/glm/cmake/glm/)
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+
 find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
 #find_package(Assimp REQUIRED)

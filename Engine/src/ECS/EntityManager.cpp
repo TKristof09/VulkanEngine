@@ -34,7 +34,7 @@ void EntityManager::RemoveDestroyedEntities()
 
 		this->FreeObject(entity);
 		EntityDestroyed e;
-		e.entity = id;
+		e.entity = *entity;
 		m_ecsEngine->eventHandler->Send<EntityDestroyed>(e);
 	}
 	m_numPendingDestroy = 0;

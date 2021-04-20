@@ -34,6 +34,8 @@ public:
 	virtual	void Update(float dt) override;
 
 	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
+	
+	void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
 
 private:
 	friend class MaterialSystem;

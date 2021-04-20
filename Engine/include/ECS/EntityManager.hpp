@@ -6,11 +6,12 @@
 #include "ECS/Entity.hpp"
 #include "ECS/Types.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
-#include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/EventHandler.hpp"
 #include "ECS/CoreEvents/EntityEvents.hpp"
 #include "ECS/ECSEngine.hpp"
+#include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
+#include "ECS/CoreComponents/NameTag.hpp"
 
 #define CHUNK_SIZE 512
 
@@ -50,8 +51,11 @@ public:
 		comp->parent = INVALID_ENTITY_ID;
 		// TODO: maybe make entities have transform component by default too
 
+		NameTag* tag = m_ecsEngine->componentManager->AddComponent<NameTag>(entity->GetEntityID());
+		tag->name = "Entity" + std::to_string(entity->GetEntityID());
+
 		EntityCreated e;
-		e.entity = entity->GetEntityID();
+		e.entity = *entity;
 		m_ecsEngine->eventHandler->Send<EntityCreated>(e);
 
 		return entity->GetEntityID();

@@ -30,14 +30,12 @@ protected:
 	template<typename Class, typename EventType>
 	void Subscribe(void(Class::*Callback)(const EventType* const))
 	{
-		IEventDelegate* delegate = new EventDelegate<Class, EventType>(static_cast<Class*>(this), Callback);
-		m_ecsEngine->eventHandler->Subscribe<EventType>(delegate);
+		m_ecsEngine->eventHandler->Subscribe(static_cast<Class*>(this), Callback);
 	}
 	template<typename Class, typename EventType>
 	void Unsubscribe(void(Class::*Callback)(const EventType* const))
 	{
-		EventDelegate<Class, EventType> delegate(static_cast<Class*>(this), Callback);
-		m_ecsEngine->eventHandler->Unsubscribe<EventType>(delegate);
+		m_ecsEngine->eventHandler->Unsubscribe(static_cast<Class*>(this), Callback);
 	}
 
 	ECSEngine* m_ecsEngine;

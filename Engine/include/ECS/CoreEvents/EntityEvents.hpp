@@ -1,15 +1,15 @@
 #pragma once
 
 #include "ECS/Event.hpp"
-#include "ECS/Types.hpp"
+#include "ECS/Entity.hpp"
 
 struct EntityCreated : public Event<EntityCreated>
 {
-	EntityID entity;
+	Entity entity;
 };
 
 // TODO: make this work
 struct EntityDestroyed : public Event<EntityDestroyed>
 {
-	EntityID entity;
+	Entity entity;
 };

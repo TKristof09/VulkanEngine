@@ -30,7 +30,7 @@ class DebugUI
 public:
     DebugUI(DebugUIInitInfo initInfo);
     ~DebugUI();
-    void SetupFrame(CommandBuffer* cb/*uint32_t imageIndex, uint32_t subpass, RenderPass* renderPass*/);
+    void Draw(CommandBuffer* cb/*uint32_t imageIndex, uint32_t subpass, RenderPass* renderPass*/);
     //VkCommandBuffer GetCommandBuffer(uint32_t index) { return m_commandBuffers[index]->GetCommandBuffer(); };
     void SetMinImageCount(VkPresentModeKHR presentMode) { ImGui_ImplVulkan_SetMinImageCount(ImGui_ImplVulkanH_GetMinImageCountFromPresentMode(presentMode)); };
     void ReInit(DebugUIInitInfo initInfo);

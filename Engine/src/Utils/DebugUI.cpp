@@ -77,7 +77,7 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 
 
 }
-void DebugUI::SetupFrame(CommandBuffer* cb)
+void DebugUI::Draw(CommandBuffer* cb)
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();

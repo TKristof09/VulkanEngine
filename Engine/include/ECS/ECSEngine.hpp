@@ -8,6 +8,14 @@ class EventHandler;
 class ECSEngine
 {
 public:
+	static ECSEngine& GetInstance()
+	{
+		static ECSEngine   instance;
+		return instance;
+	}
+	ECSEngine(ECSEngine const&) = delete;
+	void operator=(ECSEngine const&) = delete;
+
 	ECSEngine();
 	~ECSEngine();
 
@@ -17,9 +25,6 @@ public:
 	ComponentManager* componentManager;
 	SystemManager* systemManager;
 	EventHandler* eventHandler;
-private:
 
-	ECSEngine(const ECSEngine&) = delete;
-	ECSEngine& operator=(ECSEngine&) = delete;
 };
 

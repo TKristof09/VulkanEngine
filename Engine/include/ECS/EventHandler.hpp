@@ -30,21 +30,26 @@ public:
 	}
 
 
-	template<typename T>
-	void Subscribe(IEventDelegate* delegate)
+	
+	template<typename Class, typename EventType>
+	void Subscribe(Class* owner, void(Class::* Callback)(const EventType* const))
 	{
-		m_eventCallbacks[T::STATIC_EVENT_TYPE_ID].push_back(std::unique_ptr<IEventDelegate>(delegate));
-	}
+		IEventDelegate* delegate = new EventDelegate<Class, EventType>(owner, Callback);
+		
+		m_eventCallbacks[EventType::STATIC_EVENT_TYPE_ID].push_back(std::unique_ptr<IEventDelegate>(delegate));
 
-	template<typename T>
-	void Unsubscribe(IEventDelegate* delegate)
+	}
+	template<typename Class, typename EventType>
+	void Unsubscribe(Class* owner, void(Class::* Callback)(const EventType* const))
 	{
-		auto it = m_eventCallbacks.find(T::STATIC_EVENT_TYPE_ID);
+		EventDelegate<Class, EventType> delegate(owner, Callback);
+
+		auto it = m_eventCallbacks.find(EventType::STATIC_EVENT_TYPE_ID);
 		if(it != m_eventCallbacks.end())
-			it->second.remove_if([&](IEventDelegate* other){ return other->operator==(delegate); });
+			it->second.remove_if([&](IEventDelegate* other) { return other->operator==(delegate); });
 	}
-
 private:
+
 	LinearAllocator* m_allocator;
 	std::unordered_map<EventTypeID, std::list<std::unique_ptr<IEventDelegate>>> m_eventCallbacks;
 	std::vector<IEvent*> m_pendingEvents;

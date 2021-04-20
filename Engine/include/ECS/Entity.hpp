@@ -9,7 +9,7 @@ public:
 	Entity():
 		m_active(true)
 	{};
-	virtual ~Entity() {};
+	~Entity()=default;
 
 	template<typename T>
 	T* GetComponent() const
@@ -34,6 +34,7 @@ public:
 	inline bool operator==(const Entity* rhs) const { return m_id == rhs->m_id; }
 	inline bool operator!=(const Entity* rhs) const { return m_id != rhs->m_id; }
 
+
 	inline const EntityID GetEntityID() const { return m_id; }
 
 	void SetActive(bool state) { m_active = state; }
@@ -46,3 +47,5 @@ private:
 	ComponentManager* m_componentManager;
 
 };
+
+

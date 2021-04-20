@@ -34,3 +34,4 @@ imgui.ini
 # engine log file
 Engine.log
 *.trace
+/CMakeSettings.json

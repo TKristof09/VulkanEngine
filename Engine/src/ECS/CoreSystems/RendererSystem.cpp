@@ -23,7 +23,6 @@
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
-
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 VkPhysicalDevice VulkanContext::m_gpu = VK_NULL_HANDLE;
@@ -217,26 +216,6 @@ void RendererSystem::CreateDebugUI()
 
 
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
-
-	DebugUIWindow* window = new DebugUIWindow();
-	Text* text = new Text("This is column 1");
-	Text* text2 = new Text("This is column 2");
-	glm::vec3* v = new glm::vec3(0);
-	DragVector3* sliderVector3 = new DragVector3(v, "Vec3", 0, 1);
-	glm::vec3* v2 = new glm::vec3(1);
-	DragVector3* sliderVector32 = new DragVector3(v2, "Vec32", 0, 10);
-
-	Button* button = new Button();
-
-	Separator* sep = new Separator("b");
-	Separator* sep2 = new Separator("a");
-
-	window->AddElement(text);
-	window->AddElement(text2, 2);
-	window->AddElement(button, 2);
-	window->AddElement(sliderVector3);
-	window->AddElement(sliderVector32, 1);
-	m_debugUI->AddWindow(window);
 }
 
 void RendererSystem::CreateInstance()
@@ -1158,7 +1137,6 @@ void RendererSystem::Update(float dt)
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
 
-	bool debugUIRendered = false;
 
 	for(auto& pipeline : m_pipelines)
 	{
@@ -1178,11 +1156,6 @@ void RendererSystem::Update(float dt)
 			//vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
 		}
 
-		if(pipeline.m_name != "depth" && !debugUIRendered)
-		{
-			m_debugUI->SetupFrame(&m_mainCommandBuffers[imageIndex]);
-			debugUIRendered = true;
-		}
 
 		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 		glm::mat4 proj = camera.GetProjection();
@@ -1240,6 +1213,12 @@ void RendererSystem::Update(float dt)
 			currentEntity = materialIterator->GetOwner();
 		}
 	}
+
+
+	
+	m_debugUI->Draw(&m_mainCommandBuffers[imageIndex]);
+	
+
 	vkCmdEndRenderPass(cb);
 	m_mainCommandBuffers[imageIndex].End();
 
