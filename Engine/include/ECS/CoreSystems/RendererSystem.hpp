@@ -3,7 +3,6 @@
 #include "ECS/System.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 
-#include <bits/stdint-uintn.h>
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <memory>
@@ -14,7 +13,7 @@
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
-#include "DebugUI.hpp"
+#include "Utils/DebugUI.hpp"
 #include "UniformBuffer.hpp"
 #include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"

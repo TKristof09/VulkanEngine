@@ -217,6 +217,26 @@ void RendererSystem::CreateDebugUI()
 
 
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
+
+	DebugUIWindow* window = new DebugUIWindow();
+	Text* text = new Text("This is column 1");
+	Text* text2 = new Text("This is column 2");
+	glm::vec3* v = new glm::vec3(0);
+	DragVector3* sliderVector3 = new DragVector3(v, "Vec3", 0, 1);
+	glm::vec3* v2 = new glm::vec3(1);
+	DragVector3* sliderVector32 = new DragVector3(v2, "Vec32", 0, 10);
+
+	Button* button = new Button();
+
+	Separator* sep = new Separator("b");
+	Separator* sep2 = new Separator("a");
+
+	window->AddElement(text);
+	window->AddElement(text2, 2);
+	window->AddElement(button, 2);
+	window->AddElement(sliderVector3);
+	window->AddElement(sliderVector32, 1);
+	m_debugUI->AddWindow(window);
 }
 
 void RendererSystem::CreateInstance()
@@ -1183,7 +1203,7 @@ void RendererSystem::Update(float dt)
 			if(renderable == nullptr)
 				continue;
 
-			transform->lRotation = glm::rotate(transform->lRotation,  i * 0.0001f * glm::radians(90.0f), glm::vec3(0,0,1));
+			transform->lRotation = glm::rotate(transform->lRotation,  i * 0.01f * glm::radians(90.0f), glm::vec3(0,0,1));
 			glm::mat4 model =  glm::translate(transform->wPosition) * glm::toMat4(transform->wRotation) * glm::scale(transform->wScale);
 
 			renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);

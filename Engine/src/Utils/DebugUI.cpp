@@ -1,7 +1,7 @@
-#include "DebugUI.hpp"
+﻿#include "Utils/DebugUI.hpp"
 
-DebugUI::DebugUI(DebugUIInitInfo initInfo):
-m_show_demo_window(true)
+DebugUI::DebugUI(DebugUIInitInfo initInfo) :
+	m_show_demo_window(true)
 {
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
@@ -12,14 +12,14 @@ m_show_demo_window(true)
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
 	imguiInitInfo.Instance = VulkanContext::GetInstance();
 	imguiInitInfo.PhysicalDevice = VulkanContext::GetPhysicalDevice();
-    imguiInitInfo.Device = VulkanContext::GetDevice();
-    imguiInitInfo.QueueFamily = initInfo.queueFamily;
-    imguiInitInfo.Queue = initInfo.queue;
-    imguiInitInfo.PipelineCache = initInfo.pipelineCache;
-    imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
-    imguiInitInfo.Allocator = initInfo.allocator;
-    imguiInitInfo.MinImageCount = 2;
-    imguiInitInfo.ImageCount = initInfo.imageCount;
+	imguiInitInfo.Device = VulkanContext::GetDevice();
+	imguiInitInfo.QueueFamily = initInfo.queueFamily;
+	imguiInitInfo.Queue = initInfo.queue;
+	imguiInitInfo.PipelineCache = initInfo.pipelineCache;
+	imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
+	imguiInitInfo.Allocator = initInfo.allocator;
+	imguiInitInfo.MinImageCount = 2;
+	imguiInitInfo.ImageCount = initInfo.imageCount;
 	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
 
 	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
@@ -57,14 +57,14 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
 	imguiInitInfo.Instance = VulkanContext::GetInstance();
 	imguiInitInfo.PhysicalDevice = VulkanContext::GetPhysicalDevice();
-    imguiInitInfo.Device = VulkanContext::GetDevice();
-    imguiInitInfo.QueueFamily = initInfo.queueFamily;
-    imguiInitInfo.Queue = initInfo.queue;
-    imguiInitInfo.PipelineCache = initInfo.pipelineCache;
-    imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
-    imguiInitInfo.Allocator = initInfo.allocator;
-    imguiInitInfo.MinImageCount = 2;
-    imguiInitInfo.ImageCount = initInfo.imageCount;
+	imguiInitInfo.Device = VulkanContext::GetDevice();
+	imguiInitInfo.QueueFamily = initInfo.queueFamily;
+	imguiInitInfo.Queue = initInfo.queue;
+	imguiInitInfo.PipelineCache = initInfo.pipelineCache;
+	imguiInitInfo.DescriptorPool = initInfo.descriptorPool;
+	imguiInitInfo.Allocator = initInfo.allocator;
+	imguiInitInfo.MinImageCount = 2;
+	imguiInitInfo.ImageCount = initInfo.imageCount;
 	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
 
 
@@ -82,10 +82,15 @@ void DebugUI::SetupFrame(CommandBuffer* cb)
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
+	for (auto [i, window] : m_windows)
+	{
+		window->Update();
+	}
 	if (m_show_demo_window)
-            ImGui::ShowDemoWindow(&m_show_demo_window);
+		ImGui::ShowDemoWindow(&m_show_demo_window);
 
 	ImGui::Render();
+	
 
 	/*VkCommandBufferInheritanceInfo inheritanceInfo = {};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -99,4 +104,17 @@ void DebugUI::SetupFrame(CommandBuffer* cb)
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb->GetCommandBuffer());
 
+}
+
+void DebugUI::AddWindow(DebugUIWindow* window)
+{
+	window->m_index = m_index++;
+	window->m_debugUI = this;
+	m_windows[m_index] = window;
+}
+void DebugUI::RemoveWindow(uint32_t index)
+{
+	auto it = m_windows.find(index);
+	if (it != m_windows.end())
+		m_windows.erase(it);
 }
