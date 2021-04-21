@@ -47,12 +47,15 @@ public:
 
 		Entity* entity = new(pMemory) Entity(std::forward<Args>(args)...);
 
+		NameTag* tag = m_ecsEngine->componentManager->AddComponent<NameTag>(entity->GetEntityID());
+		tag->name = "Entity" + std::to_string(entity->GetEntityID());
+		
+		Transform* transform = m_ecsEngine->componentManager->AddComponent<Transform>(entity->GetEntityID());
+		
 		Relationship* comp = m_ecsEngine->componentManager->AddComponent<Relationship>(entity->GetEntityID());
 		comp->parent = INVALID_ENTITY_ID;
 		// TODO: maybe make entities have transform component by default too
 
-		NameTag* tag = m_ecsEngine->componentManager->AddComponent<NameTag>(entity->GetEntityID());
-		tag->name = "Entity" + std::to_string(entity->GetEntityID());
 
 		EntityCreated e;
 		e.entity = *entity;

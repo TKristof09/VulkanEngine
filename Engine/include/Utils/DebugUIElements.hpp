@@ -32,28 +32,24 @@ public:
     }
 protected:
     std::string m_name;
-    const void* m_id = nullptr;
     void* m_userPtr = nullptr;
 };
 
 class Text : public DebugUIElement
 {
 public:
-    Text(const std::string& text, const void* id = nullptr) :
+    Text(const std::string& text) :
         m_text(text)
     {
         m_name = text;
-        m_id = id;
     }
     void Update() override
     {
-        if(m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
         ImGui::Text(m_text.c_str());
 
-        if(m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
 private:
     std::string m_text;
@@ -61,23 +57,21 @@ private:
 
 class DragFloat : public DebugUIElement
 {
-    DragFloat(float* value, const std::string& name = "Float", float min = 0, float max = 0, const void* id = nullptr) :
+    DragFloat(float* value, const std::string& name = "Float", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     };
 
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
         ImGui::DragFloat(m_name.c_str(), m_value, 1, m_min, m_max);
-        if(m_id)
-            ImGui::PopID();
+
+        ImGui::PopID();
     }
 
     float* GetValue() const
@@ -92,24 +86,21 @@ private:
 class DragVector3 : public DebugUIElement
 {
 public:
-    DragVector3(glm::vec3* value, const std::string& name = "Vector3", float min = 0, float max = 0, const void* id = nullptr) :
+    DragVector3(glm::vec3* value, const std::string& name = "Vector3", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     };
     
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
-        ImGui::DragFloat3(m_name.c_str(), reinterpret_cast<float*>(m_value), 1, m_min, m_max);
+        ImGui::DragFloat3("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
-        if (m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
     
     glm::vec3* GetValue() const
@@ -124,24 +115,21 @@ private:
 class DragVector4 : public DebugUIElement
 {
 public:
-    DragVector4(glm::vec4* value, const std::string& name = "Vector4", float min = 0, float max = 0, const void* id = nullptr) :
+    DragVector4(glm::vec4* value, const std::string& name = "Vector4", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     };
 
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
-        ImGui::DragFloat4(m_name.c_str(), reinterpret_cast<float*>(m_value), 1, m_min, m_max);
+        ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
-        if (m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
 
     glm::vec4* GetValue() const
@@ -156,24 +144,22 @@ private:
 class DragQuaternion : public DebugUIElement
 {
 public:
-    DragQuaternion(glm::quat* value, const std::string& name = "Quaternion", float min = 0, float max = 0, const void* id = nullptr) :
+    DragQuaternion(glm::quat* value, const std::string& name = "Quaternion", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     };
 
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+
+        ImGui::PushID(this);
 
         ImGui::DragFloat4(m_name.c_str(), reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
-        if (m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
 
     glm::quat* GetValue() const
@@ -244,21 +230,19 @@ private:
 class CheckBox : public DebugUIElement
 {
 public:
-    CheckBox(bool* value, const std::string& name = "CheckBox", const void* id = nullptr):
+    CheckBox(bool* value, const std::string& name = "CheckBox"):
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     }
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
         ImGui::Checkbox(m_name.c_str(), m_value);
 
-        if (m_id)
-            ImGui::PopID();
+
+        ImGui::PopID();
     }
 
     bool GetValue() const
@@ -273,18 +257,17 @@ private:
 class Button : public DebugUIElement
 {
 public: 
-    Button(const std::string& name = "Button", bool* value = nullptr, const void* id = nullptr):
+    Button(const std::string& name = "Button", bool* value = nullptr):
         m_value(value),
         m_callback(nullptr)
     {
         m_name = name;
-        m_id = id;
     }
 
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+       
+        ImGui::PushID(this);
         bool val = false;
         if(m_value)
             *m_value = ImGui::Button(m_name.c_str());
@@ -297,8 +280,8 @@ public:
                 m_callback(this);
         }
 
-        if (m_id)
-            ImGui::PopID();
+
+        ImGui::PopID();
     }
 
     void RegisterCallback(std::function<void(Button*)> callback)
@@ -321,12 +304,11 @@ private:
 class TreeNode : public DebugUIElement
 {
 public:
-    TreeNode(const std::string& name, bool* value = nullptr, const void* id = nullptr) :
+    TreeNode(const std::string& name, bool* value = nullptr) :
         m_value(value),
         m_callback(nullptr)
     {
         m_name = name;
-        m_id = id;
     }
 
 
@@ -340,8 +322,8 @@ public:
         if(m_elements.empty())
             flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
-        if (m_id)
-            ImGui::PushID(m_id);
+  
+        ImGui::PushID(this);
 
         ImGui::AlignTextToFramePadding();
         
@@ -358,15 +340,15 @@ public:
 
         if(isOpened)
         {
-            for (DebugUIElement* element : m_elements)
+            for (auto element : m_elements)
             {
                 element->Update();
             }
             ImGui::TreePop();
         }
 
-        if (m_id)
-            ImGui::PopID();
+
+        ImGui::PopID();
     }
 
     virtual void Deselect(bool recursive = false) override
@@ -383,12 +365,12 @@ public:
 
     }
 
-    void AddElement(DebugUIElement* element)
+    void AddElement(std::shared_ptr<DebugUIElement> element)
     {
         m_elements.push_back(element);
     }
 
-    std::vector<DebugUIElement*> GetElements() const
+    std::vector<std::shared_ptr<DebugUIElement>> GetElements() const
     {
         return m_elements;
     }
@@ -410,7 +392,7 @@ public:
 
 private:
     bool* m_value;
-    std::vector<DebugUIElement*> m_elements;
+    std::vector<std::shared_ptr<DebugUIElement>> m_elements;
     std::function<void(TreeNode*)> m_callback;
     
     bool m_isSelected = false;
@@ -420,14 +402,65 @@ private:
 class Separator : public DebugUIElement
 {
 public:
-    Separator(const std::string& name = "Separator")
+    Separator(const std::string& name = "")
     {
-        m_name = name;
+        m_name = name != "" ? name : std::to_string((int)this);
     }
     void Update() override
     {
         ImGui::Separator();
     }
+};
+
+class Table : public DebugUIElement
+{
+public:
+    Table(const std::string& name = ""):
+        m_maxColumn(0)
+    {
+        m_name = name != "" ? name : std::to_string((int)this);
+    }
+    void Update() override
+    {
+        ImGui::PushID(this);
+        if(!m_elements.empty())
+        {
+            ImGui::BeginTable("table1", m_maxColumn);
+
+            uint32_t lastRow = 0;
+            ImGui::TableNextRow();
+            for(auto& [coords, element] : m_elements)
+            {
+                auto [x, y] = coords;
+                if(x != lastRow)
+                {
+                    lastRow = x;
+                    ImGui::TableNextRow();
+                }
+
+                ImGui::TableSetColumnIndex(y - 1);
+
+                element->Update();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+    }
+
+    void AddElement(std::shared_ptr<DebugUIElement> element, uint32_t row, uint32_t column)
+    {
+        auto it = m_elements.find({ row, column });
+        if(it != m_elements.end())
+            LOG_WARN("Table {0} already containts an element at {1}, {2}. It will be overwritten", m_name, row, column);
+
+        m_elements[{row, column}] = element;
+        
+        m_maxColumn = column > m_maxColumn ? column : m_maxColumn;
+    }
+private:
+    std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<DebugUIElement>> m_elements;
+    uint32_t m_maxColumn;
+
 };
 
 class DebugUIWindow
@@ -439,7 +472,7 @@ public:
 
     ~DebugUIWindow();
 
-    void AddElement(DebugUIElement* element, uint32_t column = 1)
+    void AddElement(std::shared_ptr<DebugUIElement> element, uint32_t column = 1)
     {
         while (m_columnHeights.size() < column)
         {
@@ -453,11 +486,12 @@ public:
         }
         
         std::pair<uint32_t, uint32_t> coords = { m_columnHeights[column - 1]++, column };
+
         m_elements[coords] = element;
         m_registry[element->GetName()] = coords;
     }
 
-    DebugUIElement* GetElement(const std::string& name, uint32_t column = 1)
+    std::shared_ptr<DebugUIElement> GetElement(const std::string& name, uint32_t column = 1)
     {
         if (m_columnHeights.size() < column)
         {
@@ -540,6 +574,6 @@ private:
     std::string m_name;
     bool m_opened;
     std::unordered_map<std::string, std::pair<uint32_t, uint32_t>> m_registry;
-    std::map<std::pair<uint32_t, uint32_t>, DebugUIElement*> m_elements;
+    std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<DebugUIElement>> m_elements;
     std::vector<uint32_t> m_columnHeights;
 };

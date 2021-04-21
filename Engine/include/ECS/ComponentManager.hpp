@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <forward_list>
 #include <queue>
+#include <map>
 
 #define CHUNK_SIZE 512
 
@@ -142,6 +143,16 @@ public:
 		}
 
 		return (T*)m_componentMap[it->second];
+	}
+
+	std::map<ComponentTypeID, IComponent*> GetAllComponents(EntityID entity) // we use an ordered map to guarantee that the components get the same order every time, i dont actually care about the order for now
+	{
+		std::map<ComponentTypeID, IComponent*> result;
+		for(auto& [typeID, componentID] : m_entityComponentMap[entity])
+		{
+			result[typeID] = m_componentMap[componentID];
+		}
+		return result;
 	}
 
 	template<typename T>

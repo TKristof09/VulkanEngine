@@ -13,11 +13,14 @@ public:
 	void OnEntityCreated(const EntityCreated* event);
 
 private:
-
+	void EntitySelectedCallback(EntityID entity);
+	
+	void SetupComponentProperties(ComponentTypeID type, IComponent* component);
 	RendererSystem* m_rendererSystem;
 
-	std::unordered_map<EntityID, TreeNode*> m_hierarchyTree;
-	DebugUIWindow m_window;
+	std::unordered_map<EntityID, std::shared_ptr<TreeNode>> m_hierarchyTree;
+	DebugUIWindow m_hierarchyWindow;
+	DebugUIWindow m_propertiesWindow;
 
 	EntityID m_selectedEntity;
 };
