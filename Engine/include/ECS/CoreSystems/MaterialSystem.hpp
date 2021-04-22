@@ -16,6 +16,7 @@ public:
 	MaterialSystem();
 	~MaterialSystem();
 
+	void UpdateMaterial(Material* mat);
 private:
 
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);

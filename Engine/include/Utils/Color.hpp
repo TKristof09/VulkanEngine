@@ -34,8 +34,8 @@ struct Color
 		a((HEX_RGBA & 0x000000ff) / 255.0f) {}
 
 
-	glm::vec3 ToVector3() const { return glm::vec3(r, g, b); }
-    glm::vec4 ToVector4() const { return glm::vec4(r, g, b, a); }
+	glm::vec3 ToVec3() const { return glm::vec3(r, g, b); }
+    glm::vec4 ToVec4() const { return glm::vec4(r, g, b, a); }
 
     static const Color Red;
     static const Color Green;
@@ -45,9 +45,3 @@ struct Color
 
     float r, g, b, a;
 };
-
-const Color Color::Red(0xff0000ff);
-const Color Color::Green(0x00ff00ff);
-const Color Color::Blue(0x0000ffff);
-const Color Color::Black(0x000000ff);
-const Color Color::White(0xffffffff);

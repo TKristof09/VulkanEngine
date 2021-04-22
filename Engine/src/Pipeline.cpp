@@ -123,9 +123,9 @@ void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
 	depthStencil.depthTestEnable		= createInfo.useDepth;
 	depthStencil.depthWriteEnable		= createInfo.depthWriteEnable;
 	depthStencil.depthCompareOp			= createInfo.depthCompareOp; // not OP_LESS because we have a depth prepass
-	depthStencil.depthBoundsTestEnable	= VK_TRUE;
-	depthStencil.minDepthBounds			= 0.0f;
-	depthStencil.maxDepthBounds			= 1.0f;
+	// depthStencil.depthBoundsTestEnable	= VK_TRUE;
+	// depthStencil.minDepthBounds			= 0.0f;
+	// depthStencil.maxDepthBounds			= 1.0f;
 	depthStencil.stencilTestEnable		= createInfo.useStencil;
 
 
@@ -233,7 +233,7 @@ void Pipeline::CreateDescriptorSetLayout()
 
 		// need to define these outside of the if statement otherwise they get cleaned up before we create the layout
 		VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {};
-		std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		std::vector<VkDescriptorBindingFlags> bindingFlags(bindings[i].size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT);
 
 
 		flags.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;

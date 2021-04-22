@@ -12,8 +12,6 @@ compile_commands.json
 *.cap
 
 # ignore compiled shader binaries
-*.vert
-*.frag
 *.spv
 
 # ignore textures, models

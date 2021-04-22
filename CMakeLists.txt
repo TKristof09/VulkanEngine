@@ -7,15 +7,17 @@ set( CMAKE_CXX_STANDARD 20)
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/bin)
 set( CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/lib)
 set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/lib)
-set( CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAME}/cmake)
 
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 #SPIRV CROSS
-set(SPIRV_CROSS_CLI OFF)
-set(SPIRV_CROSS_ENABLE_TESTS OFF)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/SPIRV-Cross)
+set(SPIRV_CROSS_CLI OFF)
+set(SPIRV_CROSpS_ENABLE_TESTS OFF)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/spdlog)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
+
 set(ASSIMP_BUILD_TESTS OFF)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 

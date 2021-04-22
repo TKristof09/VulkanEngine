@@ -1,8 +1,10 @@
 #pragma once
-#include "imgui/imgui.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_stdlib.h>
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <map>
+#include "Utils/Color.hpp"
 
 class DebugUI;
 
@@ -38,8 +40,13 @@ protected:
 class Text : public DebugUIElement
 {
 public:
-    Text(const std::string& text) :
+    Text(std::string& text) :
         m_text(text)
+    {
+        m_name = text;
+    }
+    Text(const std::string& text) :
+        m_text(m_name)
     {
         m_name = text;
     }
@@ -52,9 +59,37 @@ public:
         ImGui::PopID();
     }
 private:
-    std::string m_text;
+    std::string& m_text;
 };
 
+class TextEdit : public DebugUIElement
+{
+public:
+    TextEdit(std::string* text):
+        m_text(text)
+    {}
+
+    void Update() override
+    {
+        ImGui::PushID(this);
+        ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue;
+
+        bool finished = ImGui::InputText("", m_text, flags);
+        if(finished && m_callback)
+            m_callback(this);
+
+        ImGui::PopID();
+    }
+
+    void RegisterCallback(std::function<void(TextEdit*)> callback)
+    {
+        m_callback = callback;
+    }
+
+private:
+    std::string* m_text;
+    std::function<void(TextEdit*)> m_callback;
+};
 class DragFloat : public DebugUIElement
 {
     DragFloat(float* value, const std::string& name = "Float", float min = 0, float max = 0) :
@@ -83,6 +118,34 @@ private:
     float* m_value;
 };
 
+class DragVector2 : public DebugUIElement
+{
+public:
+    DragVector2(glm::vec2* value, const std::string& name = "Vector2", float min = 0, float max = 0) :
+        m_min(min),
+        m_max(max),
+        m_value(value)
+    {
+        m_name = name;
+    };
+
+    void Update() override
+    {
+        ImGui::PushID(this);
+
+        ImGui::DragFloat2("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
+
+        ImGui::PopID();
+    }
+
+    glm::vec2* GetValue() const
+    {
+        return m_value;
+    }
+private:
+    float m_min, m_max;
+    glm::vec2* m_value;
+};
 class DragVector3 : public DebugUIElement
 {
 public:
@@ -93,7 +156,7 @@ public:
     {
         m_name = name;
     };
-    
+
     void Update() override
     {
         ImGui::PushID(this);
@@ -102,7 +165,7 @@ public:
 
         ImGui::PopID();
     }
-    
+
     glm::vec3* GetValue() const
     {
         return m_value;
@@ -170,25 +233,22 @@ private:
     float m_min, m_max;
     glm::quat* m_value;
 };
-#if 0
+
 class ColorEdit3 : public DebugUIElement
 {
 public:
-    ColorEdit3(Color* value, const std::string& name = "Color", const void* id = nullptr):
+    ColorEdit3(Color* value, const std::string& name = "Color"):
         m_value(value)
     {
         m_name = name;
-        m_id = id;
     }
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+        ImGui::PushID(this);
 
         ImGui::ColorEdit3(m_name.c_str(), &m_value->r);
 
-        if (m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
     Color* GetValue() const
     {
@@ -201,22 +261,20 @@ private:
 class ColorEdit4 : public DebugUIElement
 {
 public:
-    ColorEdit4(Color* value, const std::string& name = "Color", const void* id = nullptr):
+    ColorEdit4(Color* value, const std::string& name = "Color"):
         m_value(value)
 
     {
         m_name = name;
-        m_id = id;
     }
     void Update() override
     {
-        if (m_id)
-            ImGui::PushID(m_id);
+
+        ImGui::PushID(this);
 
         ImGui::ColorEdit4(m_name.c_str(), &m_value->r);
 
-        if (m_id)
-            ImGui::PopID();
+        ImGui::PopID();
     }
 
     Color* GetValue() const
@@ -226,7 +284,7 @@ public:
 private:
     Color* m_value;
 };
-#endif
+
 class CheckBox : public DebugUIElement
 {
 public:
@@ -256,7 +314,7 @@ private:
 
 class Button : public DebugUIElement
 {
-public: 
+public:
     Button(const std::string& name = "Button", bool* value = nullptr):
         m_value(value),
         m_callback(nullptr)
@@ -266,7 +324,7 @@ public:
 
     void Update() override
     {
-       
+
         ImGui::PushID(this);
         bool val = false;
         if(m_value)
@@ -297,18 +355,26 @@ public:
 private:
     bool* m_value;
     std::function<void(Button*)> m_callback;
-    
+
 
 };
 
 class TreeNode : public DebugUIElement
 {
 public:
-    TreeNode(const std::string& name, bool* value = nullptr) :
+    TreeNode(std::string& text, bool* value = nullptr) :
         m_value(value),
-        m_callback(nullptr)
+        m_callback(nullptr),
+        m_text(text)
     {
-        m_name = name;
+        m_name = m_text;
+    }
+    TreeNode(const std::string& text, bool* value = nullptr) :
+        m_value(value),
+        m_callback(nullptr),
+        m_text(m_name)
+    {
+        m_name = text;
     }
 
 
@@ -322,13 +388,13 @@ public:
         if(m_elements.empty())
             flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
-  
+
         ImGui::PushID(this);
 
         ImGui::AlignTextToFramePadding();
-        
-        bool isOpened = ImGui::TreeNodeEx(m_name.c_str(), flags) && (!m_elements.empty());
-        
+
+        bool isOpened = ImGui::TreeNodeEx(m_text.c_str(), flags) && (!m_elements.empty());
+
         if(m_value)
             *m_value = isOpened;
 
@@ -392,9 +458,10 @@ public:
 
 private:
     bool* m_value;
+    std::string& m_text;
     std::vector<std::shared_ptr<DebugUIElement>> m_elements;
     std::function<void(TreeNode*)> m_callback;
-    
+
     bool m_isSelected = false;
 
 };
@@ -432,9 +499,9 @@ public:
             for(auto& [coords, element] : m_elements)
             {
                 auto [x, y] = coords;
-                if(x != lastRow)
+                while(x != lastRow)
                 {
-                    lastRow = x;
+                    lastRow++;
                     ImGui::TableNextRow();
                 }
 
@@ -454,7 +521,7 @@ public:
             LOG_WARN("Table {0} already containts an element at {1}, {2}. It will be overwritten", m_name, row, column);
 
         m_elements[{row, column}] = element;
-        
+
         m_maxColumn = column > m_maxColumn ? column : m_maxColumn;
     }
 private:
@@ -466,8 +533,8 @@ private:
 class DebugUIWindow
 {
 public:
-    DebugUIWindow(const std::string& name = "Debug", bool opened = true) : m_debugUI(nullptr),                                                    m_index(0),       
-      m_name(name), 
+    DebugUIWindow(const std::string& name = "Debug", bool opened = true) : m_debugUI(nullptr),                                                    m_index(0),
+      m_name(name),
       m_opened(opened) {}
 
     ~DebugUIWindow();
@@ -484,7 +551,7 @@ public:
             LOG_ERROR("DebugUIWindow: {0} already contains an element named: {1}", m_name, element->GetName());
             return;
         }
-        
+
         std::pair<uint32_t, uint32_t> coords = { m_columnHeights[column - 1]++, column };
 
         m_elements[coords] = element;

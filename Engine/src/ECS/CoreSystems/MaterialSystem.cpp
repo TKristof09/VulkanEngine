@@ -233,3 +233,47 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 }
 
 
+
+void MaterialSystem::UpdateMaterial(Material* mat)
+{
+	Pipeline* pipeline = m_rendererSystem->m_pipelinesRegistry[mat->shaderName];
+	uint32_t numSwapchainImages = m_rendererSystem->m_swapchainImages.size();
+
+	for (int i = 0; i < numSwapchainImages; ++i)
+	{
+		for(auto& shader : pipeline->m_shaders)
+		{
+			for(auto& [name, textureInfo] : shader.m_textures)
+			{
+				if(textureInfo.set != materialDescriptorSetIndex)
+					continue;
+
+				std::string texturePath = mat->textures[name];
+				Texture& texture = TextureManager::GetTexture(texturePath);
+
+				auto it = m_samplers.find(pipeline->m_name + name);
+
+
+				VkDescriptorImageInfo imageInfo = {};
+				imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				imageInfo.sampler		= m_samplers[pipeline->m_name + name];
+				imageInfo.imageView		= texture.GetImageView();
+
+				VkWriteDescriptorSet writeDS = {};
+				writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writeDS.dstBinding		= textureInfo.binding;
+				writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				writeDS.dstArrayElement = mat->_textureSlot % OBJECTS_PER_DESCRIPTOR_CHUNK;
+
+				uint32_t descriptorIndex = (mat->_textureSlot / OBJECTS_PER_DESCRIPTOR_CHUNK) * numSwapchainImages + i;
+				writeDS.dstSet			= m_rendererSystem->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
+
+				writeDS.descriptorCount = 1;
+				writeDS.pImageInfo		= &imageInfo;
+
+				vkUpdateDescriptorSets(VulkanContext::GetDevice(), 1, &writeDS, 0, nullptr); // TODO this may need better synchro in the future, but for now update_unused_whil_pending is enough
+			}
+		}
+	}
+
+}

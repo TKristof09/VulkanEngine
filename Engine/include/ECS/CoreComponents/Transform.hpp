@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+
 struct Transform : public Component<Transform>
 {
 	uint32_t ub_id;

@@ -373,7 +373,7 @@ void RendererSystem::CreateDevice()
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.sampleRateShading = VK_TRUE;
-	deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
+	//deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
 	// these are for dynamic descriptor indexing
 	VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures = {};
 	descriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
@@ -381,7 +381,6 @@ void RendererSystem::CreateDevice()
 	descriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
-	descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
 	VkDeviceCreateInfo createInfo		= {};
@@ -1215,9 +1214,9 @@ void RendererSystem::Update(float dt)
 	}
 
 
-	
+
 	m_debugUI->Draw(&m_mainCommandBuffers[imageIndex]);
-	
+
 
 	vkCmdEndRenderPass(cb);
 	m_mainCommandBuffers[imageIndex].End();

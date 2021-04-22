@@ -17,19 +17,19 @@
 int main()
 {
 	Log::Init();
-	std::shared_ptr<Window> window = std::make_shared<Window>(1280, 720, "Vulkan Application");
+	std::shared_ptr<Window> window = std::make_shared<Window>(1920, 1080, "Vulkan Application");
 	GLFWwindow* w = window->GetWindow();
 	ECSEngine* engine = &ECSEngine::GetInstance();
 
 	engine->systemManager->AddSystem<RendererSystem>(window);
 	engine->systemManager->AddSystem<MaterialSystem>();
 	engine->systemManager->AddSystem<TransformHierarchySystem>();
-	
+
 	TextureManager::LoadTexture("./textures/error.jpg");
 
 	HierarchyUI ui(engine->systemManager->GetSystem<RendererSystem>());
-	
-	
+
+
 	std::vector<Vertex> vertices = {
 		{{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
 		{{1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
