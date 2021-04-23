@@ -13,7 +13,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	{
 
 		std::filesystem::path path;
-		//std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
+		
 		if(stage & VK_SHADER_STAGE_VERTEX_BIT)
 		{
 			path = "./shaders/" + filename + ".vert.spv";

@@ -152,7 +152,7 @@ void RendererSystem::RecreateSwapchain()
 
 	CreateSwapchain();
 	CreateRenderPass();
-	CreatePipeline();
+	//CreatePipeline();
 	CreateColorResources();
 	CreateDepthResources();
 	CreateFramebuffers();
@@ -1085,7 +1085,7 @@ void RendererSystem::CreateDepthResources()
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
-void RendererSystem::Update(float dt)
+void RendererSystem::Update(double dt)
 {
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 

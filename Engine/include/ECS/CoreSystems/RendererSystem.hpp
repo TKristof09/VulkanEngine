@@ -31,7 +31,7 @@ class RendererSystem : public System<RendererSystem>
 public:
 	RendererSystem(std::shared_ptr<Window> window);
 	~RendererSystem();
-	virtual	void Update(float dt) override;
+	virtual	void Update(double dt) override;
 
 	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 	

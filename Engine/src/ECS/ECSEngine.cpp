@@ -20,9 +20,14 @@ ECSEngine::~ECSEngine()
 	delete eventHandler;
 }
 
-void ECSEngine::Update(float dt)
+void ECSEngine::Update(double dt)
 {
 	eventHandler->DispatchEvents();
 	componentManager->DestroyRemovedComponents();
 	systemManager->Update(dt);
+}
+
+void ECSEngine::FixedUpdate(double dt)
+{
+	systemManager->FixedUpdate(dt);
 }

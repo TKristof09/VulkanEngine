@@ -24,7 +24,8 @@ public:
 	SystemManager(ECSEngine* ecsEngine);
 	~SystemManager();
 
-	void Update(float dt);
+	void Update(double dt);
+	void FixedUpdate(double dt);
 
 	template<typename T, typename... Args>
 	T* AddSystem(Args... args)

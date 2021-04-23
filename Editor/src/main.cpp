@@ -1,32 +1,27 @@
 #include <iostream>
 #include <Engine.hpp>
+#include <filesystem>
+
 #include "GLFW/glfw3.h"
 #include <vector>
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Material.hpp"
-#include "ECS/CoreSystems/TransformHierarchySystem.hpp"
-#include "ECS/CoreSystems/MaterialSystem.hpp"
+
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
 #include "TextureManager.hpp"
 
 #include "HierarchyUI.hpp"
+#include "Application.hpp"
 
 int main()
 {
-	Log::Init();
-	std::shared_ptr<Window> window = std::make_shared<Window>(1920, 1080, "Vulkan Application");
-	GLFWwindow* w = window->GetWindow();
+	Application editor(1920, 1080, 60, "Editor");
+
 	ECSEngine* engine = &ECSEngine::GetInstance();
-
-	engine->systemManager->AddSystem<RendererSystem>(window);
-	engine->systemManager->AddSystem<MaterialSystem>();
-	engine->systemManager->AddSystem<TransformHierarchySystem>();
-
-	TextureManager::LoadTexture("./textures/error.jpg");
-
+	
 	HierarchyUI ui(engine->systemManager->GetSystem<RendererSystem>());
 
 
@@ -49,6 +44,7 @@ int main()
 		0, 1, 2
 	};
 
+	
 
 	EntityID id = engine->entityManager->CreateEntity();
 	engine->componentManager->AddComponent<Mesh>(id, vertices, indices);
@@ -60,7 +56,7 @@ int main()
 
 	EntityID cameraID = engine->entityManager->CreateEntity();
 	Transform* t = engine->componentManager->AddComponent<Transform>(cameraID);
-	engine->componentManager->AddComponent<Camera>(cameraID, 90.f, window->GetWidth() / window->GetHeight(), 0.001f, 100.f);
+	engine->componentManager->AddComponent<Camera>(cameraID, 90.f, 1920/1080, 0.001f, 100.f);
 	t->lPosition = { 0.0f, 2.0f, 10.0f };
 
 	Transform* t1 = engine->componentManager->GetComponent<Transform>(id);
@@ -80,15 +76,7 @@ int main()
 	//TextureManager::LoadTexture("./textures/texture.jpg");
 	//mat2->textures["albedo"] = "./textures/texture.jpg";
 
-
-	while(!glfwWindowShouldClose(w))
-	{
-		glfwPollEvents();
-		if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-			break;
-		engine->Update(1.f);
-	}
-	glfwTerminate();
-	//std::cin.get();
+	editor.Run();
+	
 	return 0;
 }

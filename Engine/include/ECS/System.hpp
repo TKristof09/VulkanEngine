@@ -12,9 +12,10 @@ public:
 
 	static const SystemTypeID STATIC_SYSTEM_TYPE_ID;
 
-	virtual void PreUpdate(float dt) override {};
-	virtual void Update(float dt) override {};
-	virtual void PostUpdate(float dt) override {};
+	virtual void PreUpdate(double dt) override {};
+	virtual void Update(double dt) override {};
+	virtual void PostUpdate(double dt) override {};
+	virtual void FixedUpdate(double dt) override {};
 
 };
 

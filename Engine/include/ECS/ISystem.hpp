@@ -12,9 +12,10 @@ class ISystem
 public:
 	virtual ~ISystem() {};
 
-	virtual void PreUpdate(float dt) = 0;
-	virtual void Update(float dt) = 0;
-	virtual void PostUpdate(float dt) = 0;
+	virtual void PreUpdate(double dt) = 0;
+	virtual void Update(double dt) = 0;
+	virtual void PostUpdate(double dt) = 0;
+	virtual void FixedUpdate(double dt) = 0;
 
 	virtual const SystemTypeID GetTypeID() const = 0;
 

@@ -19,7 +19,8 @@ public:
 	ECSEngine();
 	~ECSEngine();
 
-	void Update(float dt);
+	void Update(double dt);
+	void FixedUpdate(double dt);
 
 	EntityManager* entityManager;
 	ComponentManager* componentManager;

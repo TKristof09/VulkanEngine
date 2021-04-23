@@ -10,7 +10,7 @@ class TransformHierarchySystem : public System<TransformHierarchySystem>
 {
 public:
 	TransformHierarchySystem();
-	virtual void Update(float dt) override; //TODO: not sure if this should happen in update rather than pre/post
+	virtual void Update(double dt) override; //TODO: not sure if this should happen in update rather than pre/post
 private:
 	void OnTransformAdded(const ComponentAdded<Transform>* event);
 

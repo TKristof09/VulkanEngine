@@ -12,6 +12,7 @@ public:
 
     GLFWwindow* GetWindow() const {   return m_window;  };
 	bool IsResized() const { return m_resized; };
+	bool ShouldClose() { return glfwWindowShouldClose(m_window); }
 
 	void SetResized(bool value) { m_resized = value; };
 	void _Resized(uint32_t width, uint32_t height)

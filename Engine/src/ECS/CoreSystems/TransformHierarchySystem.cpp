@@ -9,7 +9,7 @@ TransformHierarchySystem::TransformHierarchySystem()
 	Subscribe(&TransformHierarchySystem::OnTransformAdded);
 }
 
-void TransformHierarchySystem::Update(float dt)
+void TransformHierarchySystem::Update(double dt)
 {
 	for(auto it = m_ecsEngine->componentManager->begin<Relationship>(); it != m_ecsEngine->componentManager->end<Relationship>(); ++it)
 	{
