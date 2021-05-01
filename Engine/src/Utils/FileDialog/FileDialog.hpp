@@ -1,6 +1,6 @@
 #pragma once
 
-class FileDialogs
+class FileDialog
 {
 public:
 	static std::string OpenFile(const char* filter);

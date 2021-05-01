@@ -70,7 +70,7 @@ int main()
 	Material* mat1 = e1->AddComponent<Material>();
 	mat1->shaderName = "base";
 
-	auto texturePath = FileDialogs::OpenFile("Images\0*.jpg;*.jpeg;*.png\0");
+	auto texturePath = FileDialog::OpenFile("Images\0*.jpg;*.jpeg;*.png\0");
 	TextureManager::LoadTexture(texturePath);
 	mat1->textures["albedo"] = texturePath;
 

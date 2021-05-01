@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <map>
+
+#include "FileDialog/FileDialog.hpp"
 #include "Utils/Color.hpp"
 
 class DebugUI;
@@ -90,6 +92,7 @@ private:
     std::string* m_text;
     std::function<void(TextEdit*)> m_callback;
 };
+
 class DragFloat : public DebugUIElement
 {
     DragFloat(float* value, const std::string& name = "Float", float min = 0, float max = 0) :
@@ -146,6 +149,7 @@ private:
     float m_min, m_max;
     glm::vec2* m_value;
 };
+
 class DragVector3 : public DebugUIElement
 {
 public:
@@ -359,6 +363,47 @@ private:
 
 };
 
+class FileSelector : public DebugUIElement
+{
+public:
+	FileSelector(std::string* path):
+		m_path(path),
+		m_callback(nullptr)
+	{
+		m_name = std::to_string((int)this);
+	}
+	void Update() override
+    {
+
+        ImGui::PushID(this);
+
+		std::string fileName = m_path->substr(m_path->find_last_of("/") + 1);
+		ImGui::Text(fileName.c_str());
+
+		ImGui::SameLine();
+		
+        if(ImGui::Button("..."))
+        {
+            *m_path = FileDialog::OpenFile(nullptr);
+        	if(m_callback && *m_path != "")
+				m_callback(this);
+        }
+
+
+        ImGui::PopID();
+    }
+
+   void RegisterCallback(std::function<void(FileSelector*)> callback)
+   {
+        m_callback = callback;
+   }
+	std::string GetPath() const { return *m_path; }
+
+private:
+	std::string* m_path;
+	std::function<void(FileSelector*)> m_callback;
+};
+
 class TreeNode : public DebugUIElement
 {
 public:
@@ -533,9 +578,11 @@ private:
 class DebugUIWindow
 {
 public:
-    DebugUIWindow(const std::string& name = "Debug", bool opened = true) : m_debugUI(nullptr),                                                    m_index(0),
-      m_name(name),
-      m_opened(opened) {}
+    DebugUIWindow(const std::string& name = "Debug", bool opened = true) :
+		m_debugUI(nullptr),
+		m_index(0),
+		m_name(name),
+		m_opened(opened) {}
 
     ~DebugUIWindow();
 

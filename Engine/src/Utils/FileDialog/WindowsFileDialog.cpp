@@ -1,3 +1,4 @@
+#include <filesystem>
 #ifdef _WIN64
 #include "Application.hpp"
 #include "Utils/FileDialog/FileDialog.hpp"
@@ -6,7 +7,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 
-std::string FileDialogs::OpenFile(const char* filter)
+std::string FileDialog::OpenFile(const char* filter)
 {
 	OPENFILENAMEA ofn;
 	CHAR szFile[260] = { 0 };
@@ -23,11 +24,11 @@ std::string FileDialogs::OpenFile(const char* filter)
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
 	if (GetOpenFileNameA(&ofn) == TRUE)
-		return ofn.lpstrFile;
+		return std::filesystem::path(ofn.lpstrFile).generic_string();
 
 	return std::string();
 }
-std::string FileDialogs::SaveFile(const char* filter)
+std::string FileDialog::SaveFile(const char* filter)
 {
 	OPENFILENAMEA ofn;
 	CHAR szFile[260] = { 0 };
@@ -47,7 +48,7 @@ std::string FileDialogs::SaveFile(const char* filter)
 	ofn.lpstrDefExt = strchr(filter, '\0') + 1;
 
 	if (GetSaveFileNameA(&ofn) == TRUE)
-		return ofn.lpstrFile;
+		return std::filesystem::path(ofn.lpstrFile).generic_string();
 	
 	return std::string();
 }

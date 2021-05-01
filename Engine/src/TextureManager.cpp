@@ -8,6 +8,7 @@ bool TextureManager::LoadTexture(const std::string& fileName)
 		return true;
 	else
 	{
+		LOG_INFO("Loading texture: {0}", fileName);
 		m_textureMap[fileName] = Texture(fileName);
 		return true;
 	}

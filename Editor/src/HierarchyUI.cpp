@@ -1,4 +1,6 @@
 #include "HierarchyUI.hpp"
+
+#include "TextureManager.hpp"
 #include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/CoreComponents/NameTag.hpp"
 #include "ECS/EntityManager.hpp"
@@ -39,25 +41,24 @@ HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* mater
 
 	HierarchyUI::RegisterPropertyDrawFunction(Material::STATIC_COMPONENT_TYPE_ID, [materialSystem](IComponent* component, DebugUIWindow* window)
 	{
-		window->AddElement(std::make_shared<Text>("Material:"));
-
 		Material* comp = (Material*)component;
-		auto shader = std::make_shared<Text>(comp->shaderName);
-		window->AddElement(shader);
+		window->AddElement(std::make_shared<Text>("Material:    " + comp->shaderName));
+		
 
 		auto table = std::make_shared<Table>();
 		int row = 0;
+		window->AddElement(std::make_shared<Text>("Textures:"));
 		for(auto& [name, path] : comp->textures)
 		{
-			auto nameText = std::make_shared<Text>(const_cast<std::string&>(name));
-			auto pathText = std::make_shared<TextEdit>(&path);
-			pathText->RegisterCallback([comp, materialSystem](TextEdit* textEdit)
+			auto nameText = std::make_shared<Text>("\t" + name);
+			auto file = std::make_shared<FileSelector>(&path);
+			file->RegisterCallback([comp, materialSystem](FileSelector* fileSelector)
 			{
+				TextureManager::LoadTexture(fileSelector->GetPath());
 				materialSystem->UpdateMaterial(comp);
-
 			});
 			table->AddElement(nameText, row, 1);
-			table->AddElement(pathText, row, 2);
+			table->AddElement(file, row, 2);
 			row++;
 		}
 		window->AddElement(table);
