@@ -15,6 +15,7 @@
 
 #include "HierarchyUI.hpp"
 #include "Application.hpp"
+#include "Utils/FileDialog/FileDialog.hpp"
 
 int main()
 {
@@ -68,8 +69,10 @@ int main()
 
 	Material* mat1 = e1->AddComponent<Material>();
 	mat1->shaderName = "base";
-	TextureManager::LoadTexture("./textures/texture.jpg");
-	mat1->textures["albedo"] = "./textures/texture.jpg";
+
+	auto texturePath = FileDialogs::OpenFile("Images\0*.jpg;*.jpeg;*.png\0");
+	TextureManager::LoadTexture(texturePath);
+	mat1->textures["albedo"] = texturePath;
 
 	//Material* mat2 = engine->componentManager->AddComponent<Material>(id2);
 	//mat2->shaderName = "base";

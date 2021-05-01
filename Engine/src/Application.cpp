@@ -9,9 +9,13 @@
 #include "ECS/SystemManager.hpp"
 #include "Utils/Time.hpp"
 
+Application* Application::s_instance = nullptr;
+
 Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, const std::string& title):
 	m_frameTime(1.0 / frameRate)
 {
+	s_instance = this;
+	
 	Log::Init();
 
 	std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
