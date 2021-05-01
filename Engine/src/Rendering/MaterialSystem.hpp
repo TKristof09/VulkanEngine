@@ -13,7 +13,7 @@ class Renderer;
 class MaterialSystem
 {
 public:
-	MaterialSystem(ECSEngine* ecs, Renderer* renderer);
+	MaterialSystem(Scene* scene, Renderer* renderer);
 	~MaterialSystem();
 
 	void UpdateMaterial(Material* mat);

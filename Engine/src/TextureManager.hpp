@@ -27,6 +27,10 @@ public:
 		}
 	}
 
+	static void ClearLoadedTextures()
+	{
+		m_textureMap.clear();
+	}
 private:
 	static std::unordered_map<std::string, Texture> m_textureMap;
 

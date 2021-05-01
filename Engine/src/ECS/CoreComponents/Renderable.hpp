@@ -7,11 +7,6 @@
 
 struct Renderable : public Component<Renderable>
 {
-
     Buffer vertexBuffer;
     Buffer indexBuffer;
-
-    Renderable(const Buffer& vb, const Buffer& ib):
-        vertexBuffer(vb),
-        indexBuffer(ib) {};
 };

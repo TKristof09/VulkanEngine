@@ -11,10 +11,10 @@ TransformHierarchySystem::TransformHierarchySystem()
 
 void TransformHierarchySystem::Update(double dt)
 {
-	for(auto it = m_ecsEngine->componentManager->begin<Relationship>(); it != m_ecsEngine->componentManager->end<Relationship>(); ++it)
+	for(auto it = m_scene.ecs->componentManager->begin<Relationship>(); it != m_scene.ecs->componentManager->end<Relationship>(); ++it)
 	{
 		EntityID parentID = it->parent;
-		Transform* transform = m_ecsEngine->componentManager->GetComponent<Transform>(it->GetOwner());
+		Transform* transform = m_scene.ecs->componentManager->GetComponent<Transform>(it->GetOwner());
 
 		if(parentID == INVALID_ENTITY_ID)
 		{
@@ -25,7 +25,7 @@ void TransformHierarchySystem::Update(double dt)
 		}
 		else
 		{
-			Transform* parentTransform = m_ecsEngine->componentManager->GetComponent<Transform>(parentID);
+			Transform* parentTransform = m_scene.ecs->componentManager->GetComponent<Transform>(parentID);
 
 
 			transform->wPosition = parentTransform->wPosition + parentTransform->wRotation * transform->lPosition;
@@ -37,12 +37,12 @@ void TransformHierarchySystem::Update(double dt)
 
 void TransformHierarchySystem::OnTransformAdded(const ComponentAdded<Transform>* event)
 {
-	if(!m_ecsEngine->componentManager->HasComponent<Static>(event->entity))
-		m_ecsEngine->componentManager->Sort<Transform>(
+	if(!m_scene.ecs->componentManager->HasComponent<Static>(event->entity))
+		m_scene.ecs->componentManager->Sort<Transform>(
 				[&](Transform* lhs, Transform* rhs)
 				{
-				Relationship* rhsRelationship = m_ecsEngine->componentManager->GetComponent<Relationship>(rhs->GetOwner());
-				Relationship* lhsRelationship = m_ecsEngine->componentManager->GetComponent<Relationship>(lhs->GetOwner());
+				Relationship* rhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(rhs->GetOwner());
+				Relationship* lhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(lhs->GetOwner());
 
 				EntityID lhsEntity = lhs->GetOwner();
 				EntityID rhsEntity = rhs->GetOwner();

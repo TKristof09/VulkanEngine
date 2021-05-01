@@ -2,8 +2,8 @@
 #include "ECS/ECSMemoryManager.hpp"
 #include "ECS/ECSEngine.hpp"
 
-SystemManager::SystemManager(ECSEngine* ecsEngine):
-m_ecsEngine(ecsEngine)
+SystemManager::SystemManager(Scene scene):
+m_scene(scene)
 {
 	m_allocator = new LinearAllocator(ECS_SYSTEM_MEMORY_SIZE, ECSMemoryManager::GetInstance().Allocate(ECS_SYSTEM_MEMORY_SIZE));
 }

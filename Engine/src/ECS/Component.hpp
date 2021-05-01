@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ECS/IComponent.hpp"
-#include "ECS/Util.hpp"
+#include "Utils/TypeIDManager.hpp"
 
 template<typename T>
 class Component : public IComponent
@@ -18,5 +18,5 @@ public:
 };
 
 template<typename T>
-const ComponentTypeID Component<T>::STATIC_COMPONENT_TYPE_ID = Util::TypeIDManager<IComponent>::Get<T>();
+const ComponentTypeID Component<T>::STATIC_COMPONENT_TYPE_ID = TypeIDManager<IComponent>::Get<T>();
 

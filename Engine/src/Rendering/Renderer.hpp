@@ -27,7 +27,7 @@
 class Renderer
 {
 public:
-	Renderer(std::shared_ptr<Window> window, ECSEngine* ecs);
+	Renderer(std::shared_ptr<Window> window, Scene* scene);
 	~Renderer();
 	void Render(double dt);
 

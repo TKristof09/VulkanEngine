@@ -1,4 +1,4 @@
-#include "ECS/SceneSerializer.hpp"
+#include "Core/Scene/SceneSerializer.hpp"
 
 #include "glm/glm.hpp"
 std::unordered_map<ComponentTypeID, SerializeFunction> SceneSerializer::m_serializeFunctions = {};
@@ -93,26 +93,31 @@ void SceneSerializer::Serialize(const std::string& path, ECSEngine* ecs)
 
 }
 
-ECSEngine* SceneSerializer::Deserialize(const std::string& path)
+Scene SceneSerializer::Deserialize(const std::string& path)
 {
-	ECSEngine* ecs = new ECSEngine();
-	
+	Scene scene;
+	scene.eventHandler = new EventHandler();
+	scene.ecs = new ECSEngine(scene);
+
 	YAML::Node data = YAML::LoadFile(path);
 	if(!data["Scene"])
-		return nullptr;
+	{
+		LOG_CRITICAL("File {0} doesn't have a scene", path);
+		return scene;
+	}
 
 	std::string sceneName = data["Scene"].as<std::string>();
 	LOG_INFO("Deserializing scene: {0}, from file: {1}", sceneName, path);
 
 	auto entities = data["Entities"];
 	if(!entities)
-		return nullptr;
+		return scene;
 
 	
 	for(auto entity : entities)
-		DeserializeEntity(entity, ecs);
+		DeserializeEntity(entity, scene.ecs);
 
-	return ecs;
+	return scene;
 }
 
 void SceneSerializer::SerializeEntity(YAML::Emitter& out, EntityID entity, ECSEngine* ecs)
@@ -137,7 +142,7 @@ void SceneSerializer::SerializeEntity(YAML::Emitter& out, EntityID entity, ECSEn
 
 void SceneSerializer::DeserializeEntity(const YAML::Node& entityNode, ECSEngine* ecs)
 {
-	Entity* entity = ecs->entityManager->GetEntity(ecs->entityManager->CreateEntity()); // TODO
+	Entity* entity = ecs->entityManager->CreateEntity();
 
 	for(auto component : entityNode)
 	{

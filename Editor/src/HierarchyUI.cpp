@@ -8,16 +8,16 @@
 std::unordered_map<ComponentTypeID, PropertyDrawFunction> HierarchyUI::m_propertyDrawFunctions = {};
 
 
-HierarchyUI::HierarchyUI(ECSEngine* ecs, Renderer* renderer, MaterialSystem* materialSystem):
+HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem):
 	m_hierarchyWindow(DebugUIWindow("Hierarchy")),
 	m_propertiesWindow(DebugUIWindow("Properties")),
-	m_ecs(ecs),
+	m_ecs(scene->ecs),
 	m_renderer(renderer)
 {
 	renderer->AddDebugUIWindow(&m_hierarchyWindow);
 	renderer->AddDebugUIWindow(&m_propertiesWindow);
 
-	ecs->eventHandler->Subscribe(this, &HierarchyUI::OnEntityCreated);
+	scene->eventHandler->Subscribe(this, &HierarchyUI::OnEntityCreated);
 
 	HierarchyUI::RegisterPropertyDrawFunction(Transform::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
 	{

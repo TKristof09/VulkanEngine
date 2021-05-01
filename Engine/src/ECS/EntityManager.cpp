@@ -1,10 +1,10 @@
 #include "ECS/EntityManager.hpp"
 #include "ECS/ComponentManager.hpp"
 
-EntityManager::EntityManager(ECSEngine* ecsEngine):
+EntityManager::EntityManager(Scene scene):
 	m_numPendingDestroy(0),
 	m_pendingDestroy(128),
-	m_ecsEngine(ecsEngine),
+	m_scene(scene),
 	m_lastID(0) {}
 
 
@@ -13,8 +13,8 @@ void EntityManager::DestroyEntity(EntityID id)
 
 	EntityDestroyed e;
 	e.entity = *m_handleTable[id];
-	m_ecsEngine->eventHandler->Send<EntityDestroyed>(e);
-	m_ecsEngine->componentManager->RemoveAllComponents(id);
+	m_scene.eventHandler->Send<EntityDestroyed>(e);
+	m_scene.ecs->componentManager->RemoveAllComponents(id);
 	
 	if(m_numPendingDestroy < m_pendingDestroy.size())
 		m_pendingDestroy[m_numPendingDestroy++] = id;

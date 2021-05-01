@@ -21,8 +21,3 @@ inline void VK_CHECK(int result, const char* error_message)
 	return;
 }
 #endif
-
-//eastl needs this
-//void* operator new[](size_t size, const char* name, int flags, unsigned debugFlags, const char* file, int line);
-//void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line);
-

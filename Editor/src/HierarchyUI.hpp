@@ -9,7 +9,7 @@ typedef std::function<void(IComponent*, DebugUIWindow*)> PropertyDrawFunction; /
 class HierarchyUI
 {
 public:
-	HierarchyUI(ECSEngine* ecs, Renderer* renderer, MaterialSystem* materialSystem);
+	HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem);
 
 
 	void OnEntityCreated(const EntityCreated* event);

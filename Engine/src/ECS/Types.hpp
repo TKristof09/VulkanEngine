@@ -9,4 +9,4 @@ using ComponentTypeID = uint64_t;
 
 using SystemTypeID = uint64_t;
 
-using EventTypeID = uint64_t;
+

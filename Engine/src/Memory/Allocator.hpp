@@ -7,7 +7,10 @@ public:
 		m_memorySize(memorySize),
 		m_memoryStartAddress(memoryStartAddress),
 		m_memoryUsed(0),
-		m_allocationsCount(0) {}
+		m_allocationsCount(0)
+	{
+		std::memset((void*)memoryStartAddress, 0, memorySize);
+	}
 	virtual	~Allocator() {}
 
 	virtual void* Allocate(size_t size, uint8_t alignment) = 0;

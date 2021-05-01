@@ -23,6 +23,12 @@ Buffer::Buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlag
 	Allocate(size, usage, properties);
 }
 
+Buffer::~Buffer()
+{
+	if(m_buffer != VK_NULL_HANDLE)
+		Free();
+}
+
 void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
 {
 	m_size = size;
@@ -55,12 +61,14 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPrope
 	VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate buffer memory");
 
 	VK_CHECK(vkBindBufferMemory(VulkanContext::GetDevice(), m_buffer, m_memory, 0), "Failed to bind buffer memory");
+	
 }
 
 void Buffer::Free()
 {
 	vkDestroyBuffer(VulkanContext::GetDevice(), m_buffer, nullptr);
 	vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
+	m_buffer = VK_NULL_HANDLE;
 }
 
 void Buffer::Copy(Buffer* dst, VkDeviceSize size)

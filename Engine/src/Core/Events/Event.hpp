@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ECS/IEvent.hpp"
-#include "ECS/Util.hpp"
+#include "Core/Events/IEvent.hpp"
+#include "Utils/TypeIDManager.hpp"
 
 template<typename T>
 class Event : public IEvent
@@ -12,4 +12,4 @@ public:
 };
 
 template<typename T>
-const EventTypeID Event<T>::STATIC_EVENT_TYPE_ID = Util::TypeIDManager<IEvent>::Get<T>();
+const EventTypeID Event<T>::STATIC_EVENT_TYPE_ID = TypeIDManager<IEvent>::Get<T>();

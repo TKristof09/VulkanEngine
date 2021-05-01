@@ -10,12 +10,18 @@ RenderPass::~RenderPass()
 {
 	Destroy();
 }
+
 void RenderPass::Destroy()
 {
 	if(m_renderPass != VK_NULL_HANDLE)
+	{
 		vkDestroyRenderPass(VulkanContext::GetDevice(), m_renderPass, nullptr);
-	m_framebuffers.clear();
+		m_framebuffers.clear();
+		m_renderPass = VK_NULL_HANDLE;
+	}
+
 }
+
 void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 {
 

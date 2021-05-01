@@ -6,6 +6,7 @@
 #include <assimp/Importer.hpp>
 
 #include "ECS/ECSEngine.hpp"
+#include "ECS/Entity.hpp"
 #include "ECS/Types.hpp"
 
 class Vertex;
@@ -13,9 +14,9 @@ class Mesh;
 class AssimpImporter
 {
 public:
-	EntityID LoadFile(const std::string& file, ECSEngine* ecsEngine);
+	Entity* LoadFile(const std::string& file, ECSEngine* ecsEngine);
 
 private:
-	void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, EntityID entity);
-	void LoadMesh(const aiMesh* mesh, EntityID entity, ECSEngine* ecsEngine);
+	void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, Entity* entity);
+	void LoadMesh(const aiMesh* mesh, Entity* entity);
 };

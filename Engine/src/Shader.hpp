@@ -18,6 +18,15 @@ private:
 	VkShaderModule GetShaderModule() const { return m_shaderModule; };
 	bool HasPushConstants() const { return m_pushConstants.used; };
 
+	void DestroyShaderModule()
+	{
+		if(m_shaderModule != VK_NULL_HANDLE)
+		{
+			vkDestroyShaderModule(VulkanContext::GetDevice(), m_shaderModule, nullptr);
+			m_shaderModule = VK_NULL_HANDLE;
+		}
+	}
+
 	struct UniformBufferInfo
 	{
 		VkPipelineStageFlags stage;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ECS/ISystem.hpp"
-#include "ECS/Util.hpp"
+#include "Utils/TypeIDManager.hpp"
 #include "ECS/ECSEngine.hpp"
 
 template<typename T>
@@ -20,5 +20,5 @@ public:
 };
 
 template<typename T>
-const SystemTypeID System<T>::STATIC_SYSTEM_TYPE_ID = Util::TypeIDManager<ISystem>::Get<T>();
+const SystemTypeID System<T>::STATIC_SYSTEM_TYPE_ID = TypeIDManager<ISystem>::Get<T>();
 

@@ -49,10 +49,15 @@ DebugUI::~DebugUI()
 
 void DebugUI::ReInit(DebugUIInitInfo initInfo)
 {
+	ImGui_ImplVulkan_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+	
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForVulkan(initInfo.pWindow->GetWindow(), true);
 
 	ImGui_ImplVulkan_InitInfo imguiInitInfo = {};
 	imguiInitInfo.Instance = VulkanContext::GetInstance();

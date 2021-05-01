@@ -3,8 +3,8 @@
 #include "Memory/LinearAllocator.hpp"
 #include "ECS/Types.hpp"
 #include "ECS/ISystem.hpp"
-#include "ECS/ECSEngine.hpp"
 #include "ECS/CoreEvents/SystemEvents.hpp"
+#include "Core/Scene/Scene.hpp"
 
 #include <unordered_map>
 
@@ -19,9 +19,9 @@ private:
 	SystemManager(const SystemManager&) = delete;
 	SystemManager& operator=(SystemManager&) = delete;
 
-	ECSEngine* m_ecsEngine;
+	Scene m_scene;
 public:
-	SystemManager(ECSEngine* ecsEngine);
+	SystemManager(Scene scene);
 	~SystemManager();
 
 	void Update(double dt);
@@ -39,8 +39,8 @@ public:
 
 
 		void* pMemory = m_allocator->Allocate(sizeof(T), alignof(T));
-		((T*)pMemory)->m_ecsEngine = m_ecsEngine;
 
+		((ISystem*)pMemory)->m_scene = m_scene;
 		ISystem* system = new(pMemory) T(std::forward<Args>(args)...);
 		system->m_enabled = true;
 
@@ -49,7 +49,7 @@ public:
 
 		SystemAdded<T> e;
 		e.ptr = (T*)system;
-		m_ecsEngine->eventHandler->Send<SystemAdded<T>>(e);
+		m_scene.eventHandler->Send<SystemAdded<T>>(e);
 
 		return (T*)system;
 	}

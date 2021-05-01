@@ -1,11 +1,12 @@
 #include "ECS/ComponentManager.hpp"
 
-ComponentManager::ComponentManager(ECSEngine* ecsEngine):
-	m_ecsEngine(ecsEngine)
+ComponentManager::ComponentManager(Scene scene):
+	m_scene(scene)
 {}
 
 ComponentManager::~ComponentManager()
 {
+	DestroyRemovedComponents();
 	for (auto container : m_registry)
 	{
 		delete container.second;
@@ -34,7 +35,7 @@ void ComponentManager::DestroyRemovedComponents()
 	while(!m_componentsToRemove.empty())
 	{
 		IComponent* comp = m_componentsToRemove.front();
-
+		
 		m_registry[comp->m_typeID]->DestroyComponent(comp);
 
 		m_componentsToRemove.pop();

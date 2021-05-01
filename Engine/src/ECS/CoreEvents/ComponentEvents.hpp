@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ECS/Event.hpp"
+#include "Core/Events/Event.hpp"
 #include "ECS/Types.hpp"
 
 template<typename T>

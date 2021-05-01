@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ECS/Event.hpp"
+#include "Core/Events/Event.hpp"
 
 template<typename T>
 struct SystemAdded : public Event<SystemAdded<T>>

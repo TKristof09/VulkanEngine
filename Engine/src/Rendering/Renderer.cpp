@@ -17,6 +17,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/transform.hpp>
 
+#include "TextureManager.hpp"
 #include "ECS/ComponentManager.hpp"
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
@@ -73,8 +74,8 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 
 
 
-Renderer::Renderer(std::shared_ptr<Window> window, ECSEngine* ecs):
-	m_ecs(ecs),
+Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
+	m_ecs(scene->ecs),
 	m_window(window),
 	m_instance(VulkanContext::m_instance),
 	m_gpu(VulkanContext::m_gpu),
@@ -82,9 +83,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, ECSEngine* ecs):
 	m_graphicsQueue(VulkanContext::m_graphicsQueue),
 	m_commandPool(VulkanContext::m_commandPool)
 {
-	ecs->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
-	ecs->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
-	ecs->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
+	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
+	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
+	scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
 
 	CreateInstance();
 	SetupDebugMessenger();
@@ -117,14 +118,19 @@ Renderer::~Renderer()
 	}
 
 
-	//vkDestroySampler(m_device, m_sampler, nullptr);
+	TextureManager::ClearLoadedTextures();
 
 	CleanupSwapchain();
 
+	m_debugUI.reset();
+
+	m_ubAllocators.clear();
+	m_pipelines.clear();
+	
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
-
-
+	
 	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+	
 	vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 
 	vkDestroyDevice(m_device, nullptr);
@@ -134,8 +140,6 @@ Renderer::~Renderer()
 #endif
 
 	vkDestroyInstance(m_instance, nullptr);
-
-
 
 }
 
@@ -1274,10 +1278,9 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
 
 
-	Renderable* comp = m_ecs->componentManager->AddComponent<Renderable>(e->entity,
-			Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
-			Buffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-			);
+	Renderable* comp = m_ecs->componentManager->AddComponent<Renderable>(e->entity);
+	comp->vertexBuffer = Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	comp->indexBuffer = Buffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	stagingVertexBuffer.Copy(&comp->vertexBuffer, vBufferSize);
 
@@ -1591,57 +1594,56 @@ VkExtent2D ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, G
 VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
 		VkDebugUtilsMessengerCallbackDataEXT const * pCallbackData, void * /*pUserData*/)
 {
-	// Select prefix depending on flags passed to the callback
-	std::string prefix("");
-
-	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
-		prefix = "VERBOSE: ";
-	}
-	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
-		prefix = "INFO: ";
-	}
-	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-		prefix = "WARNING: ";
-	}
-	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-		prefix = "ERROR: ";
-	}
-	std::cerr << prefix.c_str() << "\n";
-	std::cerr << "\t" << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
-	std::cerr << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
-	std::cerr << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
+	
+	std::ostringstream message;
+	message << "\n";
+	message << "\t" << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
+	message << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
+	message << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
 
 	if (0 < pCallbackData->queueLabelCount)
 	{
-		std::cerr << "\t" << "Queue Labels:\n";
+		message << "\t" << "Queue Labels:\n";
 		for (uint8_t i = 0; i < pCallbackData->queueLabelCount; i++)
 		{
-			std::cerr << "\t\t" << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
+			message << "\t\t" << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
 		}
 	}
 	if (0 < pCallbackData->cmdBufLabelCount)
 	{
-		std::cerr << "\t" << "CommandBuffer Labels:\n";
+		message << "\t" << "CommandBuffer Labels:\n";
 		for (uint8_t i = 0; i < pCallbackData->cmdBufLabelCount; i++)
 		{
-			std::cerr << "\t\t" << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
+			message << "\t\t" << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
 		}
 	}
 	if (0 < pCallbackData->objectCount)
 	{
-		std::cerr << "\t" << "Objects:\n";
+		message << "\t" << "Objects:\n";
 		for (uint8_t i = 0; i < pCallbackData->objectCount; i++)
 		{
-			std::cerr << "\t\t" << "Object " << i << "\n";
-			std::cerr << "\t\t\t" << "objectType   = " << pCallbackData->pObjects[i].objectType << "\n";
-			std::cerr << "\t\t\t" << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
+			message << "\t\t" << "Object " << i << "\n";
+			message << "\t\t\t" << "objectType   = " << pCallbackData->pObjects[i].objectType << "\n";
+			message << "\t\t\t" << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
 			if (pCallbackData->pObjects[i].pObjectName)
 			{
-				std::cerr << "\t\t\t" << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
+				message << "\t\t\t" << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
 			}
 		}
 	}
-	std::cerr << "\n\n";
+	
+	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+		LOG_TRACE(message.str());
+	}
+	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+		LOG_INFO(message.str());
+	}
+	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+		LOG_WARN(message.str());
+	}
+	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+		LOG_ERROR(message.str());
+	}
 
 	return VK_TRUE;
 }

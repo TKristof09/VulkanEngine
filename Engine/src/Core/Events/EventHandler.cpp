@@ -1,4 +1,4 @@
-#include "ECS/EventHandler.hpp"
+#include "Core/Events/EventHandler.hpp"
 #include "ECS/ECSMemoryManager.hpp"
 
 

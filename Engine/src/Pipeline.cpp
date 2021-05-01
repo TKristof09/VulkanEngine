@@ -20,11 +20,15 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 	CreateDescriptorSetLayout();
 	CreatePipeline(createInfo);
 
+	for (auto shader : m_shaders)
+	{
+		shader.DestroyShaderModule();
+	}
 }
 
 Pipeline::~Pipeline()
 {
-	for(uint32_t i = 0; i <= m_descSetLayouts.size(); ++i)
+	for(uint32_t i = 0; i < m_numDescSets; ++i) //TODO temp
 		vkDestroyDescriptorSetLayout(VulkanContext::GetDevice(), m_descSetLayouts[i], nullptr);
 	vkDestroyPipeline(VulkanContext::GetDevice(), m_pipeline, nullptr);
 	vkDestroyPipelineLayout(VulkanContext::GetDevice(), m_layout, nullptr);

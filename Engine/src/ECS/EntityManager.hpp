@@ -3,12 +3,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Core/Events/EventHandler.hpp"
+#include "Core/Scene/Scene.hpp"
+#include "ECS/ECSEngine.hpp"
 #include "ECS/Entity.hpp"
 #include "ECS/Types.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
-#include "ECS/EventHandler.hpp"
 #include "ECS/CoreEvents/EntityEvents.hpp"
-#include "ECS/ECSEngine.hpp"
 #include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/NameTag.hpp"
@@ -28,75 +29,72 @@ private:
 
 	std::unordered_map<EntityID, Entity*> m_handleTable;
 
-	ECSEngine* m_ecsEngine;
+	Scene m_scene;
 
 
 	uint64_t m_lastID;
 
 public:
-	EntityManager(ECSEngine* ecsEngine);
-	virtual ~EntityManager() override = default;;
+	EntityManager(Scene scene);
+	virtual ~EntityManager() override
+	{
+		for (auto [id, entity] : m_handleTable)
+		{
+			DestroyEntity(id);
+		}
+		RemoveDestroyedEntities();
+	}
 
 	template<typename... Args>
-	EntityID CreateEntity(Args... args)
+	Entity* CreateEntity(Args... args)
 	{
 		void* pMemory = this->CreateObject();
 
 		((Entity*)pMemory)->m_id = m_lastID++;
-		((Entity*)pMemory)->m_componentManager = m_ecsEngine->componentManager;
+		((Entity*)pMemory)->m_componentManager = m_scene.ecs->componentManager;
 
 		Entity* entity = new(pMemory) Entity(std::forward<Args>(args)...);
 
-		NameTag* tag = m_ecsEngine->componentManager->AddComponent<NameTag>(entity->GetEntityID());
+		NameTag* tag = entity->AddComponent<NameTag>();
 		tag->name = "Entity" + std::to_string(entity->GetEntityID());
 		
-		Transform* transform = m_ecsEngine->componentManager->AddComponent<Transform>(entity->GetEntityID());
+		Transform* transform = entity->AddComponent<Transform>();
 		
-		Relationship* comp = m_ecsEngine->componentManager->AddComponent<Relationship>(entity->GetEntityID());
+		Relationship* comp = entity->AddComponent<Relationship>();
 		comp->parent = INVALID_ENTITY_ID;
 		// TODO: maybe make entities have transform component by default too
 
 
 		EntityCreated e;
 		e.entity = *entity;
-		m_ecsEngine->eventHandler->Send<EntityCreated>(e);
+		m_scene.eventHandler->Send<EntityCreated>(e);
 
-		return entity->GetEntityID();
+		m_handleTable[entity->GetEntityID()] = entity;
+
+		return entity;
 	}
 
 	template<typename... Args>
-	EntityID CreateChild(EntityID parent, Args... args)
+	Entity* CreateChild(Entity* parent, Args... args)
 	{
-		EntityID entity = CreateEntity(std::forward<Args>(args)...);
+		Entity* entity = CreateEntity(std::forward<Args>(args)...);
 
-		Relationship* relationshipComp = m_ecsEngine->componentManager->GetComponent<Relationship>(entity);
+		Relationship* relationshipComp = entity->GetComponent<Relationship>();
 
-		Relationship* relationshipParent = m_ecsEngine->componentManager->GetComponent<Relationship>(parent);
+		Relationship* relationshipParent = parent->GetComponent<Relationship>();
 		relationshipParent->numChildren++;
 
-		relationshipComp->parent = parent;
+		relationshipComp->parent = parent->GetEntityID();
 
-		EntityID prev = m_ecsEngine->componentManager->GetComponent<Relationship>(parent)->firstChild;
-
-		if(prev == INVALID_ENTITY_ID)
-			relationshipParent->firstChild = entity;
-		else
+		EntityID prev = relationshipParent->firstChild;
+		relationshipParent->firstChild = entity->GetEntityID();
+		
+		if(prev != INVALID_ENTITY_ID)
 		{
-			while(true)
-			{
-				EntityID sibling = m_ecsEngine->componentManager->GetComponent<Relationship>(prev)->nextSibling;
-				if(sibling != INVALID_ENTITY_ID)
-				{
-					prev = sibling;
-					break;
-				}
-			}
-
-			relationshipComp->previousSibling = prev;
-			m_ecsEngine->componentManager->GetComponent<Relationship>(prev)->nextSibling = entity;
+			m_scene.ecs->componentManager->GetComponent<Relationship>(prev)->previousSibling = entity->GetEntityID();
+			relationshipComp->nextSibling = prev;
 		}
-
-		// TODO: maybe make entities have transform component by default too
+		
 
 		return entity;
 

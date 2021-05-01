@@ -20,6 +20,34 @@ public:
 	};
 	Buffer();
 	Buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+	~Buffer();
+	Buffer(const Buffer& other) = delete;
+
+	Buffer(Buffer&& other) noexcept
+		: m_type(other.m_type),
+		  m_buffer(other.m_buffer),
+		  m_memory(other.m_memory),
+		  m_size(other.m_size),
+		  m_nonCoherentAtomeSize(other.m_nonCoherentAtomeSize)
+	{
+		other.m_buffer = VK_NULL_HANDLE;
+	}
+
+	Buffer& operator=(const Buffer& other) = delete;
+
+	Buffer& operator=(Buffer&& other) noexcept
+	{
+		if (this == &other)
+			return *this;
+		m_type                 = other.m_type;
+		m_buffer               = other.m_buffer;
+		other.m_buffer = VK_NULL_HANDLE;
+		
+		m_memory               = other.m_memory;
+		m_size                 = other.m_size;
+		m_nonCoherentAtomeSize = other.m_nonCoherentAtomeSize;
+		return *this;
+	}
 
 	void Allocate(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
 	void Free();

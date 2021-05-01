@@ -4,12 +4,12 @@
 #include "ECS/ComponentManager.hpp"
 #include "TextureManager.hpp"
 
-MaterialSystem::MaterialSystem(ECSEngine* ecs, Renderer* renderer):
+MaterialSystem::MaterialSystem(Scene* scene, Renderer* renderer):
 	m_renderer(renderer),
-	m_ecs(ecs)
+	m_ecs(scene->ecs)
 {
-	ecs->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentAdded);
-	ecs->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentRemoved);
+	scene->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentAdded);
+	scene->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentRemoved);
 }
 
 MaterialSystem::~MaterialSystem()

@@ -1,13 +1,13 @@
 #pragma once
 
-#include <unordered_map>
 
 #include "ECS/Types.hpp"
 #include "ECS/IComponent.hpp"
 #include "Memory/MemoryChunkAllocator.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
-#include "ECS/EventHandler.hpp"
-#include "ECS/ECSEngine.hpp"
+#include "Core/Events/EventHandler.hpp"
+#include "Core/Scene/Scene.hpp"
+
 #include <unordered_map>
 #include <forward_list>
 #include <queue>
@@ -68,11 +68,11 @@ class ComponentManager
 	std::unordered_map<ComponentID, IComponent*> m_componentMap;
 	std::queue<IComponent*> m_componentsToRemove;
 
-	ECSEngine* m_ecsEngine;
+	Scene m_scene;
 	uint64_t m_lastID;
 
 public:
-	ComponentManager(ECSEngine* ecsEngine);
+	ComponentManager(Scene scene);
 	~ComponentManager();
 
 	void DestroyRemovedComponents();
@@ -101,7 +101,7 @@ public:
 		ComponentAdded<T> e;
 		e.entity = entityId;
 		e.component = (T*)component;
-		m_ecsEngine->eventHandler->Send<ComponentAdded<T>>(e);
+		m_scene.eventHandler->Send<ComponentAdded<T>>(e);
 
 		return (T*)component;
 	}
@@ -124,7 +124,7 @@ public:
 		ComponentRemoved<T> e;
 		e.entity = entityId;
 		e.component = (T*)component;
-		m_ecsEngine->eventHandler->Send<ComponentRemoved<T>>(e);
+		m_scene.eventHandler->Send<ComponentRemoved<T>>(e);
 
 	}
 	void RemoveAllComponents(const EntityID entityId);

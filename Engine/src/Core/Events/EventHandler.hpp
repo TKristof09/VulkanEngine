@@ -1,12 +1,11 @@
 #pragma once
 
-#include "ECS/Types.hpp"
 #include <unordered_map>
 #include <list>
 #include <memory>
 #include <vector>
 
-#include "ECS/EventDelegate.hpp"
+#include "Core/Events/EventDelegate.hpp"
 #include "Memory/LinearAllocator.hpp"
 
 #define EVENT_BUFFER_SIZE 4194304 // 4 MB
@@ -26,7 +25,7 @@ public:
 		if(memory != nullptr)
 			m_pendingEvents.push_back(new(memory)T(std::forward<Args>(args)...));
 		else
-			std::cerr << "Event buffer is full" << std::endl;
+			LOG_ERROR("Event buffer is full");
 	}
 
 

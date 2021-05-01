@@ -1,5 +1,6 @@
 #pragma once
-#include "ECS/Types.hpp"
+
+using EventTypeID = uint64_t;
 
 class IEvent
 {

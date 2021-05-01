@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ECS/IEvent.hpp"
+#include "Core/Events/IEvent.hpp"
 class IEventDelegate
 {
 public:
