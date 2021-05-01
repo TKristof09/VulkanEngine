@@ -35,7 +35,7 @@ private:
 
 public:
 	EntityManager(ECSEngine* ecsEngine);
-	~EntityManager();
+	virtual ~EntityManager() override = default;;
 
 	template<typename... Args>
 	EntityID CreateEntity(Args... args)
@@ -107,5 +107,16 @@ public:
 
 	Entity* GetEntity(EntityID id) { return m_handleTable[id]; }
 
+	std::vector<Entity*> GetAllEntities() const
+	{
+		std::vector<Entity*> result;
+		result.reserve(m_handleTable.size());
+		
+		for (auto& [id, entity] : m_handleTable)
+		{
+			result.push_back(entity);
+		}
 
+		return result;
+	}
 };

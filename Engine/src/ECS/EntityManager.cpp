@@ -7,13 +7,15 @@ EntityManager::EntityManager(ECSEngine* ecsEngine):
 	m_ecsEngine(ecsEngine),
 	m_lastID(0) {}
 
-EntityManager::~EntityManager()
-{}
 
 void EntityManager::DestroyEntity(EntityID id)
 {
 
-
+	EntityDestroyed e;
+	e.entity = *m_handleTable[id];
+	m_ecsEngine->eventHandler->Send<EntityDestroyed>(e);
+	m_ecsEngine->componentManager->RemoveAllComponents(id);
+	
 	if(m_numPendingDestroy < m_pendingDestroy.size())
 		m_pendingDestroy[m_numPendingDestroy++] = id;
 	else
@@ -30,12 +32,8 @@ void EntityManager::RemoveDestroyedEntities()
 		EntityID id = m_pendingDestroy[i];
 		Entity* entity = m_handleTable[id];
 
-		m_ecsEngine->componentManager->RemoveAllComponents(id);
-
-		this->FreeObject(entity);
-		EntityDestroyed e;
-		e.entity = *entity;
-		m_ecsEngine->eventHandler->Send<EntityDestroyed>(e);
+		FreeObject(entity);
 	}
+	
 	m_numPendingDestroy = 0;
 }

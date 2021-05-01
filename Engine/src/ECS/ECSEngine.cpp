@@ -23,6 +23,7 @@ ECSEngine::~ECSEngine()
 void ECSEngine::Update(double dt)
 {
 	eventHandler->DispatchEvents();
+	entityManager->RemoveDestroyedEntities();
 	componentManager->DestroyRemovedComponents();
 	systemManager->Update(dt);
 }

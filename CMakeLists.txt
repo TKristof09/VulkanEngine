@@ -21,6 +21,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 set(ASSIMP_BUILD_TESTS OFF)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/yaml-cpp)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/Engine)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Application)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Editor)

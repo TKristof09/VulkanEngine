@@ -134,7 +134,6 @@ public:
 
 	void FreeObject(void* object)
 	{
-		std::cout << "free " << std::endl;
 		uintptr_t p = (uintptr_t)object;
 
 		for (auto chunk : m_chunks)
