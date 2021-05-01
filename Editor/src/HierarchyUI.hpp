@@ -1,15 +1,15 @@
 #pragma once
-#include "ECS/CoreSystems/RendererSystem.hpp"
+#include "Rendering/Renderer.hpp"
 #include "ECS/Entity.hpp"
 #include "ECS/CoreEvents/EntityEvents.hpp"
 #include "Utils/DebugUIElements.hpp"
 
-typedef void (*PropertyDrawFunction)(IComponent*, DebugUIWindow*);
+typedef std::function<void(IComponent*, DebugUIWindow*)> PropertyDrawFunction; //void (*PropertyDrawFunction)(IComponent*, DebugUIWindow*);
 
 class HierarchyUI
 {
 public:
-	HierarchyUI(RendererSystem* rendererSystem);
+	HierarchyUI(ECSEngine* ecs, Renderer* renderer, MaterialSystem* materialSystem);
 
 
 	void OnEntityCreated(const EntityCreated* event);
@@ -22,7 +22,8 @@ public:
 private:
 	void EntitySelectedCallback(EntityID entity);
 
-	RendererSystem* m_rendererSystem;
+	Renderer* m_renderer;
+	ECSEngine* m_ecs;
 
 	std::unordered_map<EntityID, std::shared_ptr<TreeNode>> m_hierarchyTree;
 	DebugUIWindow m_hierarchyWindow;

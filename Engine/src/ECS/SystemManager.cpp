@@ -1,7 +1,6 @@
 #include "ECS/SystemManager.hpp"
 #include "ECS/ECSMemoryManager.hpp"
 #include "ECS/ECSEngine.hpp"
-#include "ECS/CoreSystems/RendererSystem.hpp"
 
 SystemManager::SystemManager(ECSEngine* ecsEngine):
 m_ecsEngine(ecsEngine)
@@ -21,8 +20,6 @@ void SystemManager::Update(double dt)
 {
 	for (auto& it : m_registry)
 	{
-		if(it.first == RendererSystem::STATIC_SYSTEM_TYPE_ID)
-			continue;
 		
 		ISystem* sys = it.second;
 		if(sys->m_enabled)
@@ -30,8 +27,6 @@ void SystemManager::Update(double dt)
 	}
 	for (auto& it : m_registry)
 	{
-		if(it.first == RendererSystem::STATIC_SYSTEM_TYPE_ID)
-			continue;
 		
 		ISystem* sys = it.second;
 		if(sys->m_enabled)
@@ -39,18 +34,11 @@ void SystemManager::Update(double dt)
 	}
 	for (auto& it : m_registry)
 	{
-		if(it.first == RendererSystem::STATIC_SYSTEM_TYPE_ID)
-			continue;
 		
 		ISystem* sys = it.second;
 		if(sys->m_enabled)
 			sys->PostUpdate(dt);
 	}
-
-	auto* renderer = static_cast<RendererSystem*>(m_registry[RendererSystem::STATIC_SYSTEM_TYPE_ID]);
-	renderer->PreUpdate(dt);
-	renderer->Update(dt);
-	renderer->PostUpdate(dt);
 }
 
 void SystemManager::FixedUpdate(double dt)

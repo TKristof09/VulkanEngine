@@ -2,20 +2,22 @@
 #include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/CoreComponents/NameTag.hpp"
 #include "ECS/EntityManager.hpp"
-#include "ECS/CoreSystems/MaterialSystem.hpp"
+#include "Rendering/MaterialSystem.hpp"
 #include "ECS/SystemManager.hpp"
 
 std::unordered_map<ComponentTypeID, PropertyDrawFunction> HierarchyUI::m_propertyDrawFunctions = {};
 
 
-HierarchyUI::HierarchyUI(RendererSystem* rendererSystem):
+HierarchyUI::HierarchyUI(ECSEngine* ecs, Renderer* renderer, MaterialSystem* materialSystem):
 	m_hierarchyWindow(DebugUIWindow("Hierarchy")),
-	m_propertiesWindow(DebugUIWindow("Properties"))
+	m_propertiesWindow(DebugUIWindow("Properties")),
+	m_ecs(ecs),
+	m_renderer(renderer)
 {
-	rendererSystem->AddDebugUIWindow(&m_hierarchyWindow);
-	rendererSystem->AddDebugUIWindow(&m_propertiesWindow);
+	renderer->AddDebugUIWindow(&m_hierarchyWindow);
+	renderer->AddDebugUIWindow(&m_propertiesWindow);
 
-	ECSEngine::GetInstance().eventHandler->Subscribe(this, &HierarchyUI::OnEntityCreated);
+	ecs->eventHandler->Subscribe(this, &HierarchyUI::OnEntityCreated);
 
 	HierarchyUI::RegisterPropertyDrawFunction(Transform::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
 	{
@@ -35,7 +37,7 @@ HierarchyUI::HierarchyUI(RendererSystem* rendererSystem):
 		window->AddElement(name);
 	});
 
-	HierarchyUI::RegisterPropertyDrawFunction(Material::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
+	HierarchyUI::RegisterPropertyDrawFunction(Material::STATIC_COMPONENT_TYPE_ID, [materialSystem](IComponent* component, DebugUIWindow* window)
 	{
 		window->AddElement(std::make_shared<Text>("Material:"));
 
@@ -49,10 +51,9 @@ HierarchyUI::HierarchyUI(RendererSystem* rendererSystem):
 		{
 			auto nameText = std::make_shared<Text>(const_cast<std::string&>(name));
 			auto pathText = std::make_shared<TextEdit>(&path);
-			pathText->RegisterCallback([comp](TextEdit* textEdit)
+			pathText->RegisterCallback([comp, materialSystem](TextEdit* textEdit)
 			{
-				MaterialSystem* matSys = ECSEngine::GetInstance().systemManager->GetSystem<MaterialSystem>();
-				matSys->UpdateMaterial(comp);
+				materialSystem->UpdateMaterial(comp);
 
 			});
 			table->AddElement(nameText, row, 1);
@@ -96,14 +97,14 @@ void HierarchyUI::OnEntityCreated(const EntityCreated* event)
 void HierarchyUI::EntitySelectedCallback(EntityID entity)
 {
 	m_selectedEntity = entity;
-	LOG_TRACE("Selected entity: {0}", ECSEngine::GetInstance().componentManager->GetComponent<NameTag>(m_selectedEntity)->name);
+	LOG_TRACE("Selected entity: {0}", m_ecs->componentManager->GetComponent<NameTag>(m_selectedEntity)->name);
 
 	m_propertiesWindow.Clear();
-	auto components = ECSEngine::GetInstance().componentManager->GetAllComponents(entity);
+	auto components = m_ecs->componentManager->GetAllComponents(entity);
 
-	m_propertyDrawFunctions[NameTag::STATIC_COMPONENT_TYPE_ID](ECSEngine::GetInstance().componentManager->GetComponent<NameTag>(entity), &m_propertiesWindow);
+	m_propertyDrawFunctions[NameTag::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<NameTag>(entity), &m_propertiesWindow);
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
-	m_propertyDrawFunctions[Transform::STATIC_COMPONENT_TYPE_ID](ECSEngine::GetInstance().componentManager->GetComponent<Transform>(entity), &m_propertiesWindow);
+	m_propertyDrawFunctions[Transform::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<Transform>(entity), &m_propertiesWindow);
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
 
 	for(auto& [typeID, component] : components)

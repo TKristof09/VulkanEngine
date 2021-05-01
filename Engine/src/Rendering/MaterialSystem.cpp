@@ -1,14 +1,15 @@
-#include "ECS/CoreSystems/MaterialSystem.hpp"
+#include "Rendering/MaterialSystem.hpp"
 #include "Pipeline.hpp"
-#include "ECS/CoreSystems/RendererSystem.hpp"
+#include "Rendering/Renderer.hpp"
 #include "ECS/ComponentManager.hpp"
 #include "TextureManager.hpp"
 
-MaterialSystem::MaterialSystem()
+MaterialSystem::MaterialSystem(ECSEngine* ecs, Renderer* renderer):
+	m_renderer(renderer),
+	m_ecs(ecs)
 {
-	Subscribe(&MaterialSystem::OnRendererSystemAdded);
-	Subscribe(&MaterialSystem::OnMaterialComponentAdded);
-	Subscribe(&MaterialSystem::OnMaterialComponentRemoved);
+	ecs->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentAdded);
+	ecs->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentRemoved);
 }
 
 MaterialSystem::~MaterialSystem()
@@ -19,10 +20,6 @@ MaterialSystem::~MaterialSystem()
 	}
 }
 
-void MaterialSystem::OnRendererSystemAdded(const SystemAdded<RendererSystem>* e)
-{
-	m_rendererSystem = e->ptr;
-}
 void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 {
 	Material* comp = e->component;
@@ -42,20 +39,20 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 		ci.useMultiSampling	= true;
 		ci.useColorBlend	= true;
 
-		pipeline = m_rendererSystem->AddPipeline(comp->shaderName, ci, comp->priority);
+		pipeline = m_renderer->AddPipeline(comp->shaderName, ci, comp->priority);
 
 		m_registry[comp->shaderName] = 1;
 	}
 	else
 	{
 		it->second += 1;
-		pipeline = m_rendererSystem->m_pipelinesRegistry[comp->shaderName];
+		pipeline = m_renderer->m_pipelinesRegistry[comp->shaderName];
 	}
 
 
-	m_ecsEngine->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
+	m_ecs->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
 	{
-		return *m_rendererSystem->m_pipelinesRegistry[lhs->shaderName] < *m_rendererSystem->m_pipelinesRegistry[rhs->shaderName];
+		return *m_renderer->m_pipelinesRegistry[lhs->shaderName] < *m_renderer->m_pipelinesRegistry[rhs->shaderName];
 	});
 
 	AllocateDescriptorSets(pipeline, e->component);
@@ -68,9 +65,9 @@ void MaterialSystem::OnMaterialComponentRemoved(const ComponentRemoved<Material>
 
 	m_registry[shaderName]--;
 
-	Pipeline* pipeline = m_rendererSystem->m_pipelinesRegistry[shaderName];
+	Pipeline* pipeline = m_renderer->m_pipelinesRegistry[shaderName];
 
-	uint32_t numSwapchainImages = m_rendererSystem->m_swapchainImages.size();
+	uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
 	for (int i = 0; i < numSwapchainImages; ++i)
 	{
@@ -80,7 +77,7 @@ void MaterialSystem::OnMaterialComponentRemoved(const ComponentRemoved<Material>
 			{
 				if(bufferInfo.set != materialDescriptorSetIndex)
 					continue;
-				m_rendererSystem->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
+				m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
 			}
 		}
 	}
@@ -92,7 +89,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 {
 
 
-	uint32_t numSwapchainImages = m_rendererSystem->m_swapchainImages.size();
+	uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
 	bool needToAllocate = m_registry[pipeline->m_name] % OBJECTS_PER_DESCRIPTOR_CHUNK == 1 || m_registry[pipeline->m_name] == 1;
 
@@ -102,21 +99,21 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		VkDescriptorSetAllocateInfo allocInfo = {};
 		std::vector<VkDescriptorSetLayout> layouts(numSwapchainImages);
 
-		uint32_t prevDescriptorSetCount = m_rendererSystem->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)].size();
+		uint32_t prevDescriptorSetCount = m_renderer->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)].size();
 		for (int i = 0; i < numSwapchainImages; ++i)
 		{
 			layouts[i] = pipeline->m_descSetLayouts[materialDescriptorSetIndex];
 
-			m_rendererSystem->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)].push_back(VK_NULL_HANDLE);
+			m_renderer->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)].push_back(VK_NULL_HANDLE);
 
 		}
 		allocInfo = {};
 		allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool		= m_rendererSystem->m_descriptorPool;
+		allocInfo.descriptorPool		= m_renderer->m_descriptorPool;
 		allocInfo.descriptorSetCount	= static_cast<uint32_t>(layouts.size());
 		allocInfo.pSetLayouts			= layouts.data();
 
-		VkDescriptorSet* newDescriptorArray = &m_rendererSystem->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)][prevDescriptorSetCount];
+		VkDescriptorSet* newDescriptorArray = &m_renderer->m_descriptorSets[pipeline->m_name + std::to_string(materialDescriptorSetIndex)][prevDescriptorSetCount];
 
 
 		VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, newDescriptorArray), "Failed to allocate descriptor sets");
@@ -147,20 +144,20 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 				if(bufferInfo.set != materialDescriptorSetIndex)
 					continue;
 
-				uint32_t ubSlot = m_rendererSystem->m_ubAllocators[pipeline->m_name + name + std::to_string(i)]->Allocate();
+				uint32_t ubSlot = m_renderer->m_ubAllocators[pipeline->m_name + name + std::to_string(i)]->Allocate();
 				comp->_ubSlot = ubSlot;
 
 				if(needToAllocate)
 				{
 					VkDescriptorBufferInfo bufferI = {};
-					bufferI.buffer	= m_rendererSystem->m_ubAllocators[pipeline->m_name + name + std::to_string(i)]->GetBuffer(ubSlot);
+					bufferI.buffer	= m_renderer->m_ubAllocators[pipeline->m_name + name + std::to_string(i)]->GetBuffer(ubSlot);
 					bufferI.offset	= 0;
 					bufferI.range	= bufferInfo.size;
 
 					VkWriteDescriptorSet writeDS = {};
 					writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 					uint32_t descriptorIndex = (ubSlot / OBJECTS_PER_DESCRIPTOR_CHUNK) * numSwapchainImages + i;
-					writeDS.dstSet			= m_rendererSystem->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
+					writeDS.dstSet			= m_renderer->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
 					writeDS.dstBinding		= bufferInfo.binding;
 					writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 					writeDS.descriptorCount	= 1;
@@ -220,7 +217,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 				writeDS.dstArrayElement = textureSlot % OBJECTS_PER_DESCRIPTOR_CHUNK;
 
 				uint32_t descriptorIndex = (textureSlot / OBJECTS_PER_DESCRIPTOR_CHUNK) * numSwapchainImages + i;
-				writeDS.dstSet			= m_rendererSystem->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
+				writeDS.dstSet			= m_renderer->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
 
 				writeDS.descriptorCount = 1;
 				writeDS.pImageInfo		= &imageInfo;
@@ -236,8 +233,8 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 
 void MaterialSystem::UpdateMaterial(Material* mat)
 {
-	Pipeline* pipeline = m_rendererSystem->m_pipelinesRegistry[mat->shaderName];
-	uint32_t numSwapchainImages = m_rendererSystem->m_swapchainImages.size();
+	Pipeline* pipeline = m_renderer->m_pipelinesRegistry[mat->shaderName];
+	uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
 	for (int i = 0; i < numSwapchainImages; ++i)
 	{
@@ -266,7 +263,7 @@ void MaterialSystem::UpdateMaterial(Material* mat)
 				writeDS.dstArrayElement = mat->_textureSlot % OBJECTS_PER_DESCRIPTOR_CHUNK;
 
 				uint32_t descriptorIndex = (mat->_textureSlot / OBJECTS_PER_DESCRIPTOR_CHUNK) * numSwapchainImages + i;
-				writeDS.dstSet			= m_rendererSystem->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
+				writeDS.dstSet			= m_renderer->m_descriptorSets[pipeline->m_name + "1"][descriptorIndex];
 
 				writeDS.descriptorCount = 1;
 				writeDS.pImageInfo		= &imageInfo;

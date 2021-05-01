@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ECS/System.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 
 #include <vulkan/vulkan.h>
@@ -14,7 +13,6 @@
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "Utils/DebugUI.hpp"
-#include "UniformBuffer.hpp"
 #include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Material.hpp"
@@ -23,26 +21,26 @@
 #include "Pipeline.hpp"
 #include "RenderPass.hpp"
 #include "Framebuffer.hpp"
+#include "ECS/ECSEngine.hpp"
 
 
-
-class RendererSystem : public System<RendererSystem>
+class Renderer
 {
 public:
-	RendererSystem(std::shared_ptr<Window> window);
-	~RendererSystem();
-	virtual	void Update(double dt) override;
+	Renderer(std::shared_ptr<Window> window, ECSEngine* ecs);
+	~Renderer();
+	void Render(double dt);
 
 	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 	
 	void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
 
-private:
-	friend class MaterialSystem;
-
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
 	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
+
+private:
+	friend class MaterialSystem;
 
 	// vulkan initialization stuff
 	void CreateDebugUI();
@@ -76,7 +74,8 @@ private:
 
 	void SetupDebugMessenger();
 
-
+	ECSEngine* m_ecs;
+	
 	std::shared_ptr<Window> m_window;
 
 	std::shared_ptr<DebugUI> m_debugUI;

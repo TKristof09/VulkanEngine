@@ -73,7 +73,7 @@ YAML::Emitter& operator<<(YAML::Emitter& out, const glm::vec4& v)
 	out << YAML::BeginSeq << v.x << v.y << v.z << v.w << YAML::EndSeq;
 	return out;
 }
-void SceneSerializer::Serialize(const std::string& path)
+void SceneSerializer::Serialize(const std::string& path, ECSEngine* ecs)
 {
 	YAML::Emitter out;
 
@@ -81,11 +81,11 @@ void SceneSerializer::Serialize(const std::string& path)
 	out << YAML::Key << "Scene" << YAML::Value << "Untitled";
 	out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 	
-	auto entities = ECSEngine::GetInstance().entityManager->GetAllEntities();
+	auto entities = ecs->entityManager->GetAllEntities();
 
 	for(auto entity : entities)
 	{
-		SerializeEntity(out, entity->GetEntityID());
+		SerializeEntity(out, entity->GetEntityID(), ecs);
 	}
 
 	out << YAML::EndSeq;
@@ -93,29 +93,33 @@ void SceneSerializer::Serialize(const std::string& path)
 
 }
 
-void SceneSerializer::Deserialize(const std::string& path)
+ECSEngine* SceneSerializer::Deserialize(const std::string& path)
 {
+	ECSEngine* ecs = new ECSEngine();
+	
 	YAML::Node data = YAML::LoadFile(path);
 	if(!data["Scene"])
-		return;
+		return nullptr;
 
 	std::string sceneName = data["Scene"].as<std::string>();
 	LOG_INFO("Deserializing scene: {0}, from file: {1}", sceneName, path);
 
 	auto entities = data["Entities"];
 	if(!entities)
-		return;
+		return nullptr;
 
 	
 	for(auto entity : entities)
-		DeserializeEntity(entity);
+		DeserializeEntity(entity, ecs);
+
+	return ecs;
 }
 
-void SceneSerializer::SerializeEntity(YAML::Emitter& out, EntityID entity)
+void SceneSerializer::SerializeEntity(YAML::Emitter& out, EntityID entity, ECSEngine* ecs)
 {
 	out << YAML::BeginMap; // Entity
 	
-	auto components = ECSEngine::GetInstance().componentManager->GetAllComponents(entity);
+	auto components = ecs->componentManager->GetAllComponents(entity);
 
 	for (auto& [typeID, component] : components)
 	{
@@ -131,9 +135,9 @@ void SceneSerializer::SerializeEntity(YAML::Emitter& out, EntityID entity)
 
 }
 
-void SceneSerializer::DeserializeEntity(const YAML::Node& entityNode)
+void SceneSerializer::DeserializeEntity(const YAML::Node& entityNode, ECSEngine* ecs)
 {
-	Entity* entity = ECSEngine::GetInstance().entityManager->GetEntity(ECSEngine::GetInstance().entityManager->CreateEntity()); // TODO
+	Entity* entity = ecs->entityManager->GetEntity(ecs->entityManager->CreateEntity()); // TODO
 
 	for(auto component : entityNode)
 	{

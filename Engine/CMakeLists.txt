@@ -12,13 +12,13 @@ find_package(glm REQUIRED)
 #find_package(Assimp REQUIRED)
 
 target_compile_definitions(Engine PUBLIC "$<$<CONFIG:DEBUG>:VDEBUG>")
-target_precompile_headers(Engine PUBLIC include/pch.hpp)
+target_precompile_headers(Engine PUBLIC src/pch.hpp)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	target_link_libraries(Engine PUBLIC ${Vulkan_LIBRARY} assimp glfw spdlog spirv-cross-core yaml-cpp)
-	target_include_directories(Engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include ${CMAKE_CURRENT_LIST_DIR}/external/include/imgui  ${CMAKE_CURRENT_LIST_DIR}/external/include ${Vulkan_INCLUDE_DIR} ${GLFW_INCLUDE_DIRS} ${GLM_INCLUDE_DIRS} )
+	target_include_directories(Engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src ${CMAKE_CURRENT_LIST_DIR}/external/include/imgui  ${CMAKE_CURRENT_LIST_DIR}/external/include ${Vulkan_INCLUDE_DIR} ${GLFW_INCLUDE_DIRS} ${GLM_INCLUDE_DIRS} )
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	target_link_libraries(Engine PUBLIC ${Vulkan_LIBRARY} assimp glfw spdlog spirv-cross-core yaml-cpp)
-	target_include_directories(Engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include ${CMAKE_CURRENT_LIST_DIR}/external/include/imgui  ${CMAKE_CURRENT_LIST_DIR}/external/include ${Vulkan_INCLUDE_DIR} ${GLFW_INCLUDE_DIRS} ${GLM_INCLUDE_DIRS} )
+	target_include_directories(Engine PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src ${CMAKE_CURRENT_LIST_DIR}/external/include/imgui  ${CMAKE_CURRENT_LIST_DIR}/external/include ${Vulkan_INCLUDE_DIR} ${GLFW_INCLUDE_DIRS} ${GLM_INCLUDE_DIRS} )
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")

@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "ECS/IEventDelegate.hpp"
+#include "ECS/EventDelegate.hpp"
 #include "Memory/LinearAllocator.hpp"
 
 #define EVENT_BUFFER_SIZE 4194304 // 4 MB

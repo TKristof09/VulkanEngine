@@ -20,10 +20,7 @@ int main()
 {
 	Application editor(1920, 1080, 60, "Editor");
 
-	ECSEngine* engine = &ECSEngine::GetInstance();
-	
-	HierarchyUI ui(engine->systemManager->GetSystem<RendererSystem>());
-
+#if 0
 
 	std::vector<Vertex> vertices = {
 		{{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
@@ -75,7 +72,7 @@ int main()
 	//mat2->shaderName = "base";
 	//TextureManager::LoadTexture("./textures/texture.jpg");
 	//mat2->textures["albedo"] = "./textures/texture.jpg";
-
+#endif
 	editor.Run();
 	
 	return 0;

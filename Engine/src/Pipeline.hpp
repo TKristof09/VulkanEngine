@@ -53,7 +53,7 @@ public:
 			return lhs.m_priority < rhs.m_priority;
 	}
 private:
-	friend class RendererSystem;
+	friend class Renderer;
 	friend class MaterialSystem;
 	friend class DescriptorSetAllocator;
 

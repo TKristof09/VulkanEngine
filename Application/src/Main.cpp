@@ -8,7 +8,6 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 #include "ECS/CoreSystems/TransformHierarchySystem.hpp"
-#include "ECS/CoreSystems/MaterialSystem.hpp"
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
 #include "TextureManager.hpp"
@@ -19,11 +18,12 @@ void run()
 }
 int main()
 {
-	Log::Init();
+#if 0
+  Log::Init();
     std::shared_ptr<Window> window = std::make_shared<Window>(1280, 720, "Vulkan Application");
     GLFWwindow* w = window->GetWindow();
     ECSEngine* engine = new ECSEngine();
-    engine->systemManager->AddSystem<RendererSystem>(window);
+    engine->systemManager->AddSystem<Renderer>(window);
 	engine->systemManager->AddSystem<MaterialSystem>();
 	engine->systemManager->AddSystem<TransformHierarchySystem>();
 	TextureManager::LoadTexture("./textures/error.jpg");
@@ -93,4 +93,6 @@ int main()
     glfwTerminate();
     //std::cin.get();
     return 0;
+#endif
+
 }

@@ -11,7 +11,7 @@ struct VulkanContext
 	static VkQueue GetGraphicsQueue() { return m_graphicsQueue; }
 	static VkCommandPool GetCommandPool() { return m_commandPool; }
 private:
-	friend class RendererSystem;
+	friend class Renderer;
 
 	static VkDevice m_device;
 	static VkPhysicalDevice m_gpu;

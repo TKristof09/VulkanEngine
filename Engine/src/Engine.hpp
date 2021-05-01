@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ECS/CoreSystems/RendererSystem.hpp"
 #include "Window.hpp"
 
 #include "ECS/Component.hpp"

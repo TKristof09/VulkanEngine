@@ -11,7 +11,7 @@ class Shader
 public:
     Shader(const std::string& filename, VkShaderStageFlagBits stage);
 private:
-	friend class RendererSystem;
+	friend class Renderer;
 	friend class Pipeline;
 	friend class MaterialSystem;
 

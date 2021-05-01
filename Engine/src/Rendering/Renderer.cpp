@@ -1,4 +1,4 @@
-#include "ECS/CoreSystems/RendererSystem.hpp"
+#include "Rendering/Renderer.hpp"
 #include <sstream>
 #include <optional>
 #include <set>
@@ -73,7 +73,8 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 
 
 
-RendererSystem::RendererSystem(std::shared_ptr<Window> window):
+Renderer::Renderer(std::shared_ptr<Window> window, ECSEngine* ecs):
+	m_ecs(ecs),
 	m_window(window),
 	m_instance(VulkanContext::m_instance),
 	m_gpu(VulkanContext::m_gpu),
@@ -81,9 +82,9 @@ RendererSystem::RendererSystem(std::shared_ptr<Window> window):
 	m_graphicsQueue(VulkanContext::m_graphicsQueue),
 	m_commandPool(VulkanContext::m_commandPool)
 {
-	Subscribe(&RendererSystem::OnMeshComponentAdded);
-	Subscribe(&RendererSystem::OnMeshComponentRemoved);
-	Subscribe(&RendererSystem::OnMaterialComponentAdded);
+	ecs->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
+	ecs->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
+	ecs->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
 
 	CreateInstance();
 	SetupDebugMessenger();
@@ -105,7 +106,7 @@ RendererSystem::RendererSystem(std::shared_ptr<Window> window):
 
 }
 
-RendererSystem::~RendererSystem()
+Renderer::~Renderer()
 {
 	vkDeviceWaitIdle(m_device);
 	for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
@@ -138,7 +139,7 @@ RendererSystem::~RendererSystem()
 
 }
 
-void RendererSystem::RecreateSwapchain()
+void Renderer::RecreateSwapchain()
 {
 	while(m_window->GetWidth() == 0 || m_window->GetHeight() == 0)
 		glfwWaitEvents();
@@ -177,7 +178,7 @@ void RendererSystem::RecreateSwapchain()
 
 }
 
-void RendererSystem::CleanupSwapchain()
+void Renderer::CleanupSwapchain()
 {
 	m_depthImage.reset();
 	m_colorImage.reset();
@@ -197,7 +198,7 @@ void RendererSystem::CleanupSwapchain()
 
 }
 
-void RendererSystem::CreateDebugUI()
+void Renderer::CreateDebugUI()
 {
 
 	DebugUIInitInfo initInfo = {};
@@ -218,7 +219,7 @@ void RendererSystem::CreateDebugUI()
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
 }
 
-void RendererSystem::CreateInstance()
+void Renderer::CreateInstance()
 {
 	VkApplicationInfo appinfo = {};
 	appinfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -275,7 +276,7 @@ void RendererSystem::CreateInstance()
 
 }
 
-void RendererSystem::SetupDebugMessenger()
+void Renderer::SetupDebugMessenger()
 {
 #ifndef VDEBUG
 	return;
@@ -289,7 +290,7 @@ void RendererSystem::SetupDebugMessenger()
 	CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_messenger);
 }
 
-void RendererSystem::CreateDevice()
+void Renderer::CreateDevice()
 {
 	/* uint32_t deviceCount = 0;
 	   vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
@@ -400,7 +401,7 @@ void RendererSystem::CreateDevice()
 
 }
 
-void RendererSystem::CreateSwapchain()
+void Renderer::CreateSwapchain()
 {
 	SwapchainSupportDetails details = QuerySwapChainSupport(m_gpu, m_surface);
 
@@ -460,7 +461,7 @@ void RendererSystem::CreateSwapchain()
 	LOG_TRACE("Created swapchain and images");
 }
 
-void RendererSystem::CreateRenderPass()
+void Renderer::CreateRenderPass()
 {
 
 	// Main render pass
@@ -553,7 +554,7 @@ void RendererSystem::CreateRenderPass()
 
 }
 
-Pipeline* RendererSystem::AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority)
+Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority)
 {
 	LOG_TRACE("Creating pipeline for {0}", name);
 
@@ -576,7 +577,7 @@ Pipeline* RendererSystem::AddPipeline(const std::string& name, PipelineCreateInf
 
 	return pipeline;
 }
-void RendererSystem::CreatePipeline()
+void Renderer::CreatePipeline()
 {
 
 	LOG_WARN("Creating base pipeline");
@@ -834,7 +835,7 @@ void RendererSystem::CreatePipeline()
 
 }
 
-void RendererSystem::CreateFramebuffers()
+void Renderer::CreateFramebuffers()
 {
 	for (size_t i = 0; i < m_swapchainImages.size(); i++)
 	{
@@ -866,7 +867,7 @@ void RendererSystem::CreateFramebuffers()
 
 
 
-void RendererSystem::CreateCommandPool()
+void Renderer::CreateCommandPool()
 {
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 	VkCommandPoolCreateInfo createInfo = {};
@@ -877,7 +878,7 @@ void RendererSystem::CreateCommandPool()
 	VK_CHECK(vkCreateCommandPool(m_device, &createInfo, nullptr, &m_commandPool), "Failed to create command pool");
 }
 
-void RendererSystem::CreateCommandBuffers()
+void Renderer::CreateCommandBuffers()
 {
 	for(size_t i = 0; i < m_swapchainImages.size(); i++)
 	{
@@ -885,7 +886,7 @@ void RendererSystem::CreateCommandBuffers()
 	}
 }
 
-void RendererSystem::CreateSyncObjects()
+void Renderer::CreateSyncObjects()
 {
 	m_imageAvailable.resize(MAX_FRAMES_IN_FLIGHT);
 	m_renderFinished.resize(MAX_FRAMES_IN_FLIGHT);
@@ -910,7 +911,7 @@ void RendererSystem::CreateSyncObjects()
 
 }
 
-void RendererSystem::CreateDescriptorPool()
+void Renderer::CreateDescriptorPool()
 {
 	std::array<VkDescriptorPoolSize, 3> poolSizes   = {};
 	poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -929,7 +930,7 @@ void RendererSystem::CreateDescriptorPool()
 	VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
 }
 
-void RendererSystem::CreateDescriptorSets()
+void Renderer::CreateDescriptorSets()
 {
 
 	Pipeline* pipeline = m_pipelinesRegistry["depth"];
@@ -1016,7 +1017,7 @@ void RendererSystem::CreateDescriptorSets()
 
 }
 
-void RendererSystem::CreateUniformBuffers()
+void Renderer::CreateUniformBuffers()
 {
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
@@ -1034,12 +1035,12 @@ void RendererSystem::CreateUniformBuffers()
 
 }
 
-void RendererSystem::CreateTexture()
+void Renderer::CreateTexture()
 {
 	//m_texture = std::make_unique<Texture>("./textures/chalet.jpg", m_gpu, m_device, m_commandPool, m_graphicsQueue);
 }
 
-void RendererSystem::CreateSampler()
+void Renderer::CreateSampler()
 {
 	VkSamplerCreateInfo ci = {};
 	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1063,7 +1064,7 @@ void RendererSystem::CreateSampler()
 
 }
 
-void RendererSystem::CreateColorResources()
+void Renderer::CreateColorResources()
 {
 	ImageCreateInfo ci;
 	ci.format = m_swapchainImageFormat;
@@ -1074,7 +1075,7 @@ void RendererSystem::CreateColorResources()
 	m_colorImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
-void RendererSystem::CreateDepthResources()
+void Renderer::CreateDepthResources()
 {
 	ImageCreateInfo ci;
 	ci.format = VK_FORMAT_D32_SFLOAT;
@@ -1085,7 +1086,7 @@ void RendererSystem::CreateDepthResources()
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
-void RendererSystem::Update(double dt)
+void Renderer::Render(double dt)
 {
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -1121,7 +1122,7 @@ void RendererSystem::Update(double dt)
 
 
 	int i = -1;
-	ComponentManager* cm = m_ecsEngine->componentManager;
+	ComponentManager* cm = m_ecs->componentManager;
 
 
 		// TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
@@ -1259,7 +1260,7 @@ void RendererSystem::Update(double dt)
 }
 
 
-void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
+void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 {
 	Mesh* mesh = e->component;
 	VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
@@ -1273,7 +1274,7 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
 
 
-	Renderable* comp = m_ecsEngine->componentManager->AddComponent<Renderable>(e->entity,
+	Renderable* comp = m_ecs->componentManager->AddComponent<Renderable>(e->entity,
 			Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
 			Buffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 			);
@@ -1289,7 +1290,7 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
 		id = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
-		m_ecsEngine->componentManager->GetComponent<Transform>(e->entity)->ub_id = id;
+		m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = id;
 
 	}
 
@@ -1333,19 +1334,19 @@ void RendererSystem::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	}
 }
 
-void RendererSystem::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
+void Renderer::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
 {
-	m_ecsEngine->componentManager->RemoveComponent<Renderable>(e->entity);
+	m_ecs->componentManager->RemoveComponent<Renderable>(e->entity);
 
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		uint32_t id = m_ecsEngine->componentManager->GetComponent<Transform>(e->entity)->ub_id;
+		uint32_t id = m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id;
 		m_ubAllocators["transforms" + std::to_string(i)]->Free(id);
 	}
 
 }
 
-void RendererSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
+void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 {
 	/*auto it = m_pipelinesRegistry.find(e->component->shaderName);
 	if(it == m_pipelinesRegistry.end())
@@ -1354,7 +1355,7 @@ void RendererSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 		assert(false);
 	}
 
-	m_ecsEngine->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
+	m_ecs->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
 			{
 				return *m_pipelinesRegistry[lhs->shaderName] < *m_pipelinesRegistry[rhs->shaderName];
 			});
