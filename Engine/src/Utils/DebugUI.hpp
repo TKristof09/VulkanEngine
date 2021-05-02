@@ -5,10 +5,10 @@
 #include <imgui/backends/imgui_impl_vulkan.h>
 #include <memory>
 
-#include "VulkanContext.hpp"
-#include "CommandBuffer.hpp"
-#include "Window.hpp"
-#include "RenderPass.hpp"
+#include "Rendering/VulkanContext.hpp"
+#include "Rendering/CommandBuffer.hpp"
+#include "Rendering/Window.hpp"
+#include "Rendering/RenderPass.hpp"
 #include "Utils/DebugUIElements.hpp"
 
 struct DebugUIInitInfo

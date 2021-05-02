@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Window.hpp"
+#include "Rendering/Window.hpp"
 
 #include "ECS/Component.hpp"
 #include "ECS/Entity.hpp"

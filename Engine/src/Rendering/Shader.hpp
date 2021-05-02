@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
-#include "UniformBuffer.hpp"
 #include "Texture.hpp"
 
 class Shader

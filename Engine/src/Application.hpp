@@ -1,5 +1,5 @@
 #pragma once
-#include "Window.hpp"
+#include "Rendering/Window.hpp"
 #include "Rendering/Renderer.hpp"
 #include "Core/Scene/Scene.hpp"
 

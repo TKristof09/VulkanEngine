@@ -6,8 +6,8 @@
 #include <array>
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
-#include "Buffer.hpp"
-#include "CommandBuffer.hpp"
+#include "Rendering/Buffer.hpp"
+#include "Rendering/CommandBuffer.hpp"
 
 struct Vertex
 {

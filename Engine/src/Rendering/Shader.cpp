@@ -4,7 +4,7 @@
 #include "VulkanContext.hpp"
 #include <filesystem>
 #include <vulkan/vulkan_core.h>
-#include <Pipeline.hpp>
+#include "Rendering/Pipeline.hpp"
 
 
 Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)

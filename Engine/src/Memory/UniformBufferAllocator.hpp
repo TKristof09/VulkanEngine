@@ -1,6 +1,6 @@
 #pragma once
-#include "Buffer.hpp"
-#include "VulkanContext.hpp"
+#include "Rendering/Buffer.hpp"
+#include "Rendering/VulkanContext.hpp"
 #include <queue>
 class UniformBufferAllocator
 {

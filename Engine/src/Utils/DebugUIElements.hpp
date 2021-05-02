@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <map>
 
+#include "ECS/CoreComponents/Transform.hpp"
 #include "FileDialog/FileDialog.hpp"
 #include "Utils/Color.hpp"
 
@@ -37,6 +38,7 @@ public:
 protected:
     std::string m_name;
     void* m_userPtr = nullptr;
+	bool m_hasTag;
 };
 
 class Text : public DebugUIElement
@@ -95,18 +97,26 @@ private:
 
 class DragFloat : public DebugUIElement
 {
-    DragFloat(float* value, const std::string& name = "Float", float min = 0, float max = 0) :
+public:
+    DragFloat(float* value, const std::string& name = "", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
-        m_name = name;
+    	m_hasTag = name != "";
+        m_name = name != "" ? name : std::to_string((int)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-
+        
+    	if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+    	
         ImGui::DragFloat(m_name.c_str(), m_value, 1, m_min, m_max);
 
         ImGui::PopID();
@@ -124,18 +134,25 @@ private:
 class DragVector2 : public DebugUIElement
 {
 public:
-    DragVector2(glm::vec2* value, const std::string& name = "Vector2", float min = 0, float max = 0) :
+    DragVector2(glm::vec2* value, const std::string& name = "", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
-        m_name = name;
+    	m_hasTag = name != "";
+        m_name = name != "" ? name : std::to_string((int)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-
+        
+    	if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+    	
         ImGui::DragFloat2("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -153,18 +170,25 @@ private:
 class DragVector3 : public DebugUIElement
 {
 public:
-    DragVector3(glm::vec3* value, const std::string& name = "Vector3", float min = 0, float max = 0) :
+    DragVector3(glm::vec3* value, const std::string& name = "", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
-        m_name = name;
+    	m_hasTag = name != "";
+        m_name = name != "" ? name : std::to_string((int)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-
+        
+    	if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+    	
         ImGui::DragFloat3("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -182,18 +206,26 @@ private:
 class DragVector4 : public DebugUIElement
 {
 public:
-    DragVector4(glm::vec4* value, const std::string& name = "Vector4", float min = 0, float max = 0) :
+    DragVector4(glm::vec4* value, const std::string& name = "", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
-        m_name = name;
+    	m_hasTag = name != "";
+    	m_name = name != "" ? name : std::to_string((int)this);
+
     };
 
     void Update() override
     {
         ImGui::PushID(this);
 
+    	if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+    	
         ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -211,20 +243,27 @@ private:
 class DragQuaternion : public DebugUIElement
 {
 public:
-    DragQuaternion(glm::quat* value, const std::string& name = "Quaternion", float min = 0, float max = 0) :
+    DragQuaternion(glm::quat* value, const std::string& name = "", float min = 0, float max = 0) :
         m_min(min),
         m_max(max),
         m_value(value)
     {
-        m_name = name;
+		m_hasTag = name != "";
+        m_name = name != "" ? name : std::to_string((int)this);
     };
 
     void Update() override
     {
 
         ImGui::PushID(this);
-
-        ImGui::DragFloat4(m_name.c_str(), reinterpret_cast<float*>(m_value), 1, m_min, m_max);
+    	
+        if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+    	
+        ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
     }
@@ -238,18 +277,70 @@ private:
     glm::quat* m_value;
 };
 
+class DragEulerAngles : public DebugUIElement
+{
+public:
+	DragEulerAngles(glm::quat* value, const std::string& name=""):
+		m_value(value),
+		m_euler(glm::eulerAngles(*value)),
+		m_cachedValue(*value)
+	{
+		m_hasTag = name != "";
+		m_name = name != "" ? name : std::to_string((int)this);
+	}
+
+	void Update() override
+    {
+		if(*m_value != m_cachedValue)
+		{
+			m_euler = glm::degrees(glm::eulerAngles(*m_value));
+			m_cachedValue = *m_value;
+        }
+        ImGui::PushID(this);
+
+        if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+        bool valueChanged = ImGui::DragFloat3("##", reinterpret_cast<float*>(&m_euler), 1, -360, 360);
+
+        ImGui::PopID();
+
+		if(valueChanged)
+		{
+			*m_value = glm::quat(glm::radians(m_euler));
+			m_cachedValue = *m_value;
+		}
+		
+    }
+
+	
+private:
+	glm::quat* m_value;
+	glm::vec3 m_euler;
+	glm::quat m_cachedValue;
+};
+
 class ColorEdit3 : public DebugUIElement
 {
 public:
-    ColorEdit3(Color* value, const std::string& name = "Color"):
+    ColorEdit3(Color* value, const std::string& name = ""):
         m_value(value)
     {
-        m_name = name;
+		m_hasTag = name != "";
+		m_name = name != "" ? name : std::to_string((int)this);
     }
     void Update() override
     {
         ImGui::PushID(this);
-
+        
+        if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+		
         ImGui::ColorEdit3(m_name.c_str(), &m_value->r);
 
         ImGui::PopID();
@@ -265,17 +356,23 @@ private:
 class ColorEdit4 : public DebugUIElement
 {
 public:
-    ColorEdit4(Color* value, const std::string& name = "Color"):
+    ColorEdit4(Color* value, const std::string& name = ""):
         m_value(value)
-
     {
-        m_name = name;
+		m_hasTag = name != "";
+		m_name = name != "" ? name : std::to_string((int)this);
     }
     void Update() override
     {
 
         ImGui::PushID(this);
-
+        
+        if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+		
         ImGui::ColorEdit4(m_name.c_str(), &m_value->r);
 
         ImGui::PopID();
@@ -292,15 +389,22 @@ private:
 class CheckBox : public DebugUIElement
 {
 public:
-    CheckBox(bool* value, const std::string& name = "CheckBox"):
+    CheckBox(bool* value, const std::string& name = ""):
         m_value(value)
     {
-        m_name = name;
+        m_hasTag = name != "";
+		m_name = name != "" ? name : std::to_string((int)this);
     }
     void Update() override
     {
         ImGui::PushID(this);
-
+        
+        if(m_hasTag)
+        {
+	        ImGui::Text(m_name.c_str());
+        	ImGui::SameLine();
+        }
+		
         ImGui::Checkbox(m_name.c_str(), m_value);
 
 
@@ -319,11 +423,12 @@ private:
 class Button : public DebugUIElement
 {
 public:
-    Button(const std::string& name = "Button", bool* value = nullptr):
+    Button(const std::string& name = "", bool* value = nullptr):
         m_value(value),
         m_callback(nullptr)
     {
-        m_name = name;
+        m_hasTag = name != "";
+		m_name = name != "" ? name : std::to_string((int)this);
     }
 
     void Update() override

@@ -10,7 +10,7 @@
 #include "ECS/CoreSystems/TransformHierarchySystem.hpp"
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
-#include "TextureManager.hpp"
+#include "Rendering/TextureManager.hpp"
 
 void run()
 {

@@ -6,7 +6,7 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/EntityManager.hpp"
-#include "TextureManager.hpp"
+#include "Rendering/TextureManager.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
 Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
@@ -39,9 +39,9 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 	node->mTransformation.Decompose(scale, rot, pos);
 
 	Transform transform;
-	transform.lPosition = ToGLM(pos);
-	transform.lRotation = ToGLM(rot);
-	transform.lScale    = ToGLM(scale);
+	transform.pos = ToGLM(pos);
+	transform.rot = ToGLM(rot);
+	transform.scale    = ToGLM(scale);
 
 	entity->AddComponent<Transform>(transform);
 

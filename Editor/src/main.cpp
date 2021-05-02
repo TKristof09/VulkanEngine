@@ -11,7 +11,7 @@
 
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
-#include "TextureManager.hpp"
+#include "Rendering/TextureManager.hpp"
 
 #include "HierarchyUI.hpp"
 #include "Application.hpp"
@@ -58,11 +58,11 @@ int main()
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
 	camera->AddComponent<Camera>(90.f, 1920/1080, 0.001f, 100.f);
-	t->lPosition = { 0.0f, 2.0f, 10.0f };
+	t->pos = { 0.0f, 2.0f, 10.0f };
 
 	Transform* t1 = e1->GetComponent<Transform>();
 	Transform* t2 = e2->GetComponent<Transform>();
-	t2->lPosition = { 3.0f, -2.0f, 0.0f };
+	t2->pos = { 3.0f, -2.0f, 0.0f };
 	//t1->lScale = {10.0f, 10.0f, 10.0f };
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
 
@@ -70,13 +70,13 @@ int main()
 	Material* mat1 = e1->AddComponent<Material>();
 	mat1->shaderName = "base";
 
-	auto texturePath = FileDialog::OpenFile("Images\0*.jpg;*.jpeg;*.png\0");
+	auto texturePath = "./textures/texture.jpg";
 	TextureManager::LoadTexture(texturePath);
 	mat1->textures["albedo"] = texturePath;
 
 	//Material* mat2 = engine->componentManager->AddComponent<Material>(id2);
 	//mat2->shaderName = "base";
-	//TextureManager::LoadTexture("./textures/texture.jpg");
+	//TextureManager::LoadTexture();
 	//mat2->textures["albedo"] = "./textures/texture.jpg";
 
 	editor.Run();

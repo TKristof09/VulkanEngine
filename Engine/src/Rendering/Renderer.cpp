@@ -1163,10 +1163,10 @@ void Renderer::Render(double dt)
 
 		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 		glm::mat4 proj = camera.GetProjection();
-		glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
-		glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
-		glm::mat4 vp = proj * rot * trf;
-
+		//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
+		//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
+		//glm::mat4 vp = proj * rot * trf;
+		glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
 		uint32_t vpOffset = 0;
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
 		m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &vp);
@@ -1180,8 +1180,8 @@ void Renderer::Render(double dt)
 			if(renderable == nullptr)
 				continue;
 
-			transform->lRotation = glm::rotate(transform->lRotation,  i * 0.01f * glm::radians(90.0f), glm::vec3(0,0,1));
-			glm::mat4 model =  glm::translate(transform->wPosition) * glm::toMat4(transform->wRotation) * glm::scale(transform->wScale);
+			transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
+			glm::mat4 model =  transform->GetTransform();
 
 			renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
 			renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);

@@ -9,8 +9,8 @@
 #include <string.h>
 #include <memory>
 
-#include "CommandBuffer.hpp"
-#include "Buffer.hpp"
+#include "Rendering/CommandBuffer.hpp"
+#include "Rendering/Buffer.hpp"
 
 struct Vertex {
 	glm::vec3 pos;
