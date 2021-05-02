@@ -1,6 +1,6 @@
 #include "HierarchyUI.hpp"
 
-#include "TextureManager.hpp"
+#include "Rendering/TextureManager.hpp"
 #include "ECS/CoreComponents/Relationship.hpp"
 #include "ECS/CoreComponents/NameTag.hpp"
 #include "ECS/EntityManager.hpp"
@@ -26,11 +26,10 @@ HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* mater
 		window->AddElement(std::make_shared<Text>("Transform:"));
 
 		Transform* comp = (Transform*)component;
-		auto position = std::make_shared<DragVector3>(&comp->lPosition, "Position");
-		auto scale = std::make_shared<DragVector3>(&comp->lScale, "Scale");
+		window->AddElement(std::make_shared<DragVector3>(&comp->pos, "Position"));
+		window->AddElement(std::make_shared<DragEulerAngles>(&comp->rot, "Rotation"));
+		window->AddElement(std::make_shared<DragVector3>(&comp->scale, "Scale", 0.0f, FLT_MAX));
 
-		window->AddElement(position);
-		window->AddElement(scale);
 	});
 
 	HierarchyUI::RegisterPropertyDrawFunction(NameTag::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
@@ -107,7 +106,7 @@ void HierarchyUI::EntitySelectedCallback(EntityID entity)
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
 	m_propertyDrawFunctions[Transform::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<Transform>(entity), &m_propertiesWindow);
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
-
+	
 	for(auto& [typeID, component] : components)
 	{
 		if(typeID == Transform::STATIC_COMPONENT_TYPE_ID || typeID == NameTag::STATIC_COMPONENT_TYPE_ID)

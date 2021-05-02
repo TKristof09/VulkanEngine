@@ -16,21 +16,10 @@ void TransformHierarchySystem::Update(double dt)
 		EntityID parentID = it->parent;
 		Transform* transform = m_scene.ecs->componentManager->GetComponent<Transform>(it->GetOwner());
 
-		if(parentID == INVALID_ENTITY_ID)
+		if(parentID != INVALID_ENTITY_ID)
 		{
-
-			transform->wPosition = transform->lPosition;
-			transform->wRotation = transform->lRotation;
-			transform->wScale = transform->lScale;
-		}
-		else
-		{
-			Transform* parentTransform = m_scene.ecs->componentManager->GetComponent<Transform>(parentID);
-
-
-			transform->wPosition = parentTransform->wPosition + parentTransform->wRotation * transform->lPosition;
-			transform->wRotation = parentTransform->wRotation * transform->lRotation;
-			transform->wScale = parentTransform->wScale * transform->lScale;
+			Transform* parent = m_scene.ecs->componentManager->GetComponent<Transform>(parentID);
+			transform->parentTransform = parent->GetTransform();
 		}
 	}
 }
