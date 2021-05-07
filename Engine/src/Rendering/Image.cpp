@@ -23,7 +23,7 @@ m_layout(createInfo.layout)
 
 	if(createInfo.image == VK_NULL_HANDLE)
 	{
-		if(createInfo.msaaSamples == VK_SAMPLE_COUNT_1_BIT)
+		if(createInfo.msaaSamples == VK_SAMPLE_COUNT_1_BIT && createInfo.useMips)
 			m_mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(m_width, m_height)))) + 1;
 		else
 			m_mipLevels = 1;
@@ -39,7 +39,7 @@ m_layout(createInfo.layout)
 		ci.format                       = createInfo.format;
 		ci.tiling                       = createInfo.tiling;
 		ci.initialLayout                = createInfo.layout;
-		ci.usage                        = createInfo.usage; // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+		ci.usage                        = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : createInfo.usage; // TODO possibly add transfer dst bit to not need to specify it when constructing an image
 		ci.sharingMode                  = VK_SHARING_MODE_EXCLUSIVE;
 		ci.samples                      = createInfo.msaaSamples; // msaa
 		ci.flags                        = 0;
@@ -55,8 +55,7 @@ m_layout(createInfo.layout)
 		VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate memory for texture");
 		vkBindImageMemory(VulkanContext::GetDevice(), m_image, m_memory, 0);
 	}
-
-
+	
     VkImageViewCreateInfo viewCreateInfo    = {};
     viewCreateInfo.sType                    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewCreateInfo.image                    = m_image;
@@ -70,7 +69,7 @@ m_layout(createInfo.layout)
 
     viewCreateInfo.subresourceRange.aspectMask      = createInfo.aspectFlags;
     viewCreateInfo.subresourceRange.baseMipLevel    = 0;
-    viewCreateInfo.subresourceRange.levelCount      = 1;
+    viewCreateInfo.subresourceRange.levelCount      = VK_REMAINING_MIP_LEVELS;
     viewCreateInfo.subresourceRange.baseArrayLayer  = 0;
     viewCreateInfo.subresourceRange.layerCount      = 1;
 
@@ -184,7 +183,11 @@ void Image::TransitionLayout(VkImageLayout newLayout)
 
 void Image::GenerateMipmaps(VkImageLayout newLayout)
 {
-
+    if(m_mipLevels == 1)
+    {
+    	LOG_WARN("Image::GenerateMipmaps called on an image that wasn't created with useMips");
+    	return;
+    }
 	// Check if image format supports linear blitting
     VkFormatProperties formatProperties;
     vkGetPhysicalDeviceFormatProperties(VulkanContext::GetPhysicalDevice(), m_format, &formatProperties);
@@ -207,14 +210,27 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
     barrier.subresourceRange.layerCount     = 1;
     barrier.subresourceRange.levelCount     = 1;
 
+	// Transition first mip level to transfer source for read during blit
+	barrier.subresourceRange.baseMipLevel   = 0;
+    barrier.oldLayout                       = m_layout;
+    barrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+
+    vkCmdPipelineBarrier(commandBuffer.GetCommandBuffer(),
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                         0, nullptr,
+                         0, nullptr,
+                         1, &barrier);
+	
     int32_t mipWidth    = m_width;
     int32_t mipHeight   = m_height;
 
     for(uint32_t i = 1; i < m_mipLevels; i++)
     {
-        barrier.subresourceRange.baseMipLevel   = i - 1;
+        barrier.subresourceRange.baseMipLevel   = i;
         barrier.oldLayout                       = m_layout;
-        barrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
 
@@ -244,31 +260,37 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
                        m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                        1, &blit, VK_FILTER_LINEAR);
 
-        // transition the mip images to new layout
-        barrier.oldLayout       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        barrier.newLayout       = newLayout;
-        barrier.srcAccessMask   = VK_ACCESS_TRANSFER_READ_BIT;
-        barrier.dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
+    	barrier.subresourceRange.baseMipLevel   = i;
+        barrier.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+
         vkCmdPipelineBarrier(commandBuffer.GetCommandBuffer(),
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
                              0, nullptr,
                              0, nullptr,
                              1, &barrier);
+       
 
         if (mipWidth > 1) mipWidth /= 2;
         if (mipHeight > 1) mipHeight /= 2;
     }
-    // transform the last level
-    barrier.subresourceRange.baseMipLevel = m_mipLevels - 1;
-    barrier.oldLayout       = m_layout;
+
+	// transition the mip images to new layout
+	barrier.subresourceRange.baseMipLevel   = 0;
+	barrier.subresourceRange.levelCount     = m_mipLevels;
+    barrier.oldLayout       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     barrier.newLayout       = newLayout;
     barrier.srcAccessMask   = VK_ACCESS_TRANSFER_READ_BIT;
     barrier.dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
     vkCmdPipelineBarrier(commandBuffer.GetCommandBuffer(),
-                            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-                            0, nullptr,
-                            0, nullptr,
-                            1, &barrier);
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                         0, nullptr,
+                         0, nullptr,
+                         1, &barrier);
 
     commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
+
+	m_layout = newLayout;
 }

@@ -12,7 +12,8 @@ struct ImageCreateInfo
 
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-
+	bool useMips = true;
+	
 	VkImage image = VK_NULL_HANDLE; // just to make it so that we can create an Image from the swapchain images
 };
 class Image {
