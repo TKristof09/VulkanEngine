@@ -13,17 +13,23 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	{
 
 		std::filesystem::path path;
-		
-		if(stage & VK_SHADER_STAGE_VERTEX_BIT)
+
+		switch(stage)
 		{
+		case VK_SHADER_STAGE_VERTEX_BIT:
 			path = "./shaders/" + filename + ".vert.spv";
-			m_stage = VK_SHADER_STAGE_VERTEX_BIT;
-		}
-		else if(stage & VK_SHADER_STAGE_FRAGMENT_BIT)
-		{
+			break;
+		case VK_SHADER_STAGE_FRAGMENT_BIT:
 			path = "./shaders/" + (filename + ".frag.spv");
-			m_stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+			break;
+		case VK_SHADER_STAGE_COMPUTE_BIT:
+			path = "./shaders/" + (filename + ".comp.spv");
+			break;
+		default:
+			LOG_ERROR("Shader stage not supported for shader: {0}", filename);
+			break;
 		}
+		m_stage = stage;
 
 		LOG_TRACE("");
 		LOG_TRACE("Loading {0}", path);
@@ -31,7 +37,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		// TODO make this work better(not hardcodign file path)
 		std::ifstream file(path.c_str(), std::ios::ate | std::ios::binary);
 		if(!file.is_open())
-			throw std::runtime_error(("Failed to open file " + filename).c_str());
+			throw std::runtime_error("Failed to open file " + filename);
 
 		std::vector<char> temp;
 		size_t filesize = (size_t)file.tellg();
@@ -154,7 +160,43 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	if(maxName != "")
 		m_textures[maxName].isLast = true;
 
+	LOG_TRACE("-----STORAGE IMAGES-----");
+	for(auto& resource : resources.storage_images)
+	{
+		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
+	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
+		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
+		uint32_t arraySize = type.array[0];
 
+		if(type.array.size() > 1)
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+
+		if(type.array.size() == 0)
+		{
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			arraySize = 1;
+		}
+
+		if(arraySize == 0)
+		{
+			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", resource.name);
+			arraySize = 1;
+		}
+
+		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
+			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", resource.name, OBJECTS_PER_DESCRIPTOR_CHUNK);
+
+		LOG_TRACE(resource.name);
+		LOG_TRACE("   Set: {0}", set);
+		LOG_TRACE("   Binding: {0}", binding);
+		LOG_TRACE("   Count: {0}", arraySize);
+		m_storageImages[resource.name] = TextureInfo();
+		
+		m_storageImages[resource.name].stage = stage;
+		m_storageImages[resource.name].binding = binding;
+		m_storageImages[resource.name].set = set;
+		m_storageImages[resource.name].count = arraySize;
+	}
 
 	VkShaderModuleCreateInfo createInfo = {};
 	createInfo.sType					= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

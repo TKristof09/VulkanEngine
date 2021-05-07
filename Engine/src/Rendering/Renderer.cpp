@@ -583,171 +583,15 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 }
 void Renderer::CreatePipeline()
 {
-
-	LOG_WARN("Creating base pipeline");
-#if 0
-	// Main graphics pipeline
-	PipelineCreateInfo mainPipeline;
-	mainPipeline.allowDerivatives	= true;
-	mainPipeline.depthCompareOp		= VK_COMPARE_OP_LESS_OR_EQUAL; //maybe it should even be EQUAL since we only need to render the fragments that are in the depth image
-	mainPipeline.depthWriteEnable	= false;
-	mainPipeline.useDepth			= true;
-	mainPipeline.msaaSamples		= m_msaaSamples;
-	mainPipeline.renderPass			= &m_renderPass;
-	mainPipeline.subpass			= 0;
-	mainPipeline.stages				= (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-	mainPipeline.useMultiSampling	= true;
-	mainPipeline.useColorBlend		= true;
-	mainPipeline.useVariableDescriptorCount	= true;
-	mainPipeline.viewportExtent		= m_swapchainExtent;
-
-	auto mainIter = m_pipelines.emplace("base", mainPipeline, 1);
-	m_pipelinesRegistry["base"] = const_cast<Pipeline*>(&(*mainIter));
-
-	auto vsModule = m_pipelines["base"].shaders[0].GetShaderModule();
-	auto fsModule = m_pipelines["base"].shaders[1].GetShaderModule();
-
-	VkPipelineShaderStageCreateInfo vertex = {};
-	vertex.sType	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	vertex.stage    = VK_SHADER_STAGE_VERTEX_BIT;
-	vertex.pName    = "main";
-	vertex.module   = vsModule;
-
-	VkPipelineShaderStageCreateInfo fragment = {};
-	fragment.sType	  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	fragment.stage    = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragment.pName    = "main";
-	fragment.module   = fsModule;
-
-	VkPipelineShaderStageCreateInfo stages[] = {vertex, fragment};
-
-	auto bindingDescription = GetVertexBindingDescription();
-	auto attribDescriptions = GetVertexAttributeDescriptions();
-
-	VkPipelineVertexInputStateCreateInfo vertexInput = {}; // vertex info hardcoded for the moment
-	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInput.vertexBindingDescriptionCount = 1;
-	vertexInput.pVertexBindingDescriptions = &bindingDescription;
-	vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribDescriptions.size());
-	vertexInput.pVertexAttributeDescriptions = attribDescriptions.data();
-
-	VkPipelineInputAssemblyStateCreateInfo assembly = {};
-	assembly.sType	  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-	VkViewport viewport = {};
-	viewport.width  = (float)m_swapchainExtent.width;
-	viewport.height = -(float)m_swapchainExtent.height;
-	viewport.x = 0.f;
-	viewport.y = (float)m_swapchainExtent.height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-
-	VkRect2D scissor = {};
-	scissor.offset = {0, 0};
-	scissor.extent = m_swapchainExtent;
-
-	VkPipelineViewportStateCreateInfo viewportState = {};
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.pViewports = &viewport;
-	viewportState.viewportCount = 1;
-	viewportState.pScissors = &scissor;
-	viewportState.scissorCount = 1;
-
-	VkPipelineRasterizationStateCreateInfo rasterizer = {};
-	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterizer.depthClampEnable = false;
-	rasterizer.rasterizerDiscardEnable = false;
-	rasterizer.lineWidth = 1.0f;
-	rasterizer.depthBiasEnable = false;
-
-	VkPipelineMultisampleStateCreateInfo multisample = {};
-	multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisample.sampleShadingEnable = VK_TRUE;
-	multisample.minSampleShading = 0.2f; // closer to 1 is smoother
-	multisample.rasterizationSamples = m_msaaSamples;
-
-
-	VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_A_BIT | VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
-	colorBlendAttachment.blendEnable = true;
-	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-	VkPipelineColorBlendStateCreateInfo colorBlend = {};
-	colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlend.logicOpEnable = false;
-	colorBlend.attachmentCount = 1;
-	colorBlend.pAttachments = &colorBlendAttachment;
-
-	VkPipelineDepthStencilStateCreateInfo depthStencil  = {};
-	depthStencil.sType  = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthStencil.depthTestEnable = VK_TRUE;
-	depthStencil.depthWriteEnable = VK_FALSE; // false since we have a depth prepass
-	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; // not OP_LESS because we have a depth prepass
-	depthStencil.depthBoundsTestEnable = VK_TRUE;
-	depthStencil.minDepthBounds = 0.0f;
-	depthStencil.maxDepthBounds = 1.0f;
-	depthStencil.stencilTestEnable = VK_FALSE;
-
-
-	VkPushConstantRange pcRange = {};
-	pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	pcRange.offset = 0;
-	pcRange.size = sizeof(glm::mat4); // we will only send the view projection matrix for now
-
-	/*VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_LINE_WIDTH };
-	  VkPipelineDynamicStateCreateInfo dynamicState = {};
-	  dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	  dynamicState.dynamicStateCount = 2;
-	  dynamicState.pDynamicStates = dynamicStates;
-	  */
-	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
-	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutCreateInfo.setLayoutCount = 1;
-	layoutCreateInfo.pSetLayouts = &m_pipelines["base"].descriptorSetLayout;
-	layoutCreateInfo.pushConstantRangeCount = 1;
-	layoutCreateInfo.pPushConstantRanges = &pcRange;
-
-	VK_CHECK(vkCreatePipelineLayout(m_device, &layoutCreateInfo, nullptr, &m_pipelineLayout), "Failed to create pipeline layout");
-
-
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.stageCount = 2;
-	pipelineInfo.pStages = stages;
-	pipelineInfo.pVertexInputState = &vertexInput;
-	pipelineInfo.pInputAssemblyState = &assembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &rasterizer;
-	pipelineInfo.pMultisampleState = &multisample;
-	pipelineInfo.pColorBlendState = &colorBlend;
-	pipelineInfo.pDepthStencilState = &depthStencil;
-	pipelineInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT; // for the prepass pipeline
-	//pipelineInfo.pDynamicState = &dynamicState;
-
-	pipelineInfo.layout = m_pipelineLayout;
-	pipelineInfo.renderPass = m_renderPass;
-	pipelineInfo.subpass = 0;
-
-	VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline), "Failed to create graphics pipeline");
-
-	m_pipelines["base"].layout = m_pipelineLayout;
-	m_pipelines["base"].pipeline = m_graphicsPipeline;
-	m_pipelines["base"].isMaterial = true;
-#endif
-
+	// Compute
+	PipelineCreateInfo compute = {};
+	compute.type = PipelineType::COMPUTE;
+	m_compute = new Pipeline("test", compute);
+	
 	// Depth prepass pipeline
-
 	LOG_WARN("Creating depth pipeline");
 	PipelineCreateInfo depthPipeline;
+	depthPipeline.type				= PipelineType::GRAPHICS;
 	//depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
 	depthPipeline.depthCompareOp	= VK_COMPARE_OP_LESS;
 	depthPipeline.depthWriteEnable	= true;
@@ -778,64 +622,6 @@ void Renderer::CreatePipeline()
 			}
 		}
 	}
-
-
-#if 0
-	auto prePassVsModule = m_pipelines["depth"].shaders[0].GetShaderModule();
-	VkPipelineShaderStageCreateInfo prePassVertex = {};
-	prePassVertex.sType	   = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	prePassVertex.stage    = VK_SHADER_STAGE_VERTEX_BIT;
-	prePassVertex.pName    = "main";
-	prePassVertex.module   = prePassVsModule;
-
-	VkPipelineShaderStageCreateInfo prePassStages[] = {prePassVertex};
-
-	VkPipelineLayoutCreateInfo prePassLayoutCreateInfo = {};
-	prePassLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	prePassLayoutCreateInfo.setLayoutCount = 1;
-	prePassLayoutCreateInfo.pSetLayouts = &m_pipelines["depth"].descriptorSetLayout;
-	prePassLayoutCreateInfo.pushConstantRangeCount = 1;
-	prePassLayoutCreateInfo.pPushConstantRanges = &pcRange;
-
-	VK_CHECK(vkCreatePipelineLayout(m_device, &prePassLayoutCreateInfo, nullptr, &m_prePassPipelineLayout), "Failed to create pre pass pipeline layout");
-
-	VkPipelineDepthStencilStateCreateInfo prePassDepthStencil  = {};
-	prePassDepthStencil.sType  = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	prePassDepthStencil.depthTestEnable = VK_TRUE;
-	prePassDepthStencil.depthWriteEnable = VK_TRUE;
-	prePassDepthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-	prePassDepthStencil.depthBoundsTestEnable = VK_TRUE;
-	prePassDepthStencil.minDepthBounds = 0.0f;
-	prePassDepthStencil.maxDepthBounds = 1.0f;
-	prePassDepthStencil.stencilTestEnable = VK_FALSE;
-
-
-	VkGraphicsPipelineCreateInfo prePassPipelineInfo = {};
-	prePassPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	prePassPipelineInfo.stageCount = 1;
-	prePassPipelineInfo.pStages = prePassStages;
-	prePassPipelineInfo.pVertexInputState = &vertexInput;
-	prePassPipelineInfo.pInputAssemblyState = &assembly;
-	prePassPipelineInfo.pViewportState = &viewportState;
-	prePassPipelineInfo.pRasterizationState = &rasterizer;
-	prePassPipelineInfo.pMultisampleState = &multisample;
-	prePassPipelineInfo.pColorBlendState = nullptr;
-	prePassPipelineInfo.pDepthStencilState = &prePassDepthStencil;
-	prePassPipelineInfo.basePipelineHandle = m_graphicsPipeline;
-	prePassPipelineInfo.basePipelineIndex = -1;
-	prePassPipelineInfo.flags = VK_PIPELINE_CREATE_DERIVATIVE_BIT; //make it a child of the main pipeline
-
-	prePassPipelineInfo.layout = m_prePassPipelineLayout;
-	prePassPipelineInfo.renderPass = m_prePassRenderPass;
-	prePassPipelineInfo.subpass = 0;
-
-	VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &prePassPipelineInfo, nullptr, &m_prePassPipeline), "Failed to create pre pass pipeline");
-
-	m_pipelines["depth"].layout = m_prePassPipelineLayout;
-	m_pipelines["depth"].pipeline = m_prePassPipeline;
-
-#endif
-
 
 }
 
@@ -917,13 +703,15 @@ void Renderer::CreateSyncObjects()
 
 void Renderer::CreateDescriptorPool()
 {
-	std::array<VkDescriptorPoolSize, 3> poolSizes   = {};
+	std::array<VkDescriptorPoolSize, 4> poolSizes   = {};
 	poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
 	poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[1].descriptorCount                    = 10000; // +1 for imgui
 	poolSizes[2].type								= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	poolSizes[2].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
+	poolSizes[3].type								= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	poolSizes[3].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
 
 
 	VkDescriptorPoolCreateInfo createInfo   = {};
@@ -1013,6 +801,63 @@ void Renderer::CreateDescriptorSets()
 		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		writeDS.descriptorCount	= 1;
 		writeDS.pBufferInfo		= &bufferI;
+
+		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+
+	}
+
+
+	
+	VkDescriptorSetAllocateInfo callocInfo = {};
+	std::vector<VkDescriptorSetLayout> clayouts(m_swapchainImages.size());
+
+	for (int i = 0; i < m_swapchainImages.size(); ++i)
+	{
+		clayouts[i] = m_compute->m_descSetLayouts[0];
+	}
+	callocInfo.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	callocInfo.descriptorPool		= m_descriptorPool;
+	callocInfo.descriptorSetCount	= static_cast<uint32_t>(clayouts.size());
+	callocInfo.pSetLayouts			= clayouts.data();
+	m_computeDesc.resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
+
+	TextureManager::LoadTexture("./textures/texture.jpg");
+	Texture& texture = TextureManager::GetTexture("./textures/texture.jpg");
+	VkSamplerCreateInfo ci = {};
+	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	ci.magFilter = VK_FILTER_LINEAR;
+	ci.minFilter = VK_FILTER_LINEAR;
+	ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	ci.anisotropyEnable = VK_TRUE;
+	ci.maxAnisotropy = 16;
+	ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
+	ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
+	ci.compareOp     = VK_COMPARE_OP_ALWAYS;
+	ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	ci.mipLodBias = 0.0f;
+	ci.minLod = 0.0f;
+	ci.maxLod = texture.GetMipLevels();
+
+	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create texture sampler");
+	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+	{
+		
+		VkDescriptorImageInfo imageInfo = {};
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		imageInfo.imageView = texture.GetImageView();
+		imageInfo.sampler = m_computeSampler;
+
+		VkWriteDescriptorSet writeDS = {};
+		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS.dstSet			= m_computeDesc[i];
+		writeDS.dstBinding		= 0;
+		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writeDS.descriptorCount	= 1;
+		writeDS.pImageInfo		= &imageInfo;
 
 		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
 
@@ -1139,9 +984,34 @@ void Renderer::Render(double dt)
 
 	RenderPass* lastRenderPass = nullptr;
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	Texture& texture = TextureManager::GetTexture("./textures/texture.jpg");
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
+	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 0, nullptr);
+	vkCmdDispatch(cb, texture.GetWidth(), texture.GetHeight(), 1);
 
 
+	VkImageMemoryBarrier imageMemoryBarrier = {};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	// We won't be changing the layout of the image
+	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+	imageMemoryBarrier.image = texture.GetImage();
+	imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	imageMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	vkCmdPipelineBarrier(
+		cb,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageMemoryBarrier);
+	
 	for(auto& pipeline : m_pipelines)
 	{
 		//if(pipeline.m_name == "depth") continue;

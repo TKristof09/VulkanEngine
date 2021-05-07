@@ -40,6 +40,10 @@ public:
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
 
 private:
+	Pipeline* m_compute;
+	std::vector<VkDescriptorSet> m_computeDesc;
+	VkSampler m_computeSampler;
+	
 	friend class MaterialSystem;
 
 	// vulkan initialization stuff

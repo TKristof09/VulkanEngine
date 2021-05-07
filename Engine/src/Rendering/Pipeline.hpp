@@ -7,18 +7,32 @@
 const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 32;
 class Pipeline;
 
+enum class PipelineType{
+	GRAPHICS,
+	COMPUTE
+};
+
 struct PipelineCreateInfo
 {
-	bool useColorBlend		= false;
-	bool useMultiSampling	= false;
-	bool useDepth			= false;
-	bool useStencil			= false;
-	bool useTesselation		= false; // not supported yet
-	bool useDynamicState	= false; // not supported yet
+	PipelineType type;
+	
+	bool allowDerivatives = false;
+	Pipeline* parent = nullptr;
 
-	VkShaderStageFlags stages;
+	RenderPass* renderPass = nullptr;
+	uint32_t subpass = 0;
 
-	VkExtent2D viewportExtent;
+
+	// for GRAPHICS
+	bool useColorBlend    = false;
+	bool useMultiSampling = false;
+	bool useDepth         = false;
+	bool useStencil       = false;
+	bool useTesselation   = false; // not supported yet
+	bool useDynamicState  = false; // not supported yet
+
+	VkShaderStageFlags stages = 0;
+	VkExtent2D viewportExtent = {};
 
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -26,13 +40,7 @@ struct PipelineCreateInfo
 	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
 
 	bool depthClampEnable = false;
-
-	bool allowDerivatives = false;
-	Pipeline* parent = nullptr;
-
-	RenderPass* renderPass = nullptr;
-	uint32_t subpass = 0;
-
+	
 	bool isGlobal = false;
 };
 
@@ -58,7 +66,8 @@ private:
 	friend class DescriptorSetAllocator;
 
 	void CreateDescriptorSetLayout();
-	void CreatePipeline(PipelineCreateInfo createInfo);
+	void CreateGraphicsPipeline(PipelineCreateInfo createInfo);
+	void CreateComputePipeline(PipelineCreateInfo createInfo);
 	void AllocateDescriptors();
 
 	uint16_t				m_priority;

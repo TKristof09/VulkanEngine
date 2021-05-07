@@ -7,6 +7,7 @@ endif()
 file(GLOB_RECURSE GLSL_SOURCE_FILES
     "*.frag"
     "*.vert"
+    "*.comp"
     )
 
 foreach(GLSL ${GLSL_SOURCE_FILES})

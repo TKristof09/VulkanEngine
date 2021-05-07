@@ -4,21 +4,30 @@
 Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
 	:m_name(shaderName), m_priority(priority), m_isGlobal(createInfo.isGlobal), m_renderPass(createInfo.renderPass)
 {
-
-	if(createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
+	if (createInfo.type == PipelineType::GRAPHICS)
 	{
-		Shader vs(m_name, VK_SHADER_STAGE_VERTEX_BIT);
-		m_shaders.push_back(vs);
+		if(createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
+		{
+			Shader vs(m_name, VK_SHADER_STAGE_VERTEX_BIT);
+			m_shaders.push_back(vs);
+		}
+		if(createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+		{
+			Shader fs(m_name, VK_SHADER_STAGE_FRAGMENT_BIT);
+			m_shaders.push_back(fs);
+		}
 	}
-	if(createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+	else
 	{
-		Shader fs(m_name, VK_SHADER_STAGE_FRAGMENT_BIT);
-		m_shaders.push_back(fs);
+		m_shaders.emplace_back(Shader(m_name, VK_SHADER_STAGE_COMPUTE_BIT));
 	}
-
 
 	CreateDescriptorSetLayout();
-	CreatePipeline(createInfo);
+
+	if(createInfo.type == PipelineType::GRAPHICS)
+		CreateGraphicsPipeline(createInfo);
+	else
+		CreateComputePipeline(createInfo);
 
 	for (auto shader : m_shaders)
 	{
@@ -35,7 +44,7 @@ Pipeline::~Pipeline()
 
 }
 
-void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
+void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
 {
 
 	std::vector<VkPipelineShaderStageCreateInfo> stagesCI;
@@ -191,6 +200,54 @@ void Pipeline::CreatePipeline(PipelineCreateInfo createInfo)
 
 }
 
+void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
+{
+	VkPipelineShaderStageCreateInfo shaderCi = {};
+	shaderCi.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderCi.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+	shaderCi.pName = "main";
+	shaderCi.module = m_shaders[0].GetShaderModule(); // only 1 compute shader allowed
+
+	// ##################### PUSH CONSTANTS #####################
+	
+
+	VkPushConstantRange pcRange = {};
+	uint32_t numPushConstants = 0;
+	if(m_shaders[0].HasPushConstants())
+	{
+		numPushConstants++;
+		pcRange.stageFlags = m_shaders[0].m_stage;
+		pcRange.offset     = m_shaders[0].m_pushConstants.offset;
+		pcRange.size       = m_shaders[0].m_pushConstants.size;
+	}
+
+	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
+	layoutCreateInfo.sType					= VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutCreateInfo.setLayoutCount			= m_numDescSets; //m_descSetLayouts.size(); temporary see TODO in hpp
+	layoutCreateInfo.pSetLayouts			= m_descSetLayouts.data();
+	layoutCreateInfo.pushConstantRangeCount = numPushConstants;
+	layoutCreateInfo.pPushConstantRanges	= &pcRange;
+
+	VK_CHECK(vkCreatePipelineLayout(VulkanContext::GetDevice(), &layoutCreateInfo, nullptr, &m_layout), "Failed to create compute pipeline layout");
+
+	
+	VkComputePipelineCreateInfo pipelineCI = {};
+	pipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	pipelineCI.layout = m_layout;
+	pipelineCI.stage = shaderCi;
+	if(createInfo.allowDerivatives)
+		pipelineCI.flags				= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
+	else if(createInfo.parent)
+	{
+		pipelineCI.flags				= VK_PIPELINE_CREATE_DERIVATIVE_BIT;
+		pipelineCI.basePipelineHandle = createInfo.parent->m_pipeline;
+		pipelineCI.basePipelineIndex  = -1;
+	}
+
+	VK_CHECK(vkCreateComputePipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &m_pipeline), "Failed to create compute pipeline");
+	
+}
+
 void Pipeline::CreateDescriptorSetLayout()
 {
 	std::array<std::vector<VkDescriptorSetLayoutBinding>, 4> bindings;
@@ -219,6 +276,19 @@ void Pipeline::CreateDescriptorSetLayout()
 			samplerLayoutBinding.pImmutableSamplers            	= nullptr;
 
 			bindings[textureInfo.set].push_back(samplerLayoutBinding);
+
+		}
+		for(auto& [name, imageInfo] : shader.m_storageImages)
+		{
+			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
+			samplerLayoutBinding.binding                       = imageInfo.binding;
+			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+
+			samplerLayoutBinding.descriptorCount				= imageInfo.count;
+			samplerLayoutBinding.stageFlags                    	= imageInfo.stage;
+			samplerLayoutBinding.pImmutableSamplers            	= nullptr;
+
+			bindings[imageInfo.set].push_back(samplerLayoutBinding);
 
 		}
 	}

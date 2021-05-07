@@ -3,6 +3,8 @@
 #include "Framebuffer.hpp"
 #include <memory>
 
+enum class PipelineType;
+
 enum class RenderPassAttachmentType
 {
 	COLOR, DEPTH, RESOLVE, INPUT
@@ -10,6 +12,8 @@ enum class RenderPassAttachmentType
 struct RenderPassAttachment
 {
 	uint32_t subpass = 0;
+	PipelineType pipelineType;
+	
 	bool preserve = false;
 
 	RenderPassAttachmentType type;

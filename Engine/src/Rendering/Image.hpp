@@ -77,6 +77,10 @@ public:
     {
         return m_imageView;
     }
+	const VkImage& GetImage() const
+    {
+        return m_image;
+    }
     const VkFormat& GetFormat() const
     {
         return m_format;
@@ -84,6 +88,14 @@ public:
     const uint32_t GetMipLevels() const
     {
         return m_mipLevels;
+    }
+	const uint32_t GetWidth() const
+    {
+	    return m_width;
+    }
+	const uint32_t GetHeight() const
+    {
+	    return m_height;
     }
 
 protected:

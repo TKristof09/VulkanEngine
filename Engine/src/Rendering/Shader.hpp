@@ -57,5 +57,6 @@ private:
 	PushConstantsInfo m_pushConstants;
 	std::unordered_map<std::string, UniformBufferInfo> m_uniformBuffers;
 	std::unordered_map<std::string, TextureInfo> m_textures;
+	std::unordered_map<std::string, TextureInfo> m_storageImages;
 
 };
