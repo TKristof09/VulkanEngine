@@ -43,6 +43,7 @@ private:
 	Pipeline* m_compute;
 	std::vector<VkDescriptorSet> m_computeDesc;
 	VkSampler m_computeSampler;
+	std::unique_ptr<Buffer> m_computeBuffer;
 
 
 	std::unique_ptr<Pipeline> m_depthPipeline;

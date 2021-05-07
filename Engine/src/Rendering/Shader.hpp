@@ -14,6 +14,8 @@ private:
 	friend class Pipeline;
 	friend class MaterialSystem;
 
+	void Reflect(const std::string& filename, std::vector<uint32_t>* data);
+	
 	VkShaderModule GetShaderModule() const { return m_shaderModule; };
 	bool HasPushConstants() const { return m_pushConstants.used; };
 
@@ -26,7 +28,7 @@ private:
 		}
 	}
 
-	struct UniformBufferInfo
+	struct BufferInfo
 	{
 		VkPipelineStageFlags stage;
 
@@ -55,8 +57,9 @@ private:
 	VkShaderModule m_shaderModule;
 	VkShaderStageFlagBits m_stage;
 	PushConstantsInfo m_pushConstants;
-	std::unordered_map<std::string, UniformBufferInfo> m_uniformBuffers;
+	std::unordered_map<std::string, BufferInfo> m_uniformBuffers;
 	std::unordered_map<std::string, TextureInfo> m_textures;
 	std::unordered_map<std::string, TextureInfo> m_storageImages;
+	std::unordered_map<std::string, BufferInfo> m_storageBuffers;
 
 };

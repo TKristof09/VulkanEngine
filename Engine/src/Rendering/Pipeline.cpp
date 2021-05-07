@@ -278,6 +278,18 @@ void Pipeline::CreateDescriptorSetLayout()
 			bindings[textureInfo.set].push_back(samplerLayoutBinding);
 
 		}
+		for(auto& [name, bufferInfo] : shader.m_storageBuffers)
+		{
+			VkDescriptorSetLayoutBinding layoutBinding  = {};
+			layoutBinding.binding                       = bufferInfo.binding;
+			layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			layoutBinding.descriptorCount               = bufferInfo.count;
+			layoutBinding.stageFlags                    = bufferInfo.stage;
+			layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
+
+			bindings[bufferInfo.set].push_back(layoutBinding);
+
+		}
 		for(auto& [name, imageInfo] : shader.m_storageImages)
 		{
 			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};

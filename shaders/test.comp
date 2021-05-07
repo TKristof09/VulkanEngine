@@ -3,11 +3,21 @@
 layout (local_size_x = 16, local_size_y = 16) in;
 layout (set=0, binding = 0, rgba8) uniform image2D resultImage;
 
+struct DirectionalLight
+{
+	vec4 color;
+	float intensity;
+};
+
+layout(std430, binding = 1, set = 0) buffer TestBuffer
+{
+    DirectionalLight arr[];
+};
 
 void main()
 {	
 
-	vec4 res = vec4(gl_LocalInvocationID.xyz / 32.0, 1.0);
+	vec4 res = arr[1].color;
 
 	imageStore(resultImage, ivec2(gl_GlobalInvocationID.xy), res);
 }

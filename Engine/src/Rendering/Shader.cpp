@@ -50,7 +50,19 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		data = std::vector<uint32_t> (reinterpret_cast<uint32_t*>(temp.data()), reinterpret_cast<uint32_t*>(temp.data())+filesize/sizeof(uint32_t));
 	}
 
-	spirv_cross::Compiler comp(data);
+	Reflect(filename, &data);
+
+	VkShaderModuleCreateInfo createInfo = {};
+	createInfo.sType					= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize                 = data.size() * sizeof(uint32_t);
+    createInfo.pCode                    = data.data();
+
+    VK_CHECK(vkCreateShaderModule(VulkanContext::GetDevice(), &createInfo, nullptr, &m_shaderModule), "Failed to create shader module");
+}
+
+void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data)
+{
+	spirv_cross::Compiler comp(*data);
 
 	spirv_cross::ShaderResources resources = comp.get_shader_resources();
 	LOG_TRACE("-----PUSH CONSTANTS-----");
@@ -97,9 +109,9 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
 
-		m_uniformBuffers[resource.name] = UniformBufferInfo();
+		m_uniformBuffers[resource.name] = BufferInfo();
 
-		m_uniformBuffers[resource.name].stage = stage;
+		m_uniformBuffers[resource.name].stage = m_stage;
 		m_uniformBuffers[resource.name].size = size;
 		m_uniformBuffers[resource.name].location = location;
 		m_uniformBuffers[resource.name].binding = binding;
@@ -143,7 +155,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		LOG_TRACE("   Count: {0}", arraySize);
 		m_textures[resource.name] = TextureInfo();
 
-		m_textures[resource.name].stage = stage;
+		m_textures[resource.name].stage = m_stage;
 		m_textures[resource.name].binding = binding;
 		m_textures[resource.name].set = set;
 		m_textures[resource.name].count = arraySize;
@@ -160,6 +172,42 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 	if(maxName != "")
 		m_textures[maxName].isLast = true;
 
+	LOG_TRACE("-----STORAGE BUFFERS-----");
+	for(auto& resource : resources.storage_buffers)
+	{
+		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
+		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
+	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
+		uint32_t location = comp.get_decoration(resource.id, spv::DecorationLocation);
+		uint32_t size = comp.get_declared_struct_size(type);
+		uint32_t arraySize = type.array[0];
+
+		if(type.array.size() > 1)
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+
+		if(type.array.size() == 0)
+		{
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			arraySize = 1;
+		}
+
+		LOG_TRACE(resource.name);
+		LOG_TRACE("   Size: {0}", size);
+		LOG_TRACE("   Location: {0}", location);
+		LOG_TRACE("   Set: {0}", set);
+		LOG_TRACE("   Binding: {0}", binding);
+		LOG_TRACE("   Count: {0}", arraySize);
+
+		m_storageBuffers[resource.name] = BufferInfo();
+
+		m_storageBuffers[resource.name].stage = m_stage;
+		m_storageBuffers[resource.name].size = size;
+		m_storageBuffers[resource.name].location = location;
+		m_storageBuffers[resource.name].binding = binding;
+		m_storageBuffers[resource.name].set = set;
+		m_storageBuffers[resource.name].count = arraySize;
+	}
+	
 	LOG_TRACE("-----STORAGE IMAGES-----");
 	for(auto& resource : resources.storage_images)
 	{
@@ -192,17 +240,10 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		LOG_TRACE("   Count: {0}", arraySize);
 		m_storageImages[resource.name] = TextureInfo();
 		
-		m_storageImages[resource.name].stage = stage;
+		m_storageImages[resource.name].stage = m_stage;
 		m_storageImages[resource.name].binding = binding;
 		m_storageImages[resource.name].set = set;
 		m_storageImages[resource.name].count = arraySize;
 	}
-
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType					= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize                 = data.size() * sizeof(uint32_t);
-    createInfo.pCode                    = data.data();
-
-    VK_CHECK(vkCreateShaderModule(VulkanContext::GetDevice(), &createInfo, nullptr, &m_shaderModule), "Failed to create shader module");
 }
 

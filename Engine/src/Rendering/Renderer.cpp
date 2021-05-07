@@ -20,6 +20,7 @@
 #include "TextureManager.hpp"
 #include "ECS/ComponentManager.hpp"
 #include "ECS/CoreComponents/Camera.hpp"
+#include "ECS/CoreComponents/Lights.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
@@ -132,9 +133,10 @@ Renderer::~Renderer()
 	m_ubAllocators.clear();
 	m_pipelines.clear();
 	m_depthPipeline.reset();
+	m_computeBuffer.reset();
 	delete m_compute;
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
-		
+	
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 	
 	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
@@ -712,7 +714,7 @@ void Renderer::CreateSyncObjects()
 
 void Renderer::CreateDescriptorPool()
 {
-	std::array<VkDescriptorPoolSize, 4> poolSizes   = {};
+	std::array<VkDescriptorPoolSize, 5> poolSizes   = {};
 	poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
 	poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -721,6 +723,8 @@ void Renderer::CreateDescriptorPool()
 	poolSizes[2].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
 	poolSizes[3].type								= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 	poolSizes[3].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
+	poolSizes[4].type								= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	poolSizes[4].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
 
 
 	VkDescriptorPoolCreateInfo createInfo   = {};
@@ -852,6 +856,15 @@ void Renderer::CreateDescriptorSets()
 	ci.maxLod = texture.GetMipLevels();
 
 	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create texture sampler");
+
+	std::vector<_DirectionalLight> data(3);
+	data[0] = {Color::Red, 5.5f};
+	data[1] = {Color::Green, 42.0f};
+	data[2] = {Color::Black, 2.13f};
+
+	m_computeBuffer = std::make_unique<Buffer>(data.size() * sizeof(_DirectionalLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	m_computeBuffer->Fill(data.data(), data.size() * sizeof(_DirectionalLight));
+	
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
 		
@@ -868,7 +881,21 @@ void Renderer::CreateDescriptorSets()
 		writeDS.descriptorCount	= 1;
 		writeDS.pImageInfo		= &imageInfo;
 
-		vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+		VkDescriptorBufferInfo bi = {};
+		bi.offset = 0;
+		bi.range = VK_WHOLE_SIZE;
+		bi.buffer = m_computeBuffer->GetVkBuffer();
+		
+		VkWriteDescriptorSet writeDS2 = {};
+		writeDS2.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS2.dstSet			= m_computeDesc[i];
+		writeDS2.dstBinding		= 1;
+		writeDS2.descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDS2.descriptorCount	= 1;
+		writeDS2.pBufferInfo		= &bi;
+
+		VkWriteDescriptorSet writes[] = { writeDS, writeDS2};
+		vkUpdateDescriptorSets(m_device, 2, writes, 0, nullptr);
 
 	}
 
