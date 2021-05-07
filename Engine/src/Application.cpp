@@ -32,8 +32,6 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
 	m_materialSystem = new MaterialSystem(&m_currentScene, m_renderer);
 	
 	m_currentScene.ecs->systemManager->AddSystem<TransformHierarchySystem>();
-
-	TextureManager::LoadTexture("./textures/error.jpg");
 }
 
 Application::~Application()

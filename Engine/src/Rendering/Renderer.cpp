@@ -83,6 +83,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	m_graphicsQueue(VulkanContext::m_graphicsQueue),
 	m_commandPool(VulkanContext::m_commandPool)
 {
+	
+	
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
@@ -95,6 +97,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	CreateRenderPass();
 	CreatePipeline();
 	CreateCommandPool();
+
+	TextureManager::LoadTexture("./textures/error.jpg");
+	
 	CreateColorResources();
 	CreateDepthResources();
 	CreateFramebuffers();
@@ -126,7 +131,10 @@ Renderer::~Renderer()
 
 	m_ubAllocators.clear();
 	m_pipelines.clear();
-	
+	m_depthPipeline.reset();
+	delete m_compute;
+	vkDestroySampler(m_device, m_computeSampler, nullptr);
+		
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 	
 	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
@@ -606,19 +614,20 @@ void Renderer::CreatePipeline()
 
 	depthPipeline.isGlobal			= true;
 
-	auto depthIter = m_pipelines.emplace("depth", depthPipeline, 0);
+	m_depthPipeline = std::make_unique<Pipeline>("depth", depthPipeline, 0);
+	//auto depthIter = m_pipelines.emplace("depth", depthPipeline, 0);
 
-	Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
-	m_pipelinesRegistry["depth"] = pipeline;
+	//Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
+	//m_pipelinesRegistry["depth"] = pipeline;
 
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		for(auto& shader : pipeline->m_shaders)
+		for(auto& shader : m_depthPipeline->m_shaders)
 		{
 			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
 			{
-				if(m_ubAllocators[pipeline->m_name + name + std::to_string(i)] == nullptr)
-					m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
+				if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
+					m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
 			}
 		}
 	}
@@ -725,25 +734,25 @@ void Renderer::CreateDescriptorPool()
 void Renderer::CreateDescriptorSets()
 {
 
-	Pipeline* pipeline = m_pipelinesRegistry["depth"];
+	
 	VkDescriptorSetAllocateInfo allocInfo = {};
 	std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size());
 
 	for (int i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		layouts[i] = pipeline->m_descSetLayouts[1];
+		layouts[i] = m_depthPipeline->m_descSetLayouts[1];
 	}
 	allocInfo = {};
 	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool		= m_descriptorPool;
 	allocInfo.descriptorSetCount	= static_cast<uint32_t>(layouts.size());
 	allocInfo.pSetLayouts			= layouts.data();
-	m_descriptorSets[pipeline->m_name + std::to_string(1)].resize(m_swapchainImages.size());
-	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, m_descriptorSets[pipeline->m_name + std::to_string(1)].data()), "Failed to allocate descriptor sets");
+	m_descriptorSets[m_depthPipeline->m_name + std::to_string(1)].resize(m_swapchainImages.size());
+	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, m_descriptorSets[m_depthPipeline->m_name + std::to_string(1)].data()), "Failed to allocate descriptor sets");
 
 
 
-	std::vector<VkDescriptorSetLayout> cameraLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[0]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+	std::vector<VkDescriptorSetLayout> cameraLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[0]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
 	allocInfo = {};
 	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -758,7 +767,7 @@ void Renderer::CreateDescriptorSets()
 
 
 	// TODO TEMP
-	std::vector<VkDescriptorSetLayout> depthLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[1]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+	std::vector<VkDescriptorSetLayout> depthLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[1]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
 	allocInfo = {};
 	allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -822,8 +831,8 @@ void Renderer::CreateDescriptorSets()
 	m_computeDesc.resize(m_swapchainImages.size());
 	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
 
-	TextureManager::LoadTexture("./textures/texture.jpg");
-	Texture& texture = TextureManager::GetTexture("./textures/texture.jpg");
+	TextureManager::LoadTexture("./textures/uv_checker.png", VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
 	VkSamplerCreateInfo ci = {};
 	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	ci.magFilter = VK_FILTER_LINEAR;
@@ -921,6 +930,7 @@ void Renderer::CreateColorResources()
 	ci.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 	ci.msaaSamples = m_msaaSamples;
+	ci.useMips = false;
 	m_colorImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
@@ -932,11 +942,13 @@ void Renderer::CreateDepthResources()
 	ci.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	ci.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	ci.msaaSamples = m_msaaSamples;
+	ci.useMips = false;
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
 void Renderer::Render(double dt)
 {
+	TextureManager::GetTexture("./textures/uv_checker.png").GenerateMipmaps(VK_IMAGE_LAYOUT_GENERAL);
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
@@ -985,11 +997,11 @@ void Renderer::Render(double dt)
 	RenderPass* lastRenderPass = nullptr;
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	Texture& texture = TextureManager::GetTexture("./textures/texture.jpg");
+	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
 	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 0, nullptr);
-	vkCmdDispatch(cb, texture.GetWidth(), texture.GetHeight(), 1);
+	vkCmdDispatch(cb, texture.GetWidth() / 16 + 1, texture.GetHeight() / 16 + 1, 1);
 
 
 	VkImageMemoryBarrier imageMemoryBarrier = {};
@@ -1011,6 +1023,38 @@ void Renderer::Render(double dt)
 		0, nullptr,
 		0, nullptr,
 		1, &imageMemoryBarrier);
+
+	glm::mat4 proj = camera.GetProjection();
+	//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
+	//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
+	//glm::mat4 vp = proj * rot * trf;
+	glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+	uint32_t vpOffset = 0;
+	m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &vp);
+
+	auto prepassBegin = m_depthPipeline->m_renderPass->GetBeginInfo(imageIndex);
+	vkCmdBeginRenderPass(cb, &prepassBegin, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
+
+	// This should be fine since all our shaders use set 0 for the camera so the descriptor doesn't get unbound by pipeline switches
+	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
+
+	for(auto* renderable : cm->GetComponents<Renderable>())
+	{
+		auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+		glm::mat4 model =  transform->GetTransform();
+		renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+		renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+
+		uint32_t offset;
+		uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+		m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[bufferIndex + imageIndex], 1, &offset);
+		vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+	}
+	vkCmdEndRenderPass(cb);
+
 	
 	for(auto& pipeline : m_pipelines)
 	{
@@ -1032,16 +1076,9 @@ void Renderer::Render(double dt)
 
 
 		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
-		glm::mat4 proj = camera.GetProjection();
-		//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
-		//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
-		//glm::mat4 vp = proj * rot * trf;
-		glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
-		uint32_t vpOffset = 0;
+		
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
-		m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &vp);
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
-
+		
 
 		while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
 		{
@@ -1050,8 +1087,10 @@ void Renderer::Render(double dt)
 			if(renderable == nullptr)
 				continue;
 
-			transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
-			glm::mat4 model =  transform->GetTransform();
+			// We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
+			
+			//transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
+			//glm::mat4 model =  transform->GetTransform();
 
 			renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
 			renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
@@ -1059,7 +1098,7 @@ void Renderer::Render(double dt)
 			uint32_t offset;
 			uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
 
-			m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+			//m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[bufferIndex + imageIndex], 1, &offset);
 
 
@@ -1171,7 +1210,7 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(0)]->GetBufferIndexAndOffset(id, offset);
 	if(bufferIndex >= m_transformDescSets.size())
 	{
-		std::vector<VkDescriptorSetLayout> transformLayouts(m_swapchainImages.size(), m_pipelines.begin()->m_descSetLayouts[2]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
+		std::vector<VkDescriptorSetLayout> transformLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[2]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
 		uint32_t previousSize = m_transformDescSets.size();
 		for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)

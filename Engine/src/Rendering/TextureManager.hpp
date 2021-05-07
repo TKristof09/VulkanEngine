@@ -5,7 +5,7 @@
 class TextureManager
 {
 public:
-	static bool LoadTexture(const std::string& fileName);
+	static bool LoadTexture(const std::string& fileName, VkImageUsageFlags usageFlags=VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	static Texture& GetTexture(const std::string& fileName)
 	{
@@ -14,7 +14,7 @@ public:
 		{
 			return it->second;
 		}
-		LOG_ERROR("Texture {0} isn't loaded", fileName);
+		LOG_WARN("Texture {0} isn't loaded", fileName);
 		return m_textureMap["./textures/error.jpg"];
 	}
 

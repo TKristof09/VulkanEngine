@@ -4,10 +4,9 @@
 #include <string.h>
 
 class Texture : public Image {
-
 public:
 	Texture(): Image(0,0, {}){}
-    Texture(const std::string& fileName);
+    Texture(const std::string& fileName, VkImageUsageFlags usageFlags);
     ~Texture() = default;
 
 	Texture(Texture&& other) noexcept
