@@ -175,9 +175,9 @@ public:
 	}
 
 	template<typename T>
-	ComponentContainer<T>* GetComponents()
+	ComponentContainer<T>& GetComponents()
 	{
-		return GetComponentContainer<T>();
+		return *GetComponentContainer<T>();
 	}
 
 	// TODO Improve this (really not happy with the implementation)
