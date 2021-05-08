@@ -6,7 +6,8 @@ class CommandBuffer
 
 public:
     CommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-    void Free();
+    ~CommandBuffer();
+	void Free();
 	void Begin(VkCommandBufferUsageFlags usage);
 	void Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo);
     void End();
@@ -18,6 +19,29 @@ public:
     {
         return m_commandBuffer;
     }
+
+    CommandBuffer(const CommandBuffer& other) = delete;
+
+    CommandBuffer(CommandBuffer&& other) noexcept
+	    : m_running(other.m_running),
+	      m_commandBuffer(other.m_commandBuffer)
+    {
+    	other.m_commandBuffer = VK_NULL_HANDLE;
+    }
+
+    CommandBuffer& operator=(const CommandBuffer& other) = delete;
+
+    CommandBuffer& operator=(CommandBuffer&& other) noexcept
+    {
+	    if(this == &other)
+		    return *this;
+	    m_running       = other.m_running;
+	    m_commandBuffer = other.m_commandBuffer;
+
+    	other.m_commandBuffer = VK_NULL_HANDLE;
+	    return *this;
+    }
+
 private:
     void Allocate(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 

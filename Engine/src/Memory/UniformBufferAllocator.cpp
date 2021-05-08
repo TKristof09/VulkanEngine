@@ -42,10 +42,6 @@ uint32_t UniformBufferAllocator::Allocate()
 		{
 			m_freeSlots.push(i);
 		}
-
-
-
-
 		return start;
 	}
 	else

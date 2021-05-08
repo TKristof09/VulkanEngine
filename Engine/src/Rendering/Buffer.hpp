@@ -41,11 +41,11 @@ public:
 			return *this;
 		m_type                 = other.m_type;
 		m_buffer               = other.m_buffer;
-		other.m_buffer = VK_NULL_HANDLE;
-		
 		m_memory               = other.m_memory;
 		m_size                 = other.m_size;
 		m_nonCoherentAtomeSize = other.m_nonCoherentAtomeSize;
+
+		other.m_buffer         = VK_NULL_HANDLE;
 		return *this;
 	}
 

@@ -24,6 +24,32 @@ class Framebuffer
 public:
 	Framebuffer(FramebufferCreateInfo createInfo, RenderPass* renderPass);
 	~Framebuffer();
+	Framebuffer(const Framebuffer& other) = delete;
+
+	Framebuffer(Framebuffer&& other) noexcept
+		: m_fb(other.m_fb),
+		  m_width(other.m_width),
+		  m_height(other.m_height),
+		  m_images(std::move(other.m_images))
+	{
+		other.m_fb = VK_NULL_HANDLE;
+	}
+
+	Framebuffer& operator=(const Framebuffer& other) = delete;
+
+	Framebuffer& operator=(Framebuffer&& other) noexcept
+	{
+		if(this == &other)
+			return *this;
+		m_fb     = other.m_fb;
+		m_width  = other.m_width;
+		m_height = other.m_height;
+		m_images = std::move(other.m_images);
+
+		other.m_fb = VK_NULL_HANDLE;
+		return *this;
+	}
+
 	VkFramebuffer GetFramebuffer() const { return m_fb; }
 	std::shared_ptr<Image> GetImage(uint32_t index)
 	{

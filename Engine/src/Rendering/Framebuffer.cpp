@@ -34,5 +34,9 @@ Framebuffer::Framebuffer(FramebufferCreateInfo createInfo, RenderPass* renderPas
 
 Framebuffer::~Framebuffer()
 {
-	vkDestroyFramebuffer(VulkanContext::GetDevice(), m_fb, nullptr);
+	if(m_fb != VK_NULL_HANDLE)
+	{
+		vkDestroyFramebuffer(VulkanContext::GetDevice(), m_fb, nullptr);
+		m_fb = VK_NULL_HANDLE;
+	}
 };

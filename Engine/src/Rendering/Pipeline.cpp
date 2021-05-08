@@ -7,19 +7,17 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 	if (createInfo.type == PipelineType::GRAPHICS)
 	{
 		if(createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
-		{
-			Shader vs(m_name, VK_SHADER_STAGE_VERTEX_BIT);
-			m_shaders.push_back(vs);
+		{	
+			m_shaders.emplace_back(m_name, VK_SHADER_STAGE_VERTEX_BIT, this);
 		}
 		if(createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
 		{
-			Shader fs(m_name, VK_SHADER_STAGE_FRAGMENT_BIT);
-			m_shaders.push_back(fs);
+			m_shaders.emplace_back(m_name, VK_SHADER_STAGE_FRAGMENT_BIT, this);
 		}
 	}
 	else
 	{
-		m_shaders.emplace_back(Shader(m_name, VK_SHADER_STAGE_COMPUTE_BIT));
+		m_shaders.emplace_back(m_name, VK_SHADER_STAGE_COMPUTE_BIT, this);
 	}
 
 	CreateDescriptorSetLayout();
@@ -29,7 +27,7 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 	else
 		CreateComputePipeline(createInfo);
 
-	for (auto shader : m_shaders)
+	for (auto& shader : m_shaders)
 	{
 		shader.DestroyShaderModule();
 	}
@@ -37,11 +35,15 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 
 Pipeline::~Pipeline()
 {
-	for(uint32_t i = 0; i < m_numDescSets; ++i) //TODO temp
-		vkDestroyDescriptorSetLayout(VulkanContext::GetDevice(), m_descSetLayouts[i], nullptr);
-	vkDestroyPipeline(VulkanContext::GetDevice(), m_pipeline, nullptr);
-	vkDestroyPipelineLayout(VulkanContext::GetDevice(), m_layout, nullptr);
+	if (m_pipeline != VK_NULL_HANDLE)
+	{
+		for(uint32_t i = 0; i < m_numDescSets; ++i) //TODO temp
+			vkDestroyDescriptorSetLayout(VulkanContext::GetDevice(), m_descSetLayouts[i], nullptr);
+		vkDestroyPipeline(VulkanContext::GetDevice(), m_pipeline, nullptr);
+		vkDestroyPipelineLayout(VulkanContext::GetDevice(), m_layout, nullptr);
 
+		m_pipeline = VK_NULL_HANDLE;
+	}
 }
 
 void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
@@ -144,17 +146,15 @@ void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
 
 	// ##################### PUSH CONSTANTS #####################
 	std::vector<VkPushConstantRange> pcRanges;
-	for(auto shader : m_shaders)
+	for(auto [name, info] : m_pushConstants)
 	{
-		if(shader.HasPushConstants())
-		{
+		
 			VkPushConstantRange pcRange = {};
-			pcRange.stageFlags	= shader.m_stage;
-			pcRange.offset		= shader.m_pushConstants.offset;
-			pcRange.size		= shader.m_pushConstants.size;
+			pcRange.stageFlags	= info.stages;
+			pcRange.offset		= info.offset;
+			pcRange.size		= info.size;
 
 			pcRanges.push_back(pcRange);
-		}
 	}
 
 
@@ -211,22 +211,25 @@ void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
 	// ##################### PUSH CONSTANTS #####################
 	
 
-	VkPushConstantRange pcRange = {};
-	uint32_t numPushConstants = 0;
-	if(m_shaders[0].HasPushConstants())
+
+	std::vector<VkPushConstantRange> pcRanges;
+	for(auto [name, info] : m_pushConstants)
 	{
-		numPushConstants++;
-		pcRange.stageFlags = m_shaders[0].m_stage;
-		pcRange.offset     = m_shaders[0].m_pushConstants.offset;
-		pcRange.size       = m_shaders[0].m_pushConstants.size;
+		
+			VkPushConstantRange pcRange = {};
+			pcRange.stageFlags	= info.stages;
+			pcRange.offset		= info.offset;
+			pcRange.size		= info.size;
+
+			pcRanges.push_back(pcRange);
 	}
 
 	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
 	layoutCreateInfo.sType					= VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	layoutCreateInfo.setLayoutCount			= m_numDescSets; //m_descSetLayouts.size(); temporary see TODO in hpp
 	layoutCreateInfo.pSetLayouts			= m_descSetLayouts.data();
-	layoutCreateInfo.pushConstantRangeCount = numPushConstants;
-	layoutCreateInfo.pPushConstantRanges	= &pcRange;
+	layoutCreateInfo.pushConstantRangeCount = pcRanges.size();
+	layoutCreateInfo.pPushConstantRanges	= pcRanges.data();
 
 	VK_CHECK(vkCreatePipelineLayout(VulkanContext::GetDevice(), &layoutCreateInfo, nullptr, &m_layout), "Failed to create compute pipeline layout");
 
@@ -251,59 +254,58 @@ void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
 void Pipeline::CreateDescriptorSetLayout()
 {
 	std::array<std::vector<VkDescriptorSetLayoutBinding>, 4> bindings;
-	for(auto& shader : m_shaders)
+
+	for(auto& [name, bufferInfo] : m_uniformBuffers)
 	{
-		for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
-		{
-			VkDescriptorSetLayoutBinding layoutBinding  = {};
-			layoutBinding.binding                       = bufferInfo.binding;
-			layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-			layoutBinding.descriptorCount               = bufferInfo.count;
-			layoutBinding.stageFlags                    = bufferInfo.stage;
-			layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
+		VkDescriptorSetLayoutBinding layoutBinding  = {};
+		layoutBinding.binding                       = bufferInfo.binding;
+		layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		layoutBinding.descriptorCount               = bufferInfo.count;
+		layoutBinding.stageFlags                    = bufferInfo.stages;
+		layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
 
-			bindings[bufferInfo.set].push_back(layoutBinding);
+		bindings[bufferInfo.set].push_back(layoutBinding);
 
-		}
-		for(auto& [name, textureInfo] : shader.m_textures)
-		{
-			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
-			samplerLayoutBinding.binding                       = textureInfo.binding;
-			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-
-			samplerLayoutBinding.descriptorCount				= textureInfo.count;
-			samplerLayoutBinding.stageFlags                    	= textureInfo.stage;
-			samplerLayoutBinding.pImmutableSamplers            	= nullptr;
-
-			bindings[textureInfo.set].push_back(samplerLayoutBinding);
-
-		}
-		for(auto& [name, bufferInfo] : shader.m_storageBuffers)
-		{
-			VkDescriptorSetLayoutBinding layoutBinding  = {};
-			layoutBinding.binding                       = bufferInfo.binding;
-			layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			layoutBinding.descriptorCount               = bufferInfo.count;
-			layoutBinding.stageFlags                    = bufferInfo.stage;
-			layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
-
-			bindings[bufferInfo.set].push_back(layoutBinding);
-
-		}
-		for(auto& [name, imageInfo] : shader.m_storageImages)
-		{
-			VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
-			samplerLayoutBinding.binding                       = imageInfo.binding;
-			samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-
-			samplerLayoutBinding.descriptorCount				= imageInfo.count;
-			samplerLayoutBinding.stageFlags                    	= imageInfo.stage;
-			samplerLayoutBinding.pImmutableSamplers            	= nullptr;
-
-			bindings[imageInfo.set].push_back(samplerLayoutBinding);
-
-		}
 	}
+	for(auto& [name, textureInfo] : m_textures)
+	{
+		VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
+		samplerLayoutBinding.binding                       = textureInfo.binding;
+		samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+
+		samplerLayoutBinding.descriptorCount				= textureInfo.count;
+		samplerLayoutBinding.stageFlags                    	= textureInfo.stages;
+		samplerLayoutBinding.pImmutableSamplers            	= nullptr;
+
+		bindings[textureInfo.set].push_back(samplerLayoutBinding);
+
+	}
+	for(auto& [name, bufferInfo] : m_storageBuffers)
+	{
+		VkDescriptorSetLayoutBinding layoutBinding  = {};
+		layoutBinding.binding                       = bufferInfo.binding;
+		layoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		layoutBinding.descriptorCount               = bufferInfo.count;
+		layoutBinding.stageFlags                    = bufferInfo.stages;
+		layoutBinding.pImmutableSamplers            = nullptr; // this is for texture samplers
+
+		bindings[bufferInfo.set].push_back(layoutBinding);
+
+	}
+	for(auto& [name, imageInfo] : m_storageImages)
+	{
+		VkDescriptorSetLayoutBinding samplerLayoutBinding  = {};
+		samplerLayoutBinding.binding                       = imageInfo.binding;
+		samplerLayoutBinding.descriptorType                = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+
+		samplerLayoutBinding.descriptorCount				= imageInfo.count;
+		samplerLayoutBinding.stageFlags                    	= imageInfo.stages;
+		samplerLayoutBinding.pImmutableSamplers            	= nullptr;
+
+		bindings[imageInfo.set].push_back(samplerLayoutBinding);
+
+	}
+	
 	for(uint32_t i = 0; i < bindings.size(); ++i)
 	{
 		if(bindings[i].size() == 0)

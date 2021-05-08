@@ -7,7 +7,7 @@
 #include "Rendering/Pipeline.hpp"
 
 
-Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
+Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage, Pipeline* pipeline)
 {
 	std::vector<uint32_t> data;
 	{
@@ -50,7 +50,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
 		data = std::vector<uint32_t> (reinterpret_cast<uint32_t*>(temp.data()), reinterpret_cast<uint32_t*>(temp.data())+filesize/sizeof(uint32_t));
 	}
 
-	Reflect(filename, &data);
+	Reflect(filename, &data, pipeline);
 
 	VkShaderModuleCreateInfo createInfo = {};
 	createInfo.sType					= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -60,7 +60,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage)
     VK_CHECK(vkCreateShaderModule(VulkanContext::GetDevice(), &createInfo, nullptr, &m_shaderModule), "Failed to create shader module");
 }
 
-void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data)
+void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, Pipeline* pipeline)
 {
 	spirv_cross::Compiler comp(*data);
 
@@ -77,104 +77,121 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data)
 		LOG_TRACE("   Size: {0}", size);
 		LOG_TRACE("   Offset: {0}", offset);
 
-		m_pushConstants.used = true;
-		m_pushConstants.size = size;
-		m_pushConstants.offset = offset;
-
+		auto it = pipeline->m_pushConstants.find(resource.name);
+		if(it != pipeline->m_pushConstants.end())
+		{
+			it->second.stages |= m_stage;
+		}
+		else
+		{
+			pipeline->m_pushConstants[resource.name].stages = m_stage;
+			pipeline->m_pushConstants[resource.name].size = size;
+			pipeline->m_pushConstants[resource.name].offset = offset;
+		}
+		
 	}
 
 	LOG_TRACE("-----UNIFORM BUFFERS-----");
 	for(auto& resource : resources.uniform_buffers)
 	{
+		std::string name = comp.get_name(resource.id);
+		name = name != "" ? name : resource.name;
+
+		
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
-		uint32_t location = comp.get_decoration(resource.id, spv::DecorationLocation);
+		
 		uint32_t size = comp.get_declared_struct_size(type);
 		uint32_t arraySize = type.array[0];
 
 		if(type.array.size() > 1)
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", name, type.array.size(), filename);
 
 		if(type.array.size() == 0)
 		{
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", name, type.array.size(), filename);
 			arraySize = 1;
 		}
 
-		LOG_TRACE(resource.name);
+		
+		
+		LOG_TRACE(name);
 		LOG_TRACE("   Size: {0}", size);
-		LOG_TRACE("   Location: {0}", location);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
-
-		m_uniformBuffers[resource.name] = BufferInfo();
-
-		m_uniformBuffers[resource.name].stage = m_stage;
-		m_uniformBuffers[resource.name].size = size;
-		m_uniformBuffers[resource.name].location = location;
-		m_uniformBuffers[resource.name].binding = binding;
-		m_uniformBuffers[resource.name].set = set;
-		m_uniformBuffers[resource.name].count = arraySize;
+		
+		auto it = pipeline->m_uniformBuffers.find(name);
+		if(it != pipeline->m_uniformBuffers.end())
+		{
+			it->second.stages |= m_stage;
+		}
+		else
+		{
+			pipeline->m_uniformBuffers[name].stages = m_stage;
+			pipeline->m_uniformBuffers[name].size = size;
+			pipeline->m_uniformBuffers[name].binding = binding;
+			pipeline->m_uniformBuffers[name].set = set;
+			pipeline->m_uniformBuffers[name].count = arraySize;
+		}
 
 	}
-
-	uint32_t maxBinding = 0;
-	std::string maxName = "";
 
 	LOG_TRACE("-----IMAGE SAMPLERS-----");
 	for(auto& resource : resources.sampled_images)
 	{
+		std::string name = comp.get_name(resource.id);
+		name = name != "" ? name : resource.name;
+		
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
 		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 		uint32_t arraySize = type.array[0];
 
 		if(type.array.size() > 1)
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", name, type.array.size(), filename);
 
 		if(type.array.size() == 0)
 		{
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", name, type.array.size(), filename);
 			arraySize = 1;
 		}
 
 		if(arraySize == 0)
 		{
-			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", resource.name);
+			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", name);
 			arraySize = 1;
 		}
 
 		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
-			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", resource.name, OBJECTS_PER_DESCRIPTOR_CHUNK);
+			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", name, OBJECTS_PER_DESCRIPTOR_CHUNK);
 
-		LOG_TRACE(resource.name);
+		LOG_TRACE(name);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
-		m_textures[resource.name] = TextureInfo();
 
-		m_textures[resource.name].stage = m_stage;
-		m_textures[resource.name].binding = binding;
-		m_textures[resource.name].set = set;
-		m_textures[resource.name].count = arraySize;
-
-
-		if(binding > maxBinding)
+		auto it = pipeline->m_textures.find(name);
+		if(it != pipeline->m_textures.end())
 		{
-			maxBinding = binding;
-			maxName = resource.name;
+			it->second.stages |= m_stage;
 		}
-
+		else
+		{
+			pipeline->m_textures[name].stages = m_stage;
+			pipeline->m_textures[name].binding = binding;
+			pipeline->m_textures[name].set = set;
+			pipeline->m_textures[name].count = arraySize;
+		}
 	}
-
-	if(maxName != "")
-		m_textures[maxName].isLast = true;
 
 	LOG_TRACE("-----STORAGE BUFFERS-----");
 	for(auto& resource : resources.storage_buffers)
 	{
+		std::string name = comp.get_name(resource.id);
+		name = name != "" ? name : resource.name;
+		
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
@@ -183,67 +200,81 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data)
 		uint32_t arraySize = type.array[0];
 
 		if(type.array.size() > 1)
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", name, type.array.size(), filename);
 
 		if(type.array.size() == 0)
 		{
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", name, type.array.size(), filename);
 			arraySize = 1;
 		}
 
-		LOG_TRACE(resource.name);
+		LOG_TRACE(name);
 		LOG_TRACE("   Size: {0}", size);
 		LOG_TRACE("   Location: {0}", location);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
 
-		m_storageBuffers[resource.name] = BufferInfo();
-
-		m_storageBuffers[resource.name].stage = m_stage;
-		m_storageBuffers[resource.name].size = size;
-		m_storageBuffers[resource.name].location = location;
-		m_storageBuffers[resource.name].binding = binding;
-		m_storageBuffers[resource.name].set = set;
-		m_storageBuffers[resource.name].count = arraySize;
+		auto it = pipeline->m_storageBuffers.find(name);
+		if(it != pipeline->m_storageBuffers.end())
+		{
+			it->second.stages |= m_stage;
+		}
+		else
+		{
+			pipeline->m_storageBuffers[name].stages = m_stage;
+			pipeline->m_storageBuffers[name].size = size;
+			pipeline->m_storageBuffers[name].binding = binding;
+			pipeline->m_storageBuffers[name].set = set;
+			pipeline->m_storageBuffers[name].count = arraySize;
+		}
 	}
 	
 	LOG_TRACE("-----STORAGE IMAGES-----");
 	for(auto& resource : resources.storage_images)
 	{
+		std::string name = comp.get_name(resource.id);
+		name = name != "" ? name : resource.name;
+		
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
 		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 		uint32_t arraySize = type.array[0];
 
 		if(type.array.size() > 1)
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", name, type.array.size(), filename);
 
 		if(type.array.size() == 0)
 		{
-			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", resource.name, type.array.size(), filename);
+			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}, setting count to 1", name, type.array.size(), filename);
 			arraySize = 1;
 		}
 
 		if(arraySize == 0)
 		{
-			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", resource.name);
+			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", name);
 			arraySize = 1;
 		}
 
 		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
-			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", resource.name, OBJECTS_PER_DESCRIPTOR_CHUNK);
+			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", name, OBJECTS_PER_DESCRIPTOR_CHUNK);
 
-		LOG_TRACE(resource.name);
+		LOG_TRACE(name);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);
-		m_storageImages[resource.name] = TextureInfo();
-		
-		m_storageImages[resource.name].stage = m_stage;
-		m_storageImages[resource.name].binding = binding;
-		m_storageImages[resource.name].set = set;
-		m_storageImages[resource.name].count = arraySize;
+		auto it = pipeline->m_storageImages.find(name);
+		if(it != pipeline->m_storageImages.end())
+		{
+			it->second.stages |= m_stage;
+		}
+		else
+		{
+			pipeline->m_storageImages[name].stages = m_stage;
+			pipeline->m_storageImages[name].binding = binding;
+			pipeline->m_storageImages[name].set = set;
+			pipeline->m_storageImages[name].count = arraySize;
+		}
 	}
 }
 

@@ -5,19 +5,45 @@
 #include <vector>
 #include "Texture.hpp"
 
+class Pipeline;
+
 class Shader
 {
 public:
-    Shader(const std::string& filename, VkShaderStageFlagBits stage);
+    Shader(const std::string& filename, VkShaderStageFlagBits stage, Pipeline* pipeline);
+	~Shader()
+	{
+		DestroyShaderModule();
+	}
+
+    Shader(const Shader& other) = delete;
+
+    Shader(Shader&& other) noexcept
+	    : m_shaderModule(other.m_shaderModule),
+	      m_stage(other.m_stage)
+    {
+    	other.m_shaderModule = VK_NULL_HANDLE;
+    }
+
+    Shader& operator=(const Shader& other) = delete;
+
+    Shader& operator=(Shader&& other) noexcept
+    {
+	    if(this == &other)
+		    return *this;
+	    m_shaderModule = other.m_shaderModule;
+    	other.m_shaderModule = VK_NULL_HANDLE;
+	    m_stage        = other.m_stage;
+	    return *this;
+    }
+
 private:
 	friend class Renderer;
 	friend class Pipeline;
-	friend class MaterialSystem;
 
-	void Reflect(const std::string& filename, std::vector<uint32_t>* data);
+	void Reflect(const std::string& filename, std::vector<uint32_t>* data, Pipeline* pipeline);
 	
 	VkShaderModule GetShaderModule() const { return m_shaderModule; };
-	bool HasPushConstants() const { return m_pushConstants.used; };
 
 	void DestroyShaderModule()
 	{
@@ -27,39 +53,8 @@ private:
 			m_shaderModule = VK_NULL_HANDLE;
 		}
 	}
-
-	struct BufferInfo
-	{
-		VkPipelineStageFlags stage;
-
-		size_t size;
-		uint32_t location;
-		uint32_t binding;
-		uint32_t set;
-		uint32_t count;
-	};
-	struct TextureInfo
-	{
-		VkPipelineStageFlags stage;
-
-		uint32_t binding;
-		uint32_t set;
-		uint32_t count;
-
-		bool isLast = false;
-	};
-	struct PushConstantsInfo
-	{
-		bool used = false;
-		uint32_t size;
-		uint32_t offset;
-	};
 	VkShaderModule m_shaderModule;
 	VkShaderStageFlagBits m_stage;
-	PushConstantsInfo m_pushConstants;
-	std::unordered_map<std::string, BufferInfo> m_uniformBuffers;
-	std::unordered_map<std::string, TextureInfo> m_textures;
-	std::unordered_map<std::string, TextureInfo> m_storageImages;
-	std::unordered_map<std::string, BufferInfo> m_storageBuffers;
+
 
 };

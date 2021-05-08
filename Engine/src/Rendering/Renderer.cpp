@@ -580,12 +580,9 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 	m_pipelinesRegistry[name] = pipeline;
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		for(auto& shader : pipeline->m_shaders)
+		for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
 		{
-			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
-			{
-				m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
-			}
+			m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
 		}
 	}
 
@@ -624,14 +621,13 @@ void Renderer::CreatePipeline()
 
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		for(auto& shader : m_depthPipeline->m_shaders)
+
+		for(auto& [name, bufferInfo] : m_depthPipeline->m_uniformBuffers)
 		{
-			for(auto& [name, bufferInfo] : shader.m_uniformBuffers)
-			{
-				if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
-					m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
-			}
+			if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
+				m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
 		}
+
 	}
 
 }
@@ -857,13 +853,27 @@ void Renderer::CreateDescriptorSets()
 
 	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create texture sampler");
 
-	std::vector<_DirectionalLight> data(3);
-	data[0] = {Color::Red, 5.5f};
-	data[1] = {Color::Green, 42.0f};
-	data[2] = {Color::Black, 2.13f};
+	
+	
+	std::vector<Light> data(2);
+	data[0] = {
+		glm::vec4(1,0,1,0),
+		Color::Red,
+		5.5f,
+		1,1,1,
+		glm::vec4(1,1,1,0)
+	};
+	data[1] = {
+		glm::vec4(0,0,0,1),
+		Color::Green,
+		42.0f,
+		0,0,0,
+		glm::vec4()
+	};
+	
 
-	m_computeBuffer = std::make_unique<Buffer>(data.size() * sizeof(_DirectionalLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	m_computeBuffer->Fill(data.data(), data.size() * sizeof(_DirectionalLight));
+	m_computeBuffer = std::make_unique<Buffer>(data.size() * sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	m_computeBuffer->Fill(data.data(), data.size() * sizeof(Light));
 	
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
@@ -1023,9 +1033,10 @@ void Renderer::Render(double dt)
 
 	RenderPass* lastRenderPass = nullptr;
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
+	
+	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
+	
 	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 0, nullptr);
 	vkCmdDispatch(cb, texture.GetWidth() / 16 + 1, texture.GetHeight() / 16 + 1, 1);
@@ -1050,7 +1061,7 @@ void Renderer::Render(double dt)
 		0, nullptr,
 		0, nullptr,
 		1, &imageMemoryBarrier);
-
+	
 	glm::mat4 proj = camera.GetProjection();
 	//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
 	//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
@@ -1099,6 +1110,7 @@ void Renderer::Render(double dt)
 			auto beginInfo = lastRenderPass->GetBeginInfo(imageIndex);
 			vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
 			//vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
+			
 		}
 
 

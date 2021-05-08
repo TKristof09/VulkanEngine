@@ -22,10 +22,19 @@ void CommandBuffer::Allocate(VkCommandBufferLevel level)
 
 
 }
+CommandBuffer::~CommandBuffer()
+{
+	Free();
+}
+
 
 void CommandBuffer::Free()
 {
-    vkFreeCommandBuffers(VulkanContext::GetDevice(), VulkanContext::GetCommandPool(), 1, &m_commandBuffer);
+    if(m_commandBuffer != VK_NULL_HANDLE)
+    {
+        vkFreeCommandBuffers(VulkanContext::GetDevice(), VulkanContext::GetCommandPool(), 1, &m_commandBuffer);
+    	m_commandBuffer = VK_NULL_HANDLE;
+    }
 }
 
 void CommandBuffer::Begin(VkCommandBufferUsageFlags usage)

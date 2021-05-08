@@ -40,6 +40,17 @@ public:
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
 
 private:
+	struct alignas(16) Light
+	{
+		glm::vec4 positionAndType;
+
+		Color color;
+		float intensity;
+		float attenuation[3];
+
+		glm::vec4 directionAndCutoff;
+	};
+	
 	Pipeline* m_compute;
 	std::vector<VkDescriptorSet> m_computeDesc;
 	VkSampler m_computeSampler;
@@ -47,6 +58,8 @@ private:
 
 
 	std::unique_ptr<Pipeline> m_depthPipeline;
+
+	std::vector<Light> m_lights;
 	
 	friend class MaterialSystem;
 

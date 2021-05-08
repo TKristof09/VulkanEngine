@@ -23,53 +23,42 @@ public:
     Image(VkExtent2D extent, ImageCreateInfo createInfo);
     Image(std::pair<uint32_t, uint32_t> widthHeight, ImageCreateInfo createInfo);
 
-	Image(const Image& other) = default;
-	Image(Image&& other) noexcept
-	{
-		m_image			= other.m_image;
-		m_mipLevels		= other.m_mipLevels;
-		m_width			= other.m_width;
-		m_height		= other.m_height;
-		m_imageView		= other.m_imageView;
-		m_format		= other.m_format;
-		m_memory		= other.m_memory;
-		m_layout		= other.m_layout;
+    Image(const Image& other) = delete;
 
-		other.m_image		= VK_NULL_HANDLE;
-		other.m_mipLevels	= 0;
-		other.m_width		= 0;
-		other.m_height		= 0;
-		other.m_imageView	= VK_NULL_HANDLE;
-		other.m_format		= VK_FORMAT_UNDEFINED;
-		other.m_memory		= VK_NULL_HANDLE;
-		other.m_layout		= VK_IMAGE_LAYOUT_UNDEFINED;
+    Image(Image&& other) noexcept
+	    : m_mipLevels(other.m_mipLevels),
+	      m_width(other.m_width),
+	      m_height(other.m_height),
+	      m_image(other.m_image),
+	      m_imageView(other.m_imageView),
+	      m_format(other.m_format),
+	      m_memory(other.m_memory),
+	      m_layout(other.m_layout)
+    {
+    	other.m_image = VK_NULL_HANDLE;
+    	other.m_imageView = VK_NULL_HANDLE;
+    }
 
+    Image& operator=(const Image& other) = delete;
 
-	}
-	Image& operator=(Image&& other) noexcept
-	{
-		Free();
+    Image& operator=(Image&& other) noexcept
+    {
+	    if(this == &other)
+		    return *this;
+	    m_mipLevels = other.m_mipLevels;
+	    m_width     = other.m_width;
+	    m_height    = other.m_height;
+	    m_image     = other.m_image;
+	    m_imageView = other.m_imageView;
+	    m_format    = other.m_format;
+	    m_memory    = other.m_memory;
+	    m_layout    = other.m_layout;
 
-		m_image			= other.m_image;
-		m_mipLevels		= other.m_mipLevels;
-		m_width			= other.m_width;
-		m_height		= other.m_height;
-		m_imageView		= other.m_imageView;
-		m_format		= other.m_format;
-		m_memory		= other.m_memory;
-		m_layout		= other.m_layout;
+    	other.m_image = VK_NULL_HANDLE;
+    	other.m_imageView = VK_NULL_HANDLE;
+	    return *this;
+    }
 
-		other.m_image		= VK_NULL_HANDLE;
-		other.m_mipLevels	= 0;
-		other.m_width		= 0;
-		other.m_height		= 0;
-		other.m_imageView	= VK_NULL_HANDLE;
-		other.m_format		= VK_FORMAT_UNDEFINED;
-		other.m_memory		= VK_NULL_HANDLE;
-		other.m_layout		= VK_IMAGE_LAYOUT_UNDEFINED;
-
-		return *this;
-	}
 	virtual ~Image();
 	void Free(bool destroyOnlyImageView = false);
     void TransitionLayout(VkImageLayout newLayout);
