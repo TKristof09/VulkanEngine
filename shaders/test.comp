@@ -3,21 +3,42 @@
 layout (local_size_x = 16, local_size_y = 16) in;
 layout (set=0, binding = 0, rgba8) uniform image2D resultImage;
 
-struct DirectionalLight
+struct Attenuation
 {
+	// quadratic*x^2+linear*x+constant
+	float quadratic;
+	float linear;
+	float constant;
+};
+
+#define DIRECTIONAL_LIGHT 0
+#define POINT_LIGHT 1
+#define SPOT_LIGHT 2
+
+struct Light
+{
+	vec4 positionAndType;
+
 	vec4 color;
 	float intensity;
+	Attenuation attenuation;
+
+	vec4 directionAndCutoff; //only for directional and spotlights
 };
+
 
 layout(std430, binding = 1, set = 0) buffer TestBuffer
 {
-    DirectionalLight arr[];
+    Light arr[];
 };
 
 void main()
 {	
-
-	vec4 res = arr[1].color;
+	vec4 res;
+	if(arr[0].positionAndType.w == POINT_LIGHT)
+		res = arr[1].color;
+	else
+		res = arr[0].color;
 
 	imageStore(resultImage, ivec2(gl_GlobalInvocationID.xy), res);
 }

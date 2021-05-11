@@ -78,9 +78,9 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, Entity* entity)
 			vertex.texCoord = glm::vec2(0);
 		}
 
-		//vertex.normal = ToGLM(mesh->mNormals[i]);
+		vertex.normal = ToGLM(mesh->mNormals[i]);
 
-		//vertex.tangent = ToGLM(mesh->mTangents[i]);
+		vertex.tangent = ToGLM(mesh->mTangents[i]);
 
 		vertices[i] = vertex;
 	}
@@ -94,7 +94,9 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, Entity* entity)
 	}
 	entity->AddComponent<Mesh>(vertices, indices );
 	TextureManager::LoadTexture("./textures/uv_checker.png");
+	TextureManager::LoadTexture("./textures/normal.jpg");
 	Material* mat2 = entity->AddComponent<Material>();
-	mat2->shaderName = "base";
+	mat2->shaderName = "forwardplus";
 	mat2->textures["albedo"] = "./textures/uv_checker.png";
+	mat2->textures["normal"] = "./textures/normal.jpg";
 }

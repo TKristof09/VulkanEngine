@@ -13,6 +13,8 @@ struct Vertex
 {
 	glm::vec3 pos;
 	glm::vec2 texCoord;
+	glm::vec3 normal;
+	glm::vec3 tangent;
 };
 
 struct Mesh : public Component<Mesh>
@@ -36,9 +38,9 @@ static VkVertexInputBindingDescription GetVertexBindingDescription()
 	return bindingDescription;
 }
 
-static std::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescriptions()
+static std::array<VkVertexInputAttributeDescription, 4> GetVertexAttributeDescriptions()
 {
-	std::array<VkVertexInputAttributeDescription, 2> attribDescriptions = {};
+	std::array<VkVertexInputAttributeDescription, 4> attribDescriptions = {};
 
 	attribDescriptions[0].binding = 0;
 	attribDescriptions[0].location = 0;
@@ -49,6 +51,16 @@ static std::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescri
 	attribDescriptions[1].location = 1;
 	attribDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
 	attribDescriptions[1].offset = offsetof(Vertex, texCoord);
+
+	attribDescriptions[2].binding = 0;
+	attribDescriptions[2].location = 2;
+	attribDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attribDescriptions[2].offset = offsetof(Vertex, normal);
+
+	attribDescriptions[3].binding = 0;
+	attribDescriptions[3].location = 3;
+	attribDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attribDescriptions[3].offset = offsetof(Vertex, tangent);
 
 	return attribDescriptions;
 }
