@@ -8,7 +8,6 @@
 #include <array>
 #include <string>
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan_core.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -89,12 +88,20 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
+	scene->eventHandler->Subscribe(this, &Renderer::OnDirectionalLightAdded);
+	scene->eventHandler->Subscribe(this, &Renderer::OnPointLightAdded);
+	scene->eventHandler->Subscribe(this, &Renderer::OnSpotLightAdded);
 
 	CreateInstance();
 	SetupDebugMessenger();
 	CreateDevice();
 	CreateSwapchain();
 
+	m_computePushConstants.viewportSize = { m_swapchainExtent.width, m_swapchainExtent.height };
+	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
+	m_computePushConstants.lightNum = 0;
+	m_newlyAddedLights.resize(m_swapchainImages.size());
+	
 	CreateRenderPass();
 	CreatePipeline();
 	CreateCommandPool();
@@ -107,9 +114,12 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	CreateUniformBuffers();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
+	UpdateComputeDescriptors();
 	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
+
+	
 
 }
 
@@ -133,9 +143,11 @@ Renderer::~Renderer()
 	m_ubAllocators.clear();
 	m_pipelines.clear();
 	m_depthPipeline.reset();
-	m_computeBuffer.reset();
-	delete m_compute;
+
+	m_lightsBuffers.clear();
+	m_visibleLightsBuffers.clear();
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
+	m_compute.reset();
 	
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 	
@@ -172,6 +184,7 @@ void Renderer::RecreateSwapchain()
 	CreateDepthResources();
 	CreateFramebuffers();
 	CreateCommandBuffers();
+	UpdateComputeDescriptors();
 
 
 	DebugUIInitInfo initInfo = {};
@@ -190,10 +203,15 @@ void Renderer::RecreateSwapchain()
 	initInfo.allocator = nullptr;
 	m_debugUI->ReInit(initInfo);
 
+	m_computePushConstants.viewportSize = { m_swapchainExtent.width, m_swapchainExtent.height };
+	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
+	
 }
 
 void Renderer::CleanupSwapchain()
 {
+	vkDeviceWaitIdle(m_device);
+	
 	m_depthImage.reset();
 	m_colorImage.reset();
 
@@ -278,10 +296,11 @@ void Renderer::CreateInstance()
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
 	debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = debugUtilsMessengerCallback;
-	createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+	
+	createInfo.pNext = &debugCreateInfo;
 #endif
 
 	VK_CHECK(vkCreateInstance(&createInfo, nullptr, &m_instance), "Failed to create instance");
@@ -297,7 +316,7 @@ void Renderer::SetupDebugMessenger()
 #endif
 	VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	createInfo.messageSeverity =  VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageSeverity =  VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo.pfnUserCallback = debugUtilsMessengerCallback;
 
@@ -306,55 +325,9 @@ void Renderer::SetupDebugMessenger()
 
 void Renderer::CreateDevice()
 {
-	/* uint32_t deviceCount = 0;
-	   vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
-	   if(deviceCount == 0)
-	   throw std::runtime_error("No GPUs with Vulkan support");
-	   std::vector<VkPhysicalDevice> devices(deviceCount);
-	   vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
-
-	   std::vector<const char*> deviceExtensions;
-	   deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-
-	// Find the most suitable physical device
-	m_gpu = PickDevice(devices, m_surface, deviceExtensions);
-
-	// Create the logical device
-	QueueFamilyIndices indices                      = FindQueueFamilies(m_gpu, m_surface);
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos {};
-	std::set<uint32_t> uniqueQueueFamilies          = {indices.graphicsFamily.value(), indices.presentationFamily.value()};
-
-	for(auto queue : uniqueQueueFamilies)
-	{
-
-	float queuePriority                             = 1.0f;
-	VkDeviceQueueCreateInfo queueCreateInfo {};
-	queueCreateInfo.sType                           = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.queueFamilyIndex                = queue;
-	queueCreateInfo.queueCount                      = 1;
-	queueCreateInfo.pQueuePriorities                = &queuePriority;
-	queueCreateInfos.push_back(queueCreateInfo);
-	}
-
-	VkPhysicalDeviceFeatures deviceFeatures {};
-	deviceFeatures.samplerAnisotropy = VK_TRUE;
-
-	VkDeviceCreateInfo deviceCreateInfo {};
-	deviceCreateInfo.sType                          = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pQueueCreateInfos              = queueCreateInfos.data();
-	deviceCreateInfo.queueCreateInfoCount           = static_cast<uint32_t>(queueCreateInfos.size());
-	deviceCreateInfo.pEnabledFeatures               = &deviceFeatures;
-	deviceCreateInfo.ppEnabledExtensionNames        = deviceExtensions.data();
-	deviceCreateInfo.enabledExtensionCount          = static_cast<uint32_t>(deviceExtensions.size());
-
-	VK_CHECK(vkCreateDevice(m_gpu, &deviceCreateInfo, nullptr, &m_device), "Failed to create logical device");
-
-	// retrieve the handle to the queue created with the logical device
-	vkGetDeviceQueue(m_device, indices.graphicsFamily.value(), 0, &m_graphicsQueue);
-	vkGetDeviceQueue(m_device, indices.presentationFamily.value(), 0, &m_presentQueue); */
-
 	std::vector<const char*> deviceExtensions;
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+	deviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 
 	uint32_t deviceCount;
 	vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
@@ -366,7 +339,7 @@ void Renderer::CreateDevice()
 	vkGetPhysicalDeviceProperties(m_gpu, &VulkanContext::m_gpuProperties);
 	LOG_TRACE("Picked device: {0}", VulkanContext::m_gpuProperties.deviceName);
 
-	m_msaaSamples = GetMaxUsableSampleCount(m_gpu);
+	m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;//GetMaxUsableSampleCount(m_gpu);
 
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
@@ -398,6 +371,10 @@ void Renderer::CreateDevice()
 	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
+	
+	 
+
+	
 	VkDeviceCreateInfo createInfo		= {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.enabledExtensionCount    = static_cast<uint32_t>(deviceExtensions.size());
@@ -526,7 +503,7 @@ void Renderer::CreateRenderPass()
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 	RenderPassCreateInfo ci;
-	ci.attachments = {colorAttachment, depthAttachment, colorAttachmentResolve };
+	ci.attachments = {colorAttachment, depthAttachment };
 	ci.msaaSamples = m_msaaSamples;
 	ci.subpassCount = 1;
 	ci.dependencies = { dependency };
@@ -549,19 +526,29 @@ void Renderer::CreateRenderPass()
 	prePassDepthAttachment.clearValue.depthStencil = {1.0f, 0 };
 
 
-	VkSubpassDependency prePassDependency = {};
-	prePassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	prePassDependency.dstSubpass = 0;
-	prePassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	prePassDependency.srcAccessMask = 0;
-	prePassDependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	prePassDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+	std::vector<VkSubpassDependency> dependencies(2);
 
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+	
 	RenderPassCreateInfo prepassCi;
 	prepassCi.attachments = {prePassDepthAttachment};
 	prepassCi.msaaSamples = m_msaaSamples;
 	prepassCi.subpassCount = 1;
-	prepassCi.dependencies = { prePassDependency };
+	prepassCi.dependencies = dependencies;
 
 	m_prePassRenderPass = RenderPass(prepassCi);
 	LOG_TRACE("Created prepass render pass");
@@ -582,7 +569,7 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 	{
 		for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
 		{
-			m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
+			m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
 		}
 	}
 
@@ -593,7 +580,28 @@ void Renderer::CreatePipeline()
 	// Compute
 	PipelineCreateInfo compute = {};
 	compute.type = PipelineType::COMPUTE;
-	m_compute = new Pipeline("test", compute);
+	m_compute = std::make_unique<Pipeline>("lightCulling", compute);
+
+	VkSamplerCreateInfo ci = {};
+	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	ci.magFilter = VK_FILTER_LINEAR;
+	ci.minFilter = VK_FILTER_LINEAR;
+	ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	ci.anisotropyEnable = VK_TRUE;
+	ci.maxAnisotropy = 1.0f;
+	ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
+	ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
+	ci.compareOp     = VK_COMPARE_OP_ALWAYS;
+	ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	ci.mipLodBias = 0.0f;
+	ci.minLod = 0.0f;
+	ci.maxLod = 1.0f;
+
+	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create depth texture sampler");
+
 	
 	// Depth prepass pipeline
 	LOG_WARN("Creating depth pipeline");
@@ -603,6 +611,7 @@ void Renderer::CreatePipeline()
 	depthPipeline.depthCompareOp	= VK_COMPARE_OP_LESS;
 	depthPipeline.depthWriteEnable	= true;
 	depthPipeline.useDepth			= true;
+	depthPipeline.depthClampEnable  = false;
 	depthPipeline.msaaSamples		= m_msaaSamples;
 	depthPipeline.renderPass		= &m_prePassRenderPass;
 	depthPipeline.subpass			= 0;
@@ -619,15 +628,21 @@ void Renderer::CreatePipeline()
 	//Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
 	//m_pipelinesRegistry["depth"] = pipeline;
 
+	uint32_t totaltiles = glm::compMul(m_computePushConstants.tileNums);
+	
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
 
 		for(auto& [name, bufferInfo] : m_depthPipeline->m_uniformBuffers)
 		{
 			if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
-				m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK));
+				m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
 		}
 
+		// TODO
+		m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)); // MAX_LIGHTS_PER_TILE
+		m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)); // MAX_LIGHTS_PER_TILE
+	
 	}
 
 }
@@ -801,7 +816,7 @@ void Renderer::CreateDescriptorSets()
 		bufferI = {};
 		bufferI.buffer	= m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
 		bufferI.offset	= 0;
-		bufferI.range	= VK_WHOLE_SIZE;
+		bufferI.range	= m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
 
 		writeDS = {};
 		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -818,96 +833,23 @@ void Renderer::CreateDescriptorSets()
 
 	
 	VkDescriptorSetAllocateInfo callocInfo = {};
-	std::vector<VkDescriptorSetLayout> clayouts(m_swapchainImages.size());
+	std::vector<VkDescriptorSetLayout> clayouts;
 
+	if(m_computeDesc.size() != 0)
+		return;
 	for (int i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		clayouts[i] = m_compute->m_descSetLayouts[0];
+		for(int j = 0; j < m_compute->m_numDescSets; ++j)
+			clayouts.push_back(m_compute->m_descSetLayouts[j]);
 	}
 	callocInfo.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	callocInfo.descriptorPool		= m_descriptorPool;
 	callocInfo.descriptorSetCount	= static_cast<uint32_t>(clayouts.size());
 	callocInfo.pSetLayouts			= clayouts.data();
-	m_computeDesc.resize(m_swapchainImages.size());
+	m_computeDesc.resize(clayouts.size());
 	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
 
-	TextureManager::LoadTexture("./textures/uv_checker.png", VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
-	VkSamplerCreateInfo ci = {};
-	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	ci.magFilter = VK_FILTER_LINEAR;
-	ci.minFilter = VK_FILTER_LINEAR;
-	ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.anisotropyEnable = VK_TRUE;
-	ci.maxAnisotropy = 16;
-	ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-	ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
-	ci.compareOp     = VK_COMPARE_OP_ALWAYS;
-	ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	ci.mipLodBias = 0.0f;
-	ci.minLod = 0.0f;
-	ci.maxLod = texture.GetMipLevels();
-
-	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create texture sampler");
-
 	
-	
-	std::vector<Light> data(2);
-	data[0] = {
-		glm::vec4(1,0,1,0),
-		Color::Red,
-		5.5f,
-		1,1,1,
-		glm::vec4(1,1,1,0)
-	};
-	data[1] = {
-		glm::vec4(0,0,0,1),
-		Color::Green,
-		42.0f,
-		0,0,0,
-		glm::vec4()
-	};
-	
-
-	m_computeBuffer = std::make_unique<Buffer>(data.size() * sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-	m_computeBuffer->Fill(data.data(), data.size() * sizeof(Light));
-	
-	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
-	{
-		
-		VkDescriptorImageInfo imageInfo = {};
-		imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		imageInfo.imageView = texture.GetImageView();
-		imageInfo.sampler = m_computeSampler;
-
-		VkWriteDescriptorSet writeDS = {};
-		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDS.dstSet			= m_computeDesc[i];
-		writeDS.dstBinding		= 0;
-		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		writeDS.descriptorCount	= 1;
-		writeDS.pImageInfo		= &imageInfo;
-
-		VkDescriptorBufferInfo bi = {};
-		bi.offset = 0;
-		bi.range = VK_WHOLE_SIZE;
-		bi.buffer = m_computeBuffer->GetVkBuffer();
-		
-		VkWriteDescriptorSet writeDS2 = {};
-		writeDS2.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDS2.dstSet			= m_computeDesc[i];
-		writeDS2.dstBinding		= 1;
-		writeDS2.descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		writeDS2.descriptorCount	= 1;
-		writeDS2.pBufferInfo		= &bi;
-
-		VkWriteDescriptorSet writes[] = { writeDS, writeDS2};
-		vkUpdateDescriptorSets(m_device, 2, writes, 0, nullptr);
-
-	}
 
 
 }
@@ -916,46 +858,11 @@ void Renderer::CreateUniformBuffers()
 {
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
-		m_ubAllocators["transforms" + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
-		m_ubAllocators["camera" + std::to_string(i)] = std::move(std::make_unique<UniformBufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK));
-	}
-	// TODO
-	VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+		m_ubAllocators["transforms" + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
+		m_ubAllocators["camera" + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(sizeof(CameraStruct), OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
 
-
-	for(size_t i = 0; i < m_swapchainImages.size(); i++)
-	{
 		m_ubAllocators["camera" + std::to_string(i)]->Allocate();
 	}
-
-}
-
-void Renderer::CreateTexture()
-{
-	//m_texture = std::make_unique<Texture>("./textures/chalet.jpg", m_gpu, m_device, m_commandPool, m_graphicsQueue);
-}
-
-void Renderer::CreateSampler()
-{
-	VkSamplerCreateInfo ci = {};
-	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	ci.magFilter = VK_FILTER_LINEAR;
-	ci.minFilter = VK_FILTER_LINEAR;
-	ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	ci.anisotropyEnable = VK_TRUE;
-	ci.maxAnisotropy = 16;
-	ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-	ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
-	ci.compareOp     = VK_COMPARE_OP_ALWAYS;
-	ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	ci.mipLodBias = 0.0f;
-	ci.minLod = 0.0f;
-	//ci.maxLod = m_texture->GetMipLevels();
-
-	//VK_CHECK(vkCreateSampler(m_device, &ci, nullptr, &m_sampler), "Failed to create texture sampler");
 
 }
 
@@ -981,11 +888,170 @@ void Renderer::CreateDepthResources()
 	ci.msaaSamples = m_msaaSamples;
 	ci.useMips = false;
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
+
 }
+
+void Renderer::UpdateComputeDescriptors()
+{
+	TextureManager::LoadTexture("./textures/texture.jpg");
+	Texture& t = TextureManager::GetTexture("./textures/texture.jpg");
+	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+	{
+		VkDescriptorBufferInfo cameraBI = {};
+		cameraBI.offset = 0;
+		cameraBI.range	= m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
+		cameraBI.buffer = m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
+		
+		VkDescriptorBufferInfo lightsBI = {};
+		lightsBI.offset	= 0;
+		lightsBI.range	= VK_WHOLE_SIZE;
+		lightsBI.buffer	= m_lightsBuffers[i]->GetBuffer(0);
+		
+		VkDescriptorBufferInfo visibleLightsBI = {};
+		visibleLightsBI.offset	= 0;
+		visibleLightsBI.range	= VK_WHOLE_SIZE;
+		visibleLightsBI.buffer	= m_visibleLightsBuffers[i]->GetBuffer(0);
+
+		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
+		
+		VkDescriptorImageInfo depthImageInfo = {};
+		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		depthImageInfo.imageView	= m_depthImage->GetImageView();
+		depthImageInfo.sampler		= m_computeSampler;
+
+		std::array<VkWriteDescriptorSet, 3> writeDS({});
+		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[0].dstSet			= m_computeDesc[i];
+		writeDS[0].dstBinding		= 0;
+		writeDS[0].descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDS[0].descriptorCount	= 1;
+		writeDS[0].pBufferInfo		= &cameraBI;
+		
+		writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[1].dstSet			= m_computeDesc[i];
+		writeDS[1].dstBinding		= 1;
+		writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDS[1].descriptorCount	= bufferInfos.size();
+		writeDS[1].pBufferInfo		= bufferInfos.data();
+		
+		writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[2].dstSet			= m_computeDesc[i];
+		writeDS[2].dstBinding		= 3;
+		writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDS[2].descriptorCount	= 1;
+		writeDS[2].pImageInfo		= &depthImageInfo;
+		
+		
+		vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
+	}
+}
+
+void Renderer::UpdateLights(uint32_t index)
+{
+	std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
+	
+	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
+	{
+		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
+		glm::mat4 tMat = t->GetTransform();
+		
+		glm::vec3 newDir = glm::normalize(glm::vec3(tMat[2]));
+		float newIntensity = lightComp->intensity;
+		glm::vec3 newColor = lightComp->color.ToVec3();
+
+
+		Light& light = m_lightMap[lightComp->GetComponentID()];
+		bool changed = newDir != light.direction || newIntensity != light.intensity || newColor != light.color;
+		if(changed)
+		{
+			
+			light.direction = newDir;
+			light.intensity = newIntensity;
+			light.color = newColor;
+			
+			slotsAndDatas.push_back({lightComp->_slot, &light});
+		}
+	}
+	for(auto* lightComp : m_ecs->componentManager->GetComponents<PointLight>())
+	{
+		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
+		glm::mat4 tMat = t->GetTransform();
+
+		glm::vec3 newPos = glm::vec3(tMat[3]);
+		float newRange = lightComp->range;
+		float newIntensity = lightComp->intensity;
+		glm::vec3 newColor = lightComp->color.ToVec3();
+		Attenuation newAtt = lightComp->attenuation;
+
+		Light& light = m_lightMap[lightComp->GetComponentID()];
+		bool changed = newPos != light.position || newIntensity != light.intensity
+					|| newColor != light.color || newRange != light.range
+					|| newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
+		if(changed)
+		{
+			light.position = newPos;
+			light.range = newRange;
+			light.intensity = newIntensity;
+			light.color = newColor;
+			
+			light.attenuation[0] = newAtt.quadratic;
+			light.attenuation[1] = newAtt.linear;
+			light.attenuation[2] = newAtt.constant;
+			
+			slotsAndDatas.push_back({lightComp->_slot, &light});
+		}
+	}
+	for(auto* lightComp : m_ecs->componentManager->GetComponents<SpotLight>())
+	{
+		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
+		glm::mat4 tMat = t->GetTransform();
+		
+		glm::vec3 newPos = glm::vec3(tMat[3]);
+		glm::vec3 newDir = glm::normalize(glm::vec3(tMat[2]));
+		float newRange = lightComp->range;
+		float newIntensity = lightComp->intensity;
+		float newCutoff = lightComp->cutoff;
+		glm::vec3 newColor = lightComp->color.ToVec3();
+
+		Attenuation newAtt = lightComp->attenuation;
+
+
+		Light& light = m_lightMap[lightComp->GetComponentID()];
+		bool changed = newPos != light.position || newDir != light.direction|| newIntensity != light.intensity
+				|| newColor != light.color || newRange != light.range || newCutoff != light.cutoff
+				|| newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
+		
+		if(changed)
+		{
+			light.position = newPos;
+			light.direction = newDir;
+			light.range = newRange;
+			light.intensity = newIntensity;
+			light.cutoff = newCutoff;
+			light.color = newColor;
+			
+			light.attenuation[0] = newAtt.quadratic;
+			light.attenuation[1] = newAtt.linear;
+			light.attenuation[2] = newAtt.constant;
+			
+			slotsAndDatas.push_back({lightComp->_slot, &light});
+		}
+	}
+
+	for(auto& [slot, newLight] : m_newlyAddedLights[index])
+	{
+		slotsAndDatas.push_back({slot, newLight});
+	}
+	m_newlyAddedLights[index].clear();
+	
+	m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
+	
+}
+
 
 void Renderer::Render(double dt)
 {
-	TextureManager::GetTexture("./textures/uv_checker.png").GenerateMipmaps(VK_IMAGE_LAYOUT_GENERAL);
+	vkDeviceWaitIdle(m_device);	
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
@@ -1010,6 +1076,8 @@ void Renderer::Render(double dt)
 	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
 
+	UpdateLights(imageIndex);
+
 	//m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
 
 	static auto startTime = std::chrono::high_resolution_clock::now();
@@ -1023,8 +1091,8 @@ void Renderer::Render(double dt)
 	ComponentManager* cm = m_ecs->componentManager;
 
 
-		// TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
-		// also a single camera has a whole chunk of memory which isnt good if we only use 1 camera per game
+	// TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
+	// also a single camera has a whole chunk of memory which isnt good if we only use 1 camera per game
 	Camera camera = *(*(cm->begin<Camera>()));
 	Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
 	auto materialIterator = cm->begin<Material>();
@@ -1035,32 +1103,8 @@ void Renderer::Render(double dt)
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
 	
-	Texture& texture = TextureManager::GetTexture("./textures/uv_checker.png");
-	
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 0, nullptr);
-	vkCmdDispatch(cb, texture.GetWidth() / 16 + 1, texture.GetHeight() / 16 + 1, 1);
 
 
-	VkImageMemoryBarrier imageMemoryBarrier = {};
-	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	// We won't be changing the layout of the image
-	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-	imageMemoryBarrier.image = texture.GetImage();
-	imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-	imageMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	vkCmdPipelineBarrier(
-		cb,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &imageMemoryBarrier);
 	
 	glm::mat4 proj = camera.GetProjection();
 	//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
@@ -1068,7 +1112,9 @@ void Renderer::Render(double dt)
 	//glm::mat4 vp = proj * rot * trf;
 	glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
 	uint32_t vpOffset = 0;
-	m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &vp);
+	
+	CameraStruct cs = {vp, cameraTransform->pos};
+	m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
 
 	auto prepassBegin = m_depthPipeline->m_renderPass->GetBeginInfo(imageIndex);
 	vkCmdBeginRenderPass(cb, &prepassBegin, VK_SUBPASS_CONTENTS_INLINE);
@@ -1092,7 +1138,33 @@ void Renderer::Render(double dt)
 		vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
 	}
 	vkCmdEndRenderPass(cb);
-
+	
+	VkImageMemoryBarrier imageMemoryBarrier = {};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	// We won't be changing the layout of the image
+	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	imageMemoryBarrier.image = m_depthImage->GetImage();
+	imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+	imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	vkCmdPipelineBarrier(
+		cb,
+		VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &imageMemoryBarrier);
+	uint32_t offset = 0;
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
+	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
+	
+	
+	vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
+	vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
 	
 	for(auto& pipeline : m_pipelines)
 	{
@@ -1109,6 +1181,7 @@ void Renderer::Render(double dt)
 			lastRenderPass = pipeline.m_renderPass;
 			auto beginInfo = lastRenderPass->GetBeginInfo(imageIndex);
 			vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			
 			//vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
 			
 		}
@@ -1117,6 +1190,8 @@ void Renderer::Render(double dt)
 		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 		
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
+		vkCmdPushConstants(cb, pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
 		
 
 		while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
@@ -1143,11 +1218,11 @@ void Renderer::Render(double dt)
 
 			if(!pipeline.m_isGlobal)
 			{
-				m_ubAllocators[pipeline.m_name + "Material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
+				m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
 
 				glm::vec4 ubs[] = {{std::sin(time) * 0.5f + 0.5f, 0,0,1.0f}, {materialIterator->_textureSlot, 0, 0, 0}};
 
-				m_ubAllocators[pipeline.m_name + "Material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
+				m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
 
 			}
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
@@ -1313,7 +1388,61 @@ void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 	*/
 }
 
+void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e)
+{
+	uint32_t slot = 0;
+	for(auto& buffer : m_lightsBuffers)
+		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
 
+	e->component->_slot = slot;
+	
+	m_lightMap[e->component->GetComponentID()] = {0}; // 0 = DirectionalLight
+	Light* light = &m_lightMap[e->component->GetComponentID()];
+
+	for(auto& list : m_newlyAddedLights)
+	{
+		list.push_back({slot, light});
+	}
+	
+	m_computePushConstants.lightNum++;
+	
+}
+
+void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
+{
+	uint32_t slot = 0;
+	for(auto& buffer : m_lightsBuffers)
+		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
+
+	e->component->_slot = slot;
+	
+	m_lightMap[e->component->GetComponentID()] = { 1};  // 1 = PointLight
+	Light* light = &m_lightMap[e->component->GetComponentID()];
+
+	for(auto& list : m_newlyAddedLights)
+	{
+		list.push_back({slot, light});
+	}
+	m_computePushConstants.lightNum++;
+}
+
+void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
+{
+	uint32_t slot = 0;
+	for(auto& buffer : m_lightsBuffers)
+		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
+
+	e->component->_slot = slot;
+	
+	m_lightMap[e->component->GetComponentID()] = {2}; // 2 = SpotLight
+	Light* light = &m_lightMap[e->component->GetComponentID()];
+
+	for(auto& list : m_newlyAddedLights)
+	{
+		list.push_back({slot, light});
+	}
+	m_computePushConstants.lightNum++;
+}
 
 
 // #################################################################################
@@ -1583,7 +1712,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
 		LOG_TRACE(message.str());
 	}
-	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT && strstr(pCallbackData->pMessageIdName, "DEBUG-PRINTF") != NULL) {
 		LOG_INFO(message.str());
 	}
 	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {

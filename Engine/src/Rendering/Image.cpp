@@ -69,7 +69,7 @@ m_layout(createInfo.layout)
 
     viewCreateInfo.subresourceRange.aspectMask      = createInfo.aspectFlags;
     viewCreateInfo.subresourceRange.baseMipLevel    = 0;
-    viewCreateInfo.subresourceRange.levelCount      = VK_REMAINING_MIP_LEVELS;
+    viewCreateInfo.subresourceRange.levelCount      = 1;
     viewCreateInfo.subresourceRange.baseArrayLayer  = 0;
     viewCreateInfo.subresourceRange.layerCount      = 1;
 

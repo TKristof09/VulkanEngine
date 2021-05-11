@@ -26,58 +26,38 @@ int main()
 	ECSEngine* ecs = scene.ecs;
 	HierarchyUI hierarchyUi(&scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-	std::vector<Vertex> vertices = {
-		{{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
-		{{1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
-		{{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-		{{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f}}
-	};
-	std::vector<Vertex> vertices2 = {
-		{{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f}},
-		{{0.5f, -0.5f, 0.0f}, {1.0f, 0.0f}},
-		{{0.5f, 0.5f, 0.0f}, {1.0f, 1.0f}},
-	};
-
-	std::vector<uint32_t> indices = {
-		0, 1, 2, 2, 3, 0,
-	};
-	std::vector<uint32_t> indices2 = {
-		0, 1, 2
-	};
 
 	
 
-	Entity* e1 = ecs->entityManager->CreateEntity();
-	e1->AddComponent<Mesh>(vertices, indices);
-
 	AssimpImporter importer;
 	Entity* e2 = importer.LoadFile("models/cube.obj", ecs);
+	
+	
+
+	Entity* d = ecs->entityManager->CreateEntity();
+	auto l = d->AddComponent<PointLight>();
+	l->color = Color::Red;
+	l->intensity = 1.0f;
+	l->range = 100.0f;
+	l->attenuation = {1,1,1};
+	auto dt = d->AddComponent<Transform>();
+	
+	
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
 	//ecs->componentManager->AddComponent<Mesh>(id2, vertices2, indices2);
 
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
-	camera->AddComponent<Camera>(90.f, 1920/1080, 0.001f, 100.f);
+	camera->AddComponent<Camera>(90.f, 1920/1080, 0.01f, 100.f);
 	t->pos = { 0.0f, 2.0f, 10.0f };
 
-	Transform* t1 = e1->GetComponent<Transform>();
+
+	
 	Transform* t2 = e2->GetComponent<Transform>();
-	t2->pos = { 3.0f, -2.0f, 0.0f };
-	//t1->lScale = {10.0f, 10.0f, 10.0f };
+	t2->pos = { 1.f, -2.0f, 1.0f };
+	t2->scale = {100.f, 0.2f, 100.f};
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
-
-
-	Material* mat1 = e1->AddComponent<Material>();
-	mat1->shaderName = "base";
-
-	auto texturePath = "./textures/texture.jpg";
-	TextureManager::LoadTexture(texturePath);
-	mat1->textures["albedo"] = texturePath;
-
-	//Material* mat2 = engine->componentManager->AddComponent<Material>(id2);
-	//mat2->shaderName = "base";
-	//TextureManager::LoadTexture();
-	//mat2->textures["albedo"] = "./textures/texture.jpg";
+	t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
 
 	editor.Run();
 	

@@ -63,30 +63,14 @@ public:
 	void Free(bool destroyOnlyImageView = false);
     void TransitionLayout(VkImageLayout newLayout);
     void GenerateMipmaps(VkImageLayout newLayout);
-    const VkImageView& GetImageView() const
-    {
-        return m_imageView;
-    }
-	const VkImage& GetImage() const
-    {
-        return m_image;
-    }
-    const VkFormat& GetFormat() const
-    {
-        return m_format;
-    }
-    const uint32_t GetMipLevels() const
-    {
-        return m_mipLevels;
-    }
-	const uint32_t GetWidth() const
-    {
-	    return m_width;
-    }
-	const uint32_t GetHeight() const
-    {
-	    return m_height;
-    }
+
+	const VkImageView GetImageView() const { return m_imageView; }
+    const VkImageLayout GetLayout() const { return m_layout; }
+    const VkImage GetImage() const { return m_image; }
+    const VkFormat GetFormat() const { return m_format; }
+    const uint32_t GetMipLevels() const { return m_mipLevels; }
+    const uint32_t GetWidth() const { return m_width; }
+    const uint32_t GetHeight() const { return m_height; }
 
 protected:
 

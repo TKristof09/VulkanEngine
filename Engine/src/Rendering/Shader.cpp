@@ -195,10 +195,15 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
 		spirv_cross::SPIRType type = comp.get_type(resource.type_id);
 		uint32_t set = comp.get_decoration(resource.id, spv::DecorationDescriptorSet);
 	    uint32_t binding = comp.get_decoration(resource.id, spv::DecorationBinding);
-		uint32_t location = comp.get_decoration(resource.id, spv::DecorationLocation);
 		uint32_t size = comp.get_declared_struct_size(type);
 		uint32_t arraySize = type.array[0];
 
+		if(size == 0)
+		{
+			size = comp.get_declared_struct_size_runtime_array(type, 1);
+			LOG_WARN("{0} is a dynamic array setting size as if it had 1 element in shader: {1}", name,  filename);
+		}
+		
 		if(type.array.size() > 1)
 			LOG_WARN("{0} is an array of {1} dimensions in shader: {2}", name, type.array.size(), filename);
 
@@ -210,7 +215,6 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
 
 		LOG_TRACE(name);
 		LOG_TRACE("   Size: {0}", size);
-		LOG_TRACE("   Location: {0}", location);
 		LOG_TRACE("   Set: {0}", set);
 		LOG_TRACE("   Binding: {0}", binding);
 		LOG_TRACE("   Count: {0}", arraySize);

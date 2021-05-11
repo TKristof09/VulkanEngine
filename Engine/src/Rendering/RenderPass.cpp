@@ -80,7 +80,7 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 		}
 
-		if(colorRefs[currentSubpass].size() != resolveRefs[currentSubpass].size())
+		if(colorRefs[currentSubpass].size() != resolveRefs[currentSubpass].size() && useResolve)
 		{
 			LOG_ERROR("Not the same amount of color and resolve attachments");
 			assert(false);

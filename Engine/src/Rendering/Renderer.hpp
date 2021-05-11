@@ -17,11 +17,12 @@
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 #include "Shader.hpp"
-#include "Memory/UniformBufferAllocator.hpp"
+#include "Memory/BufferAllocator.hpp"
 #include "Pipeline.hpp"
 #include "RenderPass.hpp"
 #include "Framebuffer.hpp"
 #include "ECS/ECSEngine.hpp"
+#include "ECS/CoreComponents/Lights.hpp"
 
 
 class Renderer
@@ -38,28 +39,57 @@ public:
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
 	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
 	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
+	void OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e);
+	void OnPointLightAdded(const ComponentAdded<PointLight>* e);
+	void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
 
 private:
 	struct alignas(16) Light
 	{
-		glm::vec4 positionAndType;
-
-		Color color;
-		float intensity;
+		int type;
 		float attenuation[3];
 
-		glm::vec4 directionAndCutoff;
+		glm::vec3 color; // use vec3 to have the struct take up 128 bytes
+		float intensity;
+
+		glm::vec3 direction; // only for directional or spot
+		float cutoff; // only for spot
+
+		glm::vec3 position;
+		float range; // only for spot and point
+
 	};
-	
-	Pipeline* m_compute;
+	struct TileLights // TODO
+	{
+		glm::uint count;
+		glm::uint indices[1024];
+	};
+	struct ComputePushConstants
+	{
+		glm::ivec2 viewportSize;
+		glm::ivec2 tileNums;
+		int lightNum;
+	};
+	struct CameraStruct
+	{
+		glm::mat4 vp;
+		glm::vec3 position;
+	};
+
+	std::unique_ptr<Pipeline> m_compute;
 	std::vector<VkDescriptorSet> m_computeDesc;
+	std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
+	std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
+	void UpdateComputeDescriptors();
 	VkSampler m_computeSampler;
-	std::unique_ptr<Buffer> m_computeBuffer;
+	ComputePushConstants m_computePushConstants;
+	std::unordered_map<ComponentID, Light> m_lightMap;
+	std::vector<std::list<std::pair<uint32_t, Light*>>> m_newlyAddedLights;
+	void UpdateLights(uint32_t index);
 
-
+	std::vector<VkDescriptorSet> m_tempDesc;
+	
 	std::unique_ptr<Pipeline> m_depthPipeline;
-
-	std::vector<Light> m_lights;
 	
 	friend class MaterialSystem;
 
@@ -80,15 +110,12 @@ private:
 	void RecreateSwapchain();
 	void CleanupSwapchain();
 
-	void CreateModel();
+	
 	void CreateUniformBuffers();
 
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
 	void CreateDescriptorSets();
-
-	void CreateTexture();
-	void CreateSampler();
 
 	void CreateColorResources();
 	void CreateDepthResources();
@@ -122,7 +149,7 @@ private:
 	std::multiset<Pipeline> m_pipelines;
 	std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
 
-	std::unordered_map<std::string, std::unique_ptr<UniformBufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
+	std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
 
 	VkCommandPool&			m_commandPool;

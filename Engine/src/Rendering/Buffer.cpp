@@ -149,6 +149,63 @@ void Buffer::Fill(void* data, uint64_t size, uint64_t offset, bool manualFlush)
 
 }
 
+void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t> offsets, bool manualFlush)
+{
+	void* memory;
+
+	// we need to make sure that the start and end of the memory are multiples of nonCoherentAtomSize
+	// see https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkMapMemory.html
+	uint64_t correctOffset = offsets[0];
+	
+	uint64_t correctTotalSize = size * (offsets.back() - offsets.front());
+	VkDeviceSize nonCoherentAtomSize = VulkanContext::GetPhysicalDeviceProperties().limits.nonCoherentAtomSize;
+
+	uint32_t diff = offsets[0] % nonCoherentAtomSize;
+
+	correctOffset = offsets[0] - diff;
+	
+	correctTotalSize = (correctTotalSize + diff) + nonCoherentAtomSize - ((correctTotalSize + diff) % nonCoherentAtomSize);
+	if(correctOffset + correctTotalSize > m_size)
+	{
+		correctTotalSize = VK_WHOLE_SIZE;
+	}
+
+
+
+	VK_CHECK(vkMapMemory(VulkanContext::GetDevice(), m_memory, correctOffset, correctTotalSize, 0, &memory), "Failed to map memory for vertex buffer");
+
+	uint32_t i = 0;
+	for(auto offset : offsets)
+	{
+		memcpy((void*)((uintptr_t)memory + diff + offset - offsets[0]), datas[i], (size_t)size);
+
+		i++;
+	}
+
+	if(manualFlush)
+	{
+		std::vector<VkMappedMemoryRange> ranges(offsets.size());
+		uint32_t i = 0;
+		for(auto offset : offsets)
+		{
+			diff = offset % nonCoherentAtomSize;
+			correctOffset = offset - diff;
+			uint64_t correctSize = (size + diff) + nonCoherentAtomSize - ((size + diff) % nonCoherentAtomSize);
+
+			
+			ranges[i].sType		= VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+			ranges[i].memory	= m_memory;
+			ranges[i].size		= correctSize;
+			ranges[i].offset	= correctOffset;
+
+			i++;
+		}
+
+		vkFlushMappedMemoryRanges(VulkanContext::GetDevice(), ranges.size(), ranges.data());
+	}
+	vkUnmapMemory(VulkanContext::GetDevice(), m_memory);
+}
+
 void Buffer::Bind(const CommandBuffer& commandBuffer)
 {
 	switch(m_type)

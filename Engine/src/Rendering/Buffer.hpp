@@ -54,6 +54,9 @@ public:
 	void Copy(Buffer* dst, VkDeviceSize size);
 	void CopyToImage(VkImage image, uint32_t width, uint32_t height);
 	void Fill(void* data, uint64_t size, uint64_t offset = 0, bool manualFlush = false); // TODO change the manual flush to true by default i think
+
+	// offsets must be sorted in ascending order
+	void Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t> offsets, bool manualFlush = false); // TODO change the manual flush to true by default i think
 	void Bind(const CommandBuffer& commandBuffer);
 	const VkBuffer& GetVkBuffer() const
 	{

@@ -93,6 +93,20 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 
 	if(needToAllocate)
 	{
+		VkDescriptorSetAllocateInfo tallocInfo = {};
+	std::vector<VkDescriptorSetLayout> tlayouts;
+
+		for (int i = 0; i < numSwapchainImages; ++i)
+		{
+			tlayouts.push_back(pipeline->m_descSetLayouts[0]);
+		}
+		tallocInfo.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		tallocInfo.descriptorPool		= m_renderer->m_descriptorPool;
+		tallocInfo.descriptorSetCount	= static_cast<uint32_t>(tlayouts.size());
+		tallocInfo.pSetLayouts			= tlayouts.data();
+		m_renderer->m_tempDesc.resize(tlayouts.size());
+		VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &tallocInfo, m_renderer->m_tempDesc.data()), "Failed to allocate descriptor sets");
+
 
 		VkDescriptorSetAllocateInfo allocInfo = {};
 		std::vector<VkDescriptorSetLayout> layouts(numSwapchainImages);
@@ -136,6 +150,39 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 	for (int i = 0; i < numSwapchainImages; ++i)
 	{
 
+		VkDescriptorBufferInfo cameraBI = {};
+		cameraBI.offset = 0;
+		cameraBI.range	= m_renderer->m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
+		cameraBI.buffer = m_renderer->m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
+		
+		VkDescriptorBufferInfo lightsBI = {};
+		lightsBI.offset	= 0;
+		lightsBI.range	= VK_WHOLE_SIZE;
+		lightsBI.buffer	= m_renderer->m_lightsBuffers[i]->GetBuffer(0);
+		
+		VkDescriptorBufferInfo visibleLightsBI = {};
+		visibleLightsBI.offset	= 0;
+		visibleLightsBI.range	= VK_WHOLE_SIZE;
+		visibleLightsBI.buffer	= m_renderer->m_visibleLightsBuffers[i]->GetBuffer(0);
+		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
+		
+
+		std::array<VkWriteDescriptorSet, 2> writeDS({});
+		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[0].dstSet			= m_renderer->m_tempDesc[i];
+		writeDS[0].dstBinding		= 0;
+		writeDS[0].descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDS[0].descriptorCount	= 1;
+		writeDS[0].pBufferInfo		= &cameraBI;
+		
+		writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[1].dstSet			= m_renderer->m_tempDesc[i];
+		writeDS[1].dstBinding		= 1;
+		writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDS[1].descriptorCount	= bufferInfos.size();
+		writeDS[1].pBufferInfo		= bufferInfos.data();
+		vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
+		
 		for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
 		{
 			if(bufferInfo.set != materialDescriptorSetIndex)
@@ -205,7 +252,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 			VkDescriptorImageInfo imageInfo = {};
 			imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			imageInfo.sampler		= m_samplers[pipeline->m_name + name];
-			imageInfo.imageView		= texture.GetImageView();
+			imageInfo.imageView		= texture.GetImageView();//texture.GetImageView();
 
 			VkWriteDescriptorSet writeDS = {};
 			writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -248,7 +295,7 @@ void MaterialSystem::UpdateMaterial(Material* mat)
 
 
 			VkDescriptorImageInfo imageInfo = {};
-			imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 			imageInfo.sampler		= m_samplers[pipeline->m_name + name];
 			imageInfo.imageView		= texture.GetImageView();
 
