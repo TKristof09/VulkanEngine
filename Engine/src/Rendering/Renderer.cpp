@@ -14,7 +14,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <glm/gtx/transform.hpp>
 
 #include "TextureManager.hpp"
 #include "ECS/ComponentManager.hpp"
@@ -100,7 +99,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	m_computePushConstants.viewportSize = { m_swapchainExtent.width, m_swapchainExtent.height };
 	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
 	m_computePushConstants.lightNum = 0;
-	m_newlyAddedLights.resize(m_swapchainImages.size());
+	m_changedLights.resize(m_swapchainImages.size());
 	
 	CreateRenderPass();
 	CreatePipeline();
@@ -367,7 +366,6 @@ void Renderer::CreateDevice()
 	descriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
 	descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 	descriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
-	descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
@@ -948,7 +946,7 @@ void Renderer::UpdateComputeDescriptors()
 
 void Renderer::UpdateLights(uint32_t index)
 {
-	std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
+	
 	
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
 	{
@@ -969,7 +967,8 @@ void Renderer::UpdateLights(uint32_t index)
 			light.intensity = newIntensity;
 			light.color = newColor;
 			
-			slotsAndDatas.push_back({lightComp->_slot, &light});
+			for(auto& dict : m_changedLights)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
 	}
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<PointLight>())
@@ -978,6 +977,7 @@ void Renderer::UpdateLights(uint32_t index)
 		glm::mat4 tMat = t->GetTransform();
 
 		glm::vec3 newPos = glm::vec3(tMat[3]);
+		
 		float newRange = lightComp->range;
 		float newIntensity = lightComp->intensity;
 		glm::vec3 newColor = lightComp->color.ToVec3();
@@ -998,7 +998,8 @@ void Renderer::UpdateLights(uint32_t index)
 			light.attenuation[1] = newAtt.linear;
 			light.attenuation[2] = newAtt.constant;
 			
-			slotsAndDatas.push_back({lightComp->_slot, &light});
+			for(auto& dict : m_changedLights)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
 	}
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<SpotLight>())
@@ -1033,16 +1034,18 @@ void Renderer::UpdateLights(uint32_t index)
 			light.attenuation[0] = newAtt.quadratic;
 			light.attenuation[1] = newAtt.linear;
 			light.attenuation[2] = newAtt.constant;
-			
-			slotsAndDatas.push_back({lightComp->_slot, &light});
+
+			for(auto& dict : m_changedLights)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
 	}
 
-	for(auto& [slot, newLight] : m_newlyAddedLights[index])
+	std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
+	for(auto& [slot, newLight] : m_changedLights[index])
 	{
 		slotsAndDatas.push_back({slot, newLight});
 	}
-	m_newlyAddedLights[index].clear();
+	m_changedLights[index].clear();
 	
 	m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
 	
@@ -1399,9 +1402,9 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 	m_lightMap[e->component->GetComponentID()] = {0}; // 0 = DirectionalLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
-	for(auto& list : m_newlyAddedLights)
+	for(auto& dict : m_changedLights)
 	{
-		list.push_back({slot, light});
+		dict[slot] = light;
 	}
 	
 	m_computePushConstants.lightNum++;
@@ -1419,9 +1422,9 @@ void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
 	m_lightMap[e->component->GetComponentID()] = { 1};  // 1 = PointLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
-	for(auto& list : m_newlyAddedLights)
+	for(auto& dict : m_changedLights)
 	{
-		list.push_back({slot, light});
+		dict[slot] = light;
 	}
 	m_computePushConstants.lightNum++;
 }
@@ -1437,9 +1440,10 @@ void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
 	m_lightMap[e->component->GetComponentID()] = {2}; // 2 = SpotLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
-	for(auto& list : m_newlyAddedLights)
+	for(auto& list : m_changedLights)
+	for(auto& dict : m_changedLights)
 	{
-		list.push_back({slot, light});
+		dict[slot] = light;
 	}
 	m_computePushConstants.lightNum++;
 }
@@ -1476,7 +1480,7 @@ std::vector<const char*> GetExtensions()
 	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-#if 1
+#ifdef VDEBUG
 	extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
 	return extensions;
@@ -1674,10 +1678,20 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 	
 	std::ostringstream message;
 	message << "\n";
-	message << "\t" << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
-	message << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
-	message << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
 
+	std::string messageidName = "";
+	if(pCallbackData->pMessageIdName)
+		messageidName = pCallbackData->pMessageIdName;
+	
+	message << "\t" << "messageIDName   = <" << messageidName << ">\n";
+	
+	
+	message << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
+	
+	if(pCallbackData->pMessage)
+		message << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
+	
+	
 	if (0 < pCallbackData->queueLabelCount)
 	{
 		message << "\t" << "Queue Labels:\n";
@@ -1712,7 +1726,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
 		LOG_TRACE(message.str());
 	}
-	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT && strstr(pCallbackData->pMessageIdName, "DEBUG-PRINTF") != NULL) {
+	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT && messageidName.find("DEBUG-PRINTF") != std::string::npos) {
 		LOG_INFO(message.str());
 	}
 	else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {

@@ -17,14 +17,19 @@
 #include "Application.hpp"
 #include "Utils/FileDialog/FileDialog.hpp"
 
+
+#include "TestSystem.hpp"
+
 int main()
 {
 	Application editor(1920, 1080, 60, "Editor");
-
+	
 	Scene scene = editor.GetScene();
 	
 	ECSEngine* ecs = scene.ecs;
 	HierarchyUI hierarchyUi(&scene, editor.GetRenderer(), editor.GetMaterialSystem());
+
+	
 
 
 	
@@ -41,6 +46,7 @@ int main()
 	l->range = 100.0f;
 	l->attenuation = {1,1,1};
 	auto dt = d->AddComponent<Transform>();
+	dt->pos = {-20, 0, 0};
 	
 	
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
@@ -59,6 +65,8 @@ int main()
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
 	t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
 
+	//ecs->systemManager->AddSystem<TestSystem>(d->GetEntityID());
+	
 	editor.Run();
 	
 	return 0;

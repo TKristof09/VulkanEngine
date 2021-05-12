@@ -84,7 +84,7 @@ private:
 	VkSampler m_computeSampler;
 	ComputePushConstants m_computePushConstants;
 	std::unordered_map<ComponentID, Light> m_lightMap;
-	std::vector<std::list<std::pair<uint32_t, Light*>>> m_newlyAddedLights;
+	std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
 	void UpdateLights(uint32_t index);
 
 	std::vector<VkDescriptorSet> m_tempDesc;
