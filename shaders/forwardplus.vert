@@ -32,5 +32,5 @@ void main() {
 	worldPos = tempWorldPos.xyz;
 	cameraPos = cameraPosition;
 
-    gl_Position = viewProj * tempWorldPos;
+    gl_Position = viewProj * model * vec4(inPosition, 1.0);
 }

@@ -42,11 +42,11 @@ int main()
 	Entity* d = ecs->entityManager->CreateEntity();
 	auto l = d->AddComponent<PointLight>();
 	l->color = Color::Red;
-	l->intensity = 1.0f;
+	l->intensity = 10.0f;
 	l->range = 100.0f;
 	l->attenuation = {1,1,1};
 	auto dt = d->AddComponent<Transform>();
-	dt->pos = {-20, 0, 0};
+	dt->pos = {0, 0, 0};
 	
 	
 	//EntityID id2 = ecs->entityManager->CreateChild(id);

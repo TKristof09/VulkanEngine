@@ -42,7 +42,7 @@ layout(binding = 2, set = 1) uniform sampler2D normal[32];
 
 
 vec3 GetNormalFromMap(){
-	vec3 n = texture(normal[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb;
+	vec3 n = texture(normal[nonuniformEXT(uint(material.textureIndex.x))],fragTexCoord).rgb;
 	n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
 	n = normalize(TBN * n);
 	return n;
@@ -50,6 +50,8 @@ vec3 GetNormalFromMap(){
 vec3 CalculateBaseLight(Light light, vec3 direction)
 {
 	direction = normalize(-direction);
+	
+
     // diffuse 
     vec3 norm = GetNormalFromMap();
     float angle = max(dot(norm, direction), 0.0);
@@ -61,7 +63,7 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
     float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), material.specularExponent);
     vec3 specularV = specularFactor * light.color * vec3(0.0)/*texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;  
        
-    vec3 result = diffuse + specularV ;
+    vec3 result = diffuse + specularV;
     return result;
 }
 
@@ -104,7 +106,8 @@ void main() {
 
 	uint tileLightNum = visibleLights[tileIndex].count;
 
-	vec3 illuminance = vec3(0.0);
+	vec3 illuminance = vec3(0.2); // ambient
+	
 	for(int i = 0; i < tileLightNum; ++i)
 	{
 		uint lightIndex = visibleLights[tileIndex].indices[i];
@@ -123,5 +126,5 @@ void main() {
 		}
 	}
 
-    outColor = vec4(illuminance, 1.0); // texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord);
+    outColor = vec4(illuminance, 1.0); //*  texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord);
 }
