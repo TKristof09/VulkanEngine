@@ -73,7 +73,7 @@ uint32_t BufferAllocator::GetBufferIndexAndOffset(uint32_t slot, uint32_t& outOf
 void BufferAllocator::UpdateBuffer(uint32_t slot, void* data)
 {
 	uint32_t bufferNumber = slot / m_objPerChunk;
-	uint32_t offset = (slot - bufferNumber) * m_alignedSize;
+	uint32_t offset = (slot - bufferNumber * m_objPerChunk) * m_alignedSize;
 
 	m_buffers[bufferNumber].Fill(data, m_objSize, offset, true);
 }
@@ -95,7 +95,7 @@ void BufferAllocator::UpdateBuffer(std::vector<std::pair<uint32_t, void*>> slots
 	for(auto& [slot, data] : slotsAndDatas)
 	{
 		uint32_t bufferNumber = slot / m_objPerChunk;
-		uint64_t offset = (slot - bufferNumber) * m_alignedSize;
+		uint64_t offset = (slot - bufferNumber * m_objPerChunk) * m_alignedSize;
 
 		if(bufferNumber != lastBufferNumber)
 		{
