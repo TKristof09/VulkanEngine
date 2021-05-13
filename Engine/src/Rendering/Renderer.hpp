@@ -87,6 +87,8 @@ private:
 	std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
 	void UpdateLights(uint32_t index);
 
+	std::shared_ptr<Image> m_resolvedDepthImage;
+
 	std::vector<VkDescriptorSet> m_tempDesc;
 	
 	std::unique_ptr<Pipeline> m_depthPipeline;
@@ -173,5 +175,5 @@ private:
 
 	size_t m_currentFrame = 0;
 
-	VkDebugUtilsMessengerEXT  m_messenger;
+	
 };

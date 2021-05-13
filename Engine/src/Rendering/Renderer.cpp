@@ -25,12 +25,6 @@
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
-VkPhysicalDevice VulkanContext::m_gpu = VK_NULL_HANDLE;
-VkDevice VulkanContext::m_device = VK_NULL_HANDLE;
-VkInstance VulkanContext::m_instance = VK_NULL_HANDLE;
-VkPhysicalDeviceProperties VulkanContext::m_gpuProperties = {};
-VkQueue VulkanContext::m_graphicsQueue = VK_NULL_HANDLE;
-VkCommandPool VulkanContext::m_commandPool = VK_NULL_HANDLE;
 
 struct UniformBufferObject
 {
@@ -136,17 +130,8 @@ Renderer::~Renderer()
 	TextureManager::ClearLoadedTextures();
 
 	CleanupSwapchain();
-
-	m_debugUI.reset();
-
-	m_ubAllocators.clear();
-	m_pipelines.clear();
-	m_depthPipeline.reset();
-
-	m_lightsBuffers.clear();
-	m_visibleLightsBuffers.clear();
+	
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
-	m_compute.reset();
 	
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 	
@@ -154,13 +139,7 @@ Renderer::~Renderer()
 	
 	vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 
-	vkDestroyDevice(m_device, nullptr);
 
-#ifdef VDEBUG
-	DestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);
-#endif
-
-	vkDestroyInstance(m_instance, nullptr);
 
 }
 
@@ -319,7 +298,7 @@ void Renderer::SetupDebugMessenger()
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo.pfnUserCallback = debugUtilsMessengerCallback;
 
-	CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_messenger);
+	CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &VulkanContext::m_messenger);
 }
 
 void Renderer::CreateDevice()
@@ -338,7 +317,7 @@ void Renderer::CreateDevice()
 	vkGetPhysicalDeviceProperties(m_gpu, &VulkanContext::m_gpuProperties);
 	LOG_TRACE("Picked device: {0}", VulkanContext::m_gpuProperties.deviceName);
 
-	m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;//GetMaxUsableSampleCount(m_gpu);
+	m_msaaSamples = GetMaxUsableSampleCount(m_gpu);
 
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
@@ -482,7 +461,7 @@ void Renderer::CreateRenderPass()
 	depthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	RenderPassAttachment colorAttachmentResolve = {}; // To "combine" all the samples from the msaa attachment
-	colorAttachmentResolve.type = RenderPassAttachmentType::RESOLVE;
+	colorAttachmentResolve.type = RenderPassAttachmentType::COLOR_RESOLVE;
 	colorAttachmentResolve.format = m_swapchainImageFormat;
 	colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -492,7 +471,8 @@ void Renderer::CreateRenderPass()
 	colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	colorAttachmentResolve.internalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	VkSubpassDependency dependency = {};
+	VkSubpassDependency2 dependency = {};
+	dependency.sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
 	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependency.dstSubpass = 0;
 	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -501,7 +481,7 @@ void Renderer::CreateRenderPass()
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 	RenderPassCreateInfo ci;
-	ci.attachments = {colorAttachment, depthAttachment };
+	ci.attachments = {colorAttachment, depthAttachment, colorAttachmentResolve };
 	ci.msaaSamples = m_msaaSamples;
 	ci.subpassCount = 1;
 	ci.dependencies = { dependency };
@@ -523,9 +503,21 @@ void Renderer::CreateRenderPass()
 	prePassDepthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 	prePassDepthAttachment.clearValue.depthStencil = {1.0f, 0 };
 
+	RenderPassAttachment prePassDepthResolve = {};
+	prePassDepthResolve.type = RenderPassAttachmentType::DEPTH_RESOLVE;
+	prePassDepthResolve.format = VK_FORMAT_D32_SFLOAT;
+	prePassDepthResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	prePassDepthResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	prePassDepthResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	prePassDepthResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	prePassDepthResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	prePassDepthResolve.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	prePassDepthResolve.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-	std::vector<VkSubpassDependency> dependencies(2);
 
+	std::vector<VkSubpassDependency2> dependencies(2);
+
+	dependencies[0].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
 	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[0].dstSubpass = 0;
 	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -534,6 +526,7 @@ void Renderer::CreateRenderPass()
 	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
+	dependencies[1].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
 	dependencies[1].srcSubpass = 0;
 	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -543,7 +536,7 @@ void Renderer::CreateRenderPass()
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 	
 	RenderPassCreateInfo prepassCi;
-	prepassCi.attachments = {prePassDepthAttachment};
+	prepassCi.attachments = {prePassDepthAttachment, prePassDepthResolve};
 	prepassCi.msaaSamples = m_msaaSamples;
 	prepassCi.subpassCount = 1;
 	prepassCi.dependencies = dependencies;
@@ -670,7 +663,9 @@ void Renderer::CreateFramebuffers()
 		ci = {};
 		ci.width = m_swapchainExtent.width;
 		ci.height = m_swapchainExtent.height;
-		ci.attachmentDescriptions = { { m_depthImage, {}} };
+		ci.attachmentDescriptions = {};
+		ci.attachmentDescriptions.push_back({ m_depthImage, {}});
+		ci.attachmentDescriptions.push_back({ m_resolvedDepthImage, {}});
 		m_prePassRenderPass.AddFramebuffer(ci);
 	}
 }
@@ -880,12 +875,16 @@ void Renderer::CreateDepthResources()
 {
 	ImageCreateInfo ci;
 	ci.format = VK_FORMAT_D32_SFLOAT;
-	ci.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	ci.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 	ci.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	ci.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	ci.msaaSamples = m_msaaSamples;
 	ci.useMips = false;
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
+
+	ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ;
+	ci.msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+	m_resolvedDepthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 
 }
 
@@ -914,7 +913,7 @@ void Renderer::UpdateComputeDescriptors()
 		
 		VkDescriptorImageInfo depthImageInfo = {};
 		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		depthImageInfo.imageView	= m_depthImage->GetImageView();
+		depthImageInfo.imageView	= m_resolvedDepthImage->GetImageView();
 		depthImageInfo.sampler		= m_computeSampler;
 
 		std::array<VkWriteDescriptorSet, 3> writeDS({});
@@ -1147,7 +1146,7 @@ void Renderer::Render(double dt)
 	// We won't be changing the layout of the image
 	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	imageMemoryBarrier.image = m_depthImage->GetImage();
+	imageMemoryBarrier.image = m_resolvedDepthImage->GetImage();
 	imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 	imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -1464,14 +1463,7 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
 	}
 }
 
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
-{
-	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-	if (func != nullptr)
-	{
-		func(instance, debugMessenger, pAllocator);
-	}
-}
+
 
 std::vector<const char*> GetExtensions()
 {

@@ -27,30 +27,40 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 	uint32_t i = 0;
 
-	std::vector<VkAttachmentDescription> attachments(createInfo.attachments.size());
-	std::vector<std::vector<VkAttachmentReference>> colorRefs(createInfo.subpassCount);
-	std::vector<std::vector<VkAttachmentReference>> resolveRefs(createInfo.subpassCount);
-	std::vector<std::vector<VkAttachmentReference>> inputRefs(createInfo.subpassCount);
-	std::vector<VkAttachmentReference> depthRefs(createInfo.subpassCount);
+	std::vector<VkAttachmentDescription2> attachments(createInfo.attachments.size());
+	std::vector<std::vector<VkAttachmentReference2>> colorRefs(createInfo.subpassCount);
+	std::vector<std::vector<VkAttachmentReference2>> resolveRefs(createInfo.subpassCount);
+	std::vector<std::vector<VkAttachmentReference2>> inputRefs(createInfo.subpassCount);
+	std::vector<VkAttachmentReference2> depthRefs(createInfo.subpassCount);
 	std::vector<std::vector<uint32_t>> preserveRefs(createInfo.subpassCount);
+	std::vector<VkAttachmentReference2> depthResolveRefs(createInfo.subpassCount);
+	std::vector<VkSubpassDescriptionDepthStencilResolve> depthResolves(createInfo.subpassCount);
 
-	std::vector<VkSubpassDescription> subpasses(createInfo.subpassCount);
+	std::vector<VkSubpassDescription2> subpasses(createInfo.subpassCount);
 	for(uint32_t currentSubpass = 0; currentSubpass < createInfo.subpassCount; ++currentSubpass)
 	{
+		subpasses[currentSubpass].sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2;
+		
 		bool useDepth = false;
 		bool useResolve = false;
 
+		
+		depthResolves[currentSubpass].sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE;
+		
 		for(auto attachment : createInfo.attachments)
 		{
 
 			if(attachment.subpass != currentSubpass)
 				continue;
-			VkAttachmentDescription desc = {};
+			VkAttachmentDescription2 desc = {};
+			desc.sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2;
 			desc.format = attachment.format;
-			if(attachment.type == RenderPassAttachmentType::RESOLVE)
+			
+			if(attachment.type == RenderPassAttachmentType::COLOR_RESOLVE || attachment.type == RenderPassAttachmentType::DEPTH_RESOLVE)
 				desc.samples = VK_SAMPLE_COUNT_1_BIT;
 			else
 				desc.samples = createInfo.msaaSamples;
+			
 			desc.loadOp = attachment.loadOp;
 			desc.storeOp = attachment.storeOp;
 			desc.stencilLoadOp = attachment.stencilLoadOp;
@@ -60,15 +70,28 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 			attachments[i] = desc;
 
-			VkAttachmentReference ref = {};
+			VkAttachmentReference2 ref = {};
+			ref.sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2;
 			ref.attachment = i;
 			ref.layout = attachment.internalLayout;
+
+			
+			
 			switch(attachment.type)
 			{
 				case RenderPassAttachmentType::COLOR: colorRefs[currentSubpass].push_back(ref); break;
 				case RenderPassAttachmentType::DEPTH: depthRefs[currentSubpass] = ref; useDepth = true; break;
-				case RenderPassAttachmentType::RESOLVE: resolveRefs[currentSubpass].push_back(ref); useResolve = true; break;
+				case RenderPassAttachmentType::COLOR_RESOLVE: resolveRefs[currentSubpass].push_back(ref); useResolve = true; break;
 				case RenderPassAttachmentType::INPUT: inputRefs[currentSubpass].push_back(ref); break;
+				case RenderPassAttachmentType::DEPTH_RESOLVE:
+					depthResolves[currentSubpass].depthResolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+					depthResolves[currentSubpass].stencilResolveMode = VK_RESOLVE_MODE_NONE;
+					depthResolveRefs[currentSubpass]  = ref;
+					depthResolves[currentSubpass].pDepthStencilResolveAttachment = &depthResolveRefs[currentSubpass];
+					subpasses[currentSubpass].pNext = &depthResolves[currentSubpass];
+					useResolve = true;
+					break;
+					
 			}
 
 			if(attachment.preserve)
@@ -80,15 +103,11 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 		}
 
-		if(colorRefs[currentSubpass].size() != resolveRefs[currentSubpass].size() && useResolve)
-		{
-			LOG_ERROR("Not the same amount of color and resolve attachments");
-			assert(false);
-		}
+
 		if(!useResolve && createInfo.msaaSamples != VK_SAMPLE_COUNT_1_BIT)
 			LOG_WARN("Not using resolve attachment despite having MSAA sample count > 1");
 
-		VkSubpassDescription& subpass = subpasses[currentSubpass];
+		VkSubpassDescription2& subpass = subpasses[currentSubpass];
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 		subpass.colorAttachmentCount = colorRefs[currentSubpass].size();
@@ -107,8 +126,8 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 	}
 
-	VkRenderPassCreateInfo ci = {};
-	ci.sType			= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	VkRenderPassCreateInfo2 ci = {};
+	ci.sType			= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2;
 	ci.attachmentCount  = static_cast<uint32_t>(attachments.size());
 	ci.pAttachments     = attachments.data();
 	ci.subpassCount     = subpasses.size();
@@ -117,7 +136,7 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 	ci.dependencyCount = createInfo.dependencies.size();
 	ci.pDependencies = createInfo.dependencies.data()	;
 
-	VK_CHECK(vkCreateRenderPass(VulkanContext::GetDevice(), &ci, nullptr, &m_renderPass), "Failed to create render pass");
+	VK_CHECK(vkCreateRenderPass2(VulkanContext::GetDevice(), &ci, nullptr, &m_renderPass), "Failed to create render pass");
 
 }
 void RenderPass::AddFramebuffer(FramebufferCreateInfo createInfo)

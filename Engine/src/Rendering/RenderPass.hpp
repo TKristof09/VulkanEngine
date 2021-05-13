@@ -7,7 +7,7 @@ enum class PipelineType;
 
 enum class RenderPassAttachmentType
 {
-	COLOR, DEPTH, RESOLVE, INPUT
+	COLOR, DEPTH, COLOR_RESOLVE, DEPTH_RESOLVE, INPUT
 };
 struct RenderPassAttachment
 {
@@ -38,7 +38,7 @@ struct RenderPassAttachment
 struct RenderPassCreateInfo
 {
 	std::vector<RenderPassAttachment> attachments; // need to be in the same order as in shader
-	std::vector<VkSubpassDependency> dependencies;
+	std::vector<VkSubpassDependency2> dependencies;
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	uint32_t subpassCount = 1;
 };

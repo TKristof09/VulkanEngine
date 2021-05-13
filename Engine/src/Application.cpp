@@ -42,6 +42,9 @@ Application::~Application()
 	delete m_currentScene.eventHandler;
 	delete m_materialSystem;
 	delete m_renderer;
+
+	VulkanContext::Cleanup();
+	
 	glfwTerminate();
 }
 
