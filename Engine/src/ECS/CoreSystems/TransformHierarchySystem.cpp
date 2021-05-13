@@ -26,19 +26,19 @@ void TransformHierarchySystem::Update(double dt)
 
 void TransformHierarchySystem::OnTransformAdded(const ComponentAdded<Transform>* event)
 {
+	// https://skypjack.github.io/2019-08-20-ecs-baf-part-4-insights/
 	if(!m_scene.ecs->componentManager->HasComponent<Static>(event->entity))
 		m_scene.ecs->componentManager->Sort<Transform>(
 				[&](Transform* lhs, Transform* rhs)
 				{
-				Relationship* rhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(rhs->GetOwner());
-				Relationship* lhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(lhs->GetOwner());
+					Relationship* rhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(rhs->GetOwner());
+					Relationship* lhsRelationship = m_scene.ecs->componentManager->GetComponent<Relationship>(lhs->GetOwner());
 
-				EntityID lhsEntity = lhs->GetOwner();
-				EntityID rhsEntity = rhs->GetOwner();
+					EntityID lhsEntity = lhs->GetOwner();
+					EntityID rhsEntity = rhs->GetOwner();
 
-				return     rhsRelationship->parent == lhsEntity
-				|| lhsRelationship->nextSibling == rhsEntity
-				|| (!(lhsRelationship->parent == rhsEntity || rhsRelationship->nextSibling == lhsEntity) && lhsRelationship->parent < rhsRelationship->parent)
-				|| (lhsRelationship->parent == rhsRelationship->parent && lhsRelationship  < rhsRelationship);
+					return     rhsRelationship->parent == lhsEntity
+					|| lhsRelationship->nextSibling == rhsEntity
+					|| (!(lhsRelationship->parent == rhsEntity || rhsRelationship->nextSibling == lhsEntity) && (lhsRelationship->parent < rhsRelationship->parent	|| (lhsRelationship->parent == rhsRelationship->parent && lhsRelationship  < rhsRelationship)));
 				});
 }
