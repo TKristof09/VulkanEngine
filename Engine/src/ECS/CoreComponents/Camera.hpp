@@ -19,7 +19,7 @@ struct Camera : public Component<Camera>
 	    return glm::mat4(
 	        f / aspect, 0.0f,  0.0f,  0.0f,
 	                  0.0f,    f,  0.0f,  0.0f,
-	                  0.0f, 0.0f,  0.0f, 1.0f,
+	                  0.0f, 0.0f,  0.0f, -1.0f,
 	                  0.0f, 0.0f, zNear,  0.0f);
 		//return glm::perspective(glm::radians(fovDegrees), aspect, zNear, zFar);
 	}

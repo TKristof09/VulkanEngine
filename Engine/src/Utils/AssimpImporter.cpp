@@ -38,12 +38,12 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 	aiQuaternion rot;
 	node->mTransformation.Decompose(scale, rot, pos);
 
-	Transform transform;
-	transform.pos = ToGLM(pos);
-	transform.rot = ToGLM(rot);
-	transform.scale    = ToGLM(scale);
+	Transform*  transform = entity->GetComponent<Transform>();
+	transform->pos = ToGLM(pos);
+	transform->rot = ToGLM(rot);
+	transform->scale    = ToGLM(scale);
 
-	entity->AddComponent<Transform>(transform);
+	
 
 	for (int i = 0; i < node->mNumMeshes; ++i)
 	{
