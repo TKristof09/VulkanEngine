@@ -32,7 +32,7 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 		PipelineCreateInfo ci;
 		ci.type				= PipelineType::GRAPHICS;
 		ci.allowDerivatives	= true;
-		ci.depthCompareOp	= VK_COMPARE_OP_LESS_OR_EQUAL; //maybe it should even be EQUAL since we only need to render the fragments that are in the depth image
+		ci.depthCompareOp	= VK_COMPARE_OP_GREATER_OR_EQUAL; //maybe it should even be EQUAL since we only need to render the fragments that are in the depth image
 		ci.depthWriteEnable	= false;
 		ci.useDepth			= true;
 		ci.subpass			= 0;

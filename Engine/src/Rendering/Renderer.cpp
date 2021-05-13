@@ -446,7 +446,7 @@ void Renderer::CreateRenderPass()
 	else
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	colorAttachment.internalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.clearValue.color = {0.1f, 0.1f, 0.1f, 1.0f};
+	colorAttachment.clearValue.color = {0.f, 0.f, 0.f, 1.0f};
 
 
 	RenderPassAttachment depthAttachment = {};
@@ -501,7 +501,7 @@ void Renderer::CreateRenderPass()
 	prePassDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	prePassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	prePassDepthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	prePassDepthAttachment.clearValue.depthStencil = {1.0f, 0 };
+	prePassDepthAttachment.clearValue.depthStencil = {0.0f, 0 };
 
 	RenderPassAttachment prePassDepthResolve = {};
 	prePassDepthResolve.type = RenderPassAttachmentType::DEPTH_RESOLVE;
@@ -599,7 +599,7 @@ void Renderer::CreatePipeline()
 	PipelineCreateInfo depthPipeline;
 	depthPipeline.type				= PipelineType::GRAPHICS;
 	//depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
-	depthPipeline.depthCompareOp	= VK_COMPARE_OP_LESS;
+	depthPipeline.depthCompareOp	= VK_COMPARE_OP_GREATER;
 	depthPipeline.depthWriteEnable	= true;
 	depthPipeline.useDepth			= true;
 	depthPipeline.depthClampEnable  = false;
