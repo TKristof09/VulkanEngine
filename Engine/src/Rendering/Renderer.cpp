@@ -23,7 +23,7 @@
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
-const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 
 struct UniformBufferObject
@@ -94,6 +94,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
 	m_computePushConstants.lightNum = 0;
 	m_changedLights.resize(m_swapchainImages.size());
+
+	m_transformDescSets.resize(m_swapchainImages.size());
 	
 	CreateRenderPass();
 	CreatePipeline();
@@ -1053,7 +1055,6 @@ void Renderer::UpdateLights(uint32_t index)
 
 void Renderer::Render(double dt)
 {
-	vkDeviceWaitIdle(m_device);	
 	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
@@ -1136,7 +1137,7 @@ void Renderer::Render(double dt)
 		uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
 
 		m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[bufferIndex + imageIndex], 1, &offset);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
 		vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
 	}
 	vkCmdEndRenderPass(cb);
@@ -1215,7 +1216,7 @@ void Renderer::Render(double dt)
 			uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
 
 			//m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[bufferIndex + imageIndex], 1, &offset);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
 
 
 			if(!pipeline.m_isGlobal)
@@ -1314,43 +1315,39 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 	stagingVertexBuffer.Free();
 	stagingIndexBuffer.Free();
 
-	uint32_t id;
+	uint32_t slot;
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
-		id = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
-		m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = id;
+		slot = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
+		m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
 
-	}
+	
 
-	uint32_t offset;
-	uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(0)]->GetBufferIndexAndOffset(id, offset);
-	if(bufferIndex >= m_transformDescSets.size())
-	{
-		std::vector<VkDescriptorSetLayout> transformLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[2]); // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
-
-		uint32_t previousSize = m_transformDescSets.size();
-		for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+		uint32_t offset;
+		uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(i)]->GetBufferIndexAndOffset(slot, offset);
+		if(bufferIndex == m_transformDescSets[i].size())
 		{
-			m_transformDescSets.push_back(VK_NULL_HANDLE);
-		}
-		VkDescriptorSetAllocateInfo allocInfo = {};
-		allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool		= m_descriptorPool;
-		allocInfo.descriptorSetCount	= static_cast<uint32_t>(transformLayouts.size());
-		allocInfo.pSetLayouts			= transformLayouts.data();
+			VkDescriptorSetLayout transformLayouts = { m_depthPipeline->m_descSetLayouts[2]}; // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
-		VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, &m_transformDescSets[previousSize]), "Failed to allocate global descriptor sets");
+			m_transformDescSets[i].push_back(VK_NULL_HANDLE);
+			
+			VkDescriptorSetAllocateInfo allocInfo = {};
+			allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool		= m_descriptorPool;
+			allocInfo.descriptorSetCount	= 1;
+			allocInfo.pSetLayouts			= &transformLayouts;
 
-		for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
-		{
+			VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, &m_transformDescSets[i][bufferIndex]), "Failed to allocate global descriptor sets");
+
+		
 			VkDescriptorBufferInfo	bufferI = {};
-			bufferI.buffer	= m_ubAllocators["transforms" + std::to_string(i)]->GetBuffer(id);
+			bufferI.buffer	= m_ubAllocators["transforms" + std::to_string(i)]->GetBuffer(slot);
 			bufferI.offset	= 0;
-			bufferI.range	= m_ubAllocators["transforms" + std::to_string(i)]->GetObjSize();
+			bufferI.range	= VK_WHOLE_SIZE;
 
 			VkWriteDescriptorSet writeDS = {};
 			writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDS.dstSet			= m_transformDescSets[previousSize + i];
+			writeDS.dstSet			= m_transformDescSets[i][bufferIndex];
 			writeDS.dstBinding		= 0;
 			writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 			writeDS.descriptorCount	= 1;
@@ -1358,6 +1355,7 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 
 			vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
 
+		
 		}
 	}
 }

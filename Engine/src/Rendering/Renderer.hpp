@@ -164,7 +164,7 @@ private:
 
 	VkDescriptorPool		m_descriptorPool;
 	std::vector<VkDescriptorSet> m_cameraDescSets;
-	std::vector<VkDescriptorSet> m_transformDescSets;
+	std::vector<std::vector<VkDescriptorSet>> m_transformDescSets;
 	// key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
 	std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
 
