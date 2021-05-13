@@ -126,5 +126,5 @@ void main() {
 		}
 	}
 
-    outColor = vec4(illuminance, 1.0); //*  texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord);
+    outColor = vec4(illuminance * texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb, 1.0);
 }

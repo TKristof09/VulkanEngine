@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_debug_printf : require
 #include "common.glsl"
 
 layout(local_size_x=TILE_SIZE, local_size_y=TILE_SIZE, local_size_z=1) in;
@@ -55,10 +56,10 @@ ViewFrustum BuildFrustum(ivec2 tileID)
 	
 	// TODO maybe have a problem with the top left of vulkan ndc since we are using negative viewport
 	vec2 ndcPoints[4];  // corners of tile in ndc
-	ndcPoints[0] = vec2(-1.0, 1.0) + tileID * ndcSizePerTile;  // upper left
+	ndcPoints[0] = vec2(-1.0, -1.0) + tileID * ndcSizePerTile;  // upper left
 	ndcPoints[1] = vec2(ndcPoints[0].x + ndcSizePerTile.x, ndcPoints[0].y); // upper right
-	ndcPoints[2] = vec2(ndcPoints[1].x, ndcPoints[1].y - ndcSizePerTile.y);// lower right
-	ndcPoints[3] = vec2(ndcPoints[0].x, ndcPoints[0].y - ndcSizePerTile.y); // lower left
+	ndcPoints[2] = vec2(ndcPoints[0].x + ndcSizePerTile.x, ndcPoints[1].y + ndcSizePerTile.y);// lower right
+	ndcPoints[3] = vec2(ndcPoints[0].x, ndcPoints[0].y + ndcSizePerTile.y); // lower left
 
 	ViewFrustum frustum;
 	
@@ -71,6 +72,7 @@ ViewFrustum BuildFrustum(ivec2 tileID)
 	{
 		temp = inverseVP * vec4(ndcPoints[i], minDepth, 1.0);
 		frustum.points[i] = temp.xyz / temp.w;
+		//debugPrintfEXT("Point: %f, %f, %f : %f, %f, %f", ndcPoints[i].x, ndcPoints[i].y, minDepth, frustum.points[i].x, frustum.points[i].y, frustum.points[i].z);
 		temp = inverseVP * vec4(ndcPoints[i], maxDepth, 1.0);
 		frustum.points[i + 4] = temp.xyz / temp.w;
 	}
@@ -81,7 +83,7 @@ ViewFrustum BuildFrustum(ivec2 tileID)
 	for (int i = 0; i < 4; i++)
 	{
 		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
-		normal = cross(frustum.points[i+4] - frustum.points[i], frustum.points[i+1] - frustum.points[i]); 
+		normal = cross(frustum.points[i] - cameraPosition, frustum.points[i + 1] - cameraPosition); 
 		normal = normalize(normal);
 		frustum.planes[i] = vec4(normal, - dot(normal, frustum.points[i]));
 	}
@@ -154,7 +156,7 @@ bool InFrustum(Light light)
 		return true;
 	}
 }
-
+shared uint rejected;
 void main()
 { 
 	
@@ -165,13 +167,14 @@ void main()
 	
 	if(gl_LocalInvocationIndex == 0)
 	{
+		rejected = 0;
 		minDepth = 1.0;
 		maxDepth = 0.0;
 		for(int x = 0; x < TILE_SIZE; ++x)
 		{
 			for(int y = 0; y < TILE_SIZE; ++y)
 			{
-				vec2 sampleLoc = vec2(0.5,0.5);//(vec2(TILE_SIZE, TILE_SIZE) * tileID + vec2(x,y))/ viewportSize;
+				vec2 sampleLoc = (vec2(TILE_SIZE, TILE_SIZE) * tileID + vec2(x,y))/ viewportSize;
 				
 				float depth = texture(depthTexture, sampleLoc).x;
 				
@@ -180,12 +183,23 @@ void main()
 				maxDepth = max(maxDepth, depth);
 			}
 		}
+		if(minDepth >= maxDepth)
+		{
+			minDepth = maxDepth;
+		}
+
 
 		frustum = BuildFrustum(tileID);
+		for(int i = 0; i < 6; ++i)
+		{
+			visibleLights[tileIndex].indices[i*3 + 24] = int(frustum.planes[i].x);
+			visibleLights[tileIndex].indices[i*3 + 25] = int(frustum.planes[i].y);
+			visibleLights[tileIndex].indices[i*3 + 26] = int(frustum.planes[i].z);
+		}
 		lightCountForTile = 0;
 
-		
-		//debugPrintfEXT("ID: %i, %i  , min: %f, max: %f", tileID.x, tileID.y, minDepth, maxDepth);
+		//if(minDepth != 1.0)
+		//	debugPrintfEXT("ID: %i, %i  , min: %f, max: %f", tileID.x, tileID.y, minDepth, maxDepth);
 	}
 	
 	
@@ -203,8 +217,8 @@ void main()
 //
 //		if(accept)
 //			visibleLights[tileIndex].indices[index] = i;
-
-		if(InFrustum(lights[i]))
+		bool accepted = InFrustum(lights[i]);
+		if(accepted)
 		{
 			uint slot = atomicAdd(lightCountForTile, 1);
 			if(slot >= MAX_LIGHTS_PER_TILE)
@@ -212,11 +226,16 @@ void main()
 			
 			visibleLights[tileIndex].indices[slot] = i;
 		}	
+		else
+			atomicAdd(rejected,1);
 	}
 
 	barrier();
 
 	if(gl_LocalInvocationIndex == 0)
+	{
+		//debugPrintfEXT("Rejected: %i", rejected);	
 		visibleLights[tileIndex].count = min(lightCountForTile, MAX_LIGHTS_PER_TILE);
+	}
 
 }

@@ -44,9 +44,10 @@ int main()
 	l->color = Color::Red;
 	l->intensity = 10.0f;
 	l->range = 100.0f;
-	l->attenuation = {1,1,1};
+	l->attenuation = {0,0,1};
+	//l->cutoff = glm::radians(40.f);
 	auto dt = d->AddComponent<Transform>();
-	dt->pos = {0, 0, 0};
+	dt->pos = {-0, 0, 0};
 	
 	
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
@@ -54,16 +55,16 @@ int main()
 
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
-	camera->AddComponent<Camera>(90.f, 1920/1080, 0.01f, 100.f);
+	camera->AddComponent<Camera>(90.f, 1920/1080, 0.1f, 100.f);
 	t->pos = { 0.0f, 2.0f, 10.0f };
 
 
 	
 	Transform* t2 = e2->GetComponent<Transform>();
 	t2->pos = { 1.f, -2.0f, 1.0f };
-	t2->scale = {100.f, 0.2f, 100.f};
+	t2->scale = {10.f, 0.2f, 10.f};
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
-	t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
+	//t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
 
 	//ecs->systemManager->AddSystem<TestSystem>(d->GetEntityID());
 	
