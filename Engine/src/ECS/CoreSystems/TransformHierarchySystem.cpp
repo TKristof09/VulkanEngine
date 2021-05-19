@@ -11,10 +11,10 @@ TransformHierarchySystem::TransformHierarchySystem()
 
 void TransformHierarchySystem::Update(double dt)
 {
-	for(auto it = m_scene.ecs->componentManager->begin<Relationship>(); it != m_scene.ecs->componentManager->end<Relationship>(); ++it)
+	for(auto comp : m_scene.ecs->componentManager->GetComponents<Relationship>())
 	{
-		EntityID parentID = it->parent;
-		Transform* transform = m_scene.ecs->componentManager->GetComponent<Transform>(it->GetOwner());
+		EntityID parentID = comp->parent;
+		Transform* transform = m_scene.ecs->componentManager->GetComponent<Transform>(comp->GetOwner());
 
 		if(parentID != INVALID_ENTITY_ID)
 		{

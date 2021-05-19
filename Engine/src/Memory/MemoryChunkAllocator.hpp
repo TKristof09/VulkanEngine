@@ -7,7 +7,7 @@
 template<typename T, size_t MAX_OBJECTS>
 class MemoryChunkAllocator
 {
-	static const size_t ALLOC_SIZE = (sizeof(T) + alignof(T)) * MAX_OBJECTS;
+	static const size_t ALLOC_SIZE = GetAlignedSize(sizeof(T), alignof(T)) * MAX_OBJECTS;
 
 public:
 	using ObjectList = std::list<T*>;
@@ -37,19 +37,20 @@ public:
 		typename MemoryChunks::iterator m_currentChunk;
 		typename MemoryChunks::iterator m_end;
 		typename ObjectList::iterator m_currentObject;
-	public:
+
+		friend class MemoryChunkAllocator;
+		
 		iterator(typename MemoryChunks::iterator begin, typename MemoryChunks::iterator end):
 			m_currentChunk(begin),
 			m_end(end)
 		{
 			if(begin != end)
 				m_currentObject = (*m_currentChunk)->objects.begin();
-			else
-				m_currentObject = (*std::prev(m_end))->objects.end();
+			//else
+			//	m_currentObject = NULL;//(*std::prev(m_end))->objects.end();
 		}
-		iterator()
-		{}
 
+	public:
 		inline iterator& operator++()
 		{
 			m_currentObject++;
@@ -59,19 +60,23 @@ public:
 				m_currentChunk++;
 				if(m_currentChunk != m_end)
 					m_currentObject = (*m_currentChunk)->objects.begin(); // set object iterator to start of next chunk
+				else
+					m_currentObject = {}; // so that we don't get "list iterators not compatible when comparing the iterator to end iterator(which leaves m_currentObject uninitialized)
 			}
 			return *this;
 		}
 		inline iterator& operator++(int)
 		{
-			return operator++();
+			iterator temp = *this;
+			++(*this);
+			return temp;
 		}
 
 		inline T* operator*() const { return *m_currentObject; }
 		inline T* operator->() const { return *m_currentObject; }
 
-		inline bool operator==(const iterator& other) { return ((this->m_currentChunk == other.m_currentChunk) && (this->m_currentObject == other.m_currentObject)); }
-		inline bool operator!=(const iterator& other) { return ((this->m_currentChunk != other.m_currentChunk) && (this->m_currentObject != other.m_currentObject));; }
+		inline bool operator==(const iterator& other) const { return (this->m_currentChunk == other.m_currentChunk) && (this->m_currentObject == other.m_currentObject); }
+		inline bool operator!=(const iterator& other) const { return (this->m_currentChunk != other.m_currentChunk) || (this->m_currentObject != other.m_currentObject); }
 
 	};
 
@@ -79,11 +84,12 @@ public:
 protected:
 	MemoryChunks m_chunks;
 
+	
 public:
 	MemoryChunkAllocator()
 	{
 		PoolAllocator* allocator = new PoolAllocator(ALLOC_SIZE, ECSMemoryManager::GetInstance().Allocate(ALLOC_SIZE), sizeof(T), alignof(T));
-		m_chunks.push_back(new MemoryChunk(allocator));
+		//m_chunks.push_back(new MemoryChunk(allocator));
 	}
 	virtual ~MemoryChunkAllocator()
 	{

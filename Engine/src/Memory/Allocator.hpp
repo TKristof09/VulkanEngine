@@ -58,3 +58,8 @@ static inline void* AlignForward(void* address, uint8_t alignment)
 {
 	return (void*)((uintptr_t)(address) + GetPadding(address, alignment));
 }
+
+constexpr size_t GetAlignedSize(size_t size, size_t alignment)
+{
+	return (size + alignment - 1) & ~(alignment - 1);
+}
