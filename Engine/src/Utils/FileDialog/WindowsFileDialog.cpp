@@ -1,5 +1,5 @@
-#include <filesystem>
 #ifdef _WIN64
+#include <filesystem>
 #include "Application.hpp"
 #include "Utils/FileDialog/FileDialog.hpp"
 #include <Windows.h>
@@ -49,7 +49,7 @@ std::string FileDialog::SaveFile(const char* filter)
 
 	if (GetSaveFileNameA(&ofn) == TRUE)
 		return std::filesystem::path(ofn.lpstrFile).generic_string();
-	
+
 	return std::string();
 }
 
