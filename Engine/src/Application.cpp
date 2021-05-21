@@ -15,28 +15,29 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
 	m_frameTime(1.0 / frameRate)
 {
 	s_instance = this;
-	
-	Log::Init();
 
-	std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
+	Log::Init();
+	Instrumentor::Get().BeginSession("Editor");
+
+	//std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
 	LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
 
 	m_currentScene.eventHandler = new EventHandler();
-	
+
 	m_currentScene.ecs = new ECSEngine(m_currentScene);
-	
+
 	m_window = std::make_shared<Window>(width, height, title);
 
 	m_renderer = new Renderer(m_window, &m_currentScene);
 
 	m_materialSystem = new MaterialSystem(&m_currentScene, m_renderer);
-	
+
 	m_currentScene.ecs->systemManager->AddSystem<TransformHierarchySystem>();
 }
 
 Application::~Application()
 {
-	
+
 	vkDeviceWaitIdle(VulkanContext::GetDevice());
 	delete m_currentScene.ecs;
 	delete m_currentScene.eventHandler;
@@ -44,7 +45,7 @@ Application::~Application()
 	delete m_renderer;
 
 	VulkanContext::Cleanup();
-	
+
 	glfwTerminate();
 }
 
@@ -60,11 +61,11 @@ void Application::Run()
 		double startTime = Time::GetTime();
 		double deltaTime = startTime - lastTime;
 		lastTime = startTime;
-		
+
 		unprocessedTime += deltaTime;
 
 		glfwPollEvents(); // TODO this blocks while you hold the title bar(or the resize cursor), only fix seems to be to render on another thread
-		
+
 		if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 			break;
 
@@ -80,6 +81,6 @@ void Application::Run()
 		m_currentScene.ecs->Update(deltaTime);
 
 		m_renderer->Render(deltaTime);
-		
+
 	}
 }
