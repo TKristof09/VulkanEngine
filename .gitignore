@@ -34,3 +34,4 @@ Engine.log
 *.trace
 /CMakeSettings.json
 DebugTools
+results.json

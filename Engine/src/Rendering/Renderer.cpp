@@ -8,6 +8,7 @@
 #include <array>
 #include <string>
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -76,8 +77,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	m_graphicsQueue(VulkanContext::m_graphicsQueue),
 	m_commandPool(VulkanContext::m_commandPool)
 {
-	
-	
+
+
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
@@ -96,13 +97,13 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	m_changedLights.resize(m_swapchainImages.size());
 
 	m_transformDescSets.resize(m_swapchainImages.size());
-	
+
 	CreateRenderPass();
 	CreatePipeline();
 	CreateCommandPool();
 
 	TextureManager::LoadTexture("./textures/error.jpg");
-	
+
 	CreateColorResources();
 	CreateDepthResources();
 	CreateFramebuffers();
@@ -113,9 +114,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
-
-	
-
 }
 
 Renderer::~Renderer()
@@ -132,13 +130,13 @@ Renderer::~Renderer()
 	TextureManager::ClearLoadedTextures();
 
 	CleanupSwapchain();
-	
+
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
-	
+
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
-	
+
 	vkDestroyCommandPool(m_device, m_commandPool, nullptr);
-	
+
 	vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 
 
@@ -185,13 +183,13 @@ void Renderer::RecreateSwapchain()
 
 	m_computePushConstants.viewportSize = { m_swapchainExtent.width, m_swapchainExtent.height };
 	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
-	
+
 }
 
 void Renderer::CleanupSwapchain()
 {
 	vkDeviceWaitIdle(m_device);
-	
+
 	m_depthImage.reset();
 	m_colorImage.reset();
 
@@ -279,7 +277,7 @@ void Renderer::CreateInstance()
 	debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = debugUtilsMessengerCallback;
-	
+
 	createInfo.pNext = &debugCreateInfo;
 #endif
 
@@ -307,7 +305,9 @@ void Renderer::CreateDevice()
 {
 	std::vector<const char*> deviceExtensions;
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+#ifdef VDEBUG
 	deviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+#endif
 
 	uint32_t deviceCount;
 	vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
@@ -350,10 +350,10 @@ void Renderer::CreateDevice()
 	descriptorIndexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
 	descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
-	
-	 
 
-	
+
+
+
 	VkDeviceCreateInfo createInfo		= {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.enabledExtensionCount    = static_cast<uint32_t>(deviceExtensions.size());
@@ -369,6 +369,18 @@ void Renderer::CreateDevice()
 	vkGetDeviceQueue(VulkanContext::m_device, families.presentationFamily.value(), 0, &m_presentQueue);
 
 
+	m_queryPools.resize(MAX_FRAMES_IN_FLIGHT);
+	m_queryResults.resize(MAX_FRAMES_IN_FLIGHT);
+	for(uint32_t i=0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+
+		VkQueryPoolCreateInfo queryCI = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
+		queryCI.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		queryCI.queryCount = 4;
+		vkCreateQueryPool(m_device, &queryCI, nullptr, &m_queryPools[i]);
+
+	}
+	m_timestampPeriod = VulkanContext::m_gpuProperties.limits.timestampPeriod;
 }
 
 void Renderer::CreateSwapchain()
@@ -536,7 +548,7 @@ void Renderer::CreateRenderPass()
 	dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-	
+
 	RenderPassCreateInfo prepassCi;
 	prepassCi.attachments = {prePassDepthAttachment, prePassDepthResolve};
 	prepassCi.msaaSamples = m_msaaSamples;
@@ -595,7 +607,7 @@ void Renderer::CreatePipeline()
 
 	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create depth texture sampler");
 
-	
+
 	// Depth prepass pipeline
 	LOG_WARN("Creating depth pipeline");
 	PipelineCreateInfo depthPipeline;
@@ -622,7 +634,7 @@ void Renderer::CreatePipeline()
 	//m_pipelinesRegistry["depth"] = pipeline;
 
 	uint32_t totaltiles = glm::compMul(m_computePushConstants.tileNums);
-	
+
 	for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
 	{
 
@@ -635,7 +647,7 @@ void Renderer::CreatePipeline()
 		// TODO
 		m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)); // MAX_LIGHTS_PER_TILE
 		m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)); // MAX_LIGHTS_PER_TILE
-	
+
 	}
 
 }
@@ -744,7 +756,7 @@ void Renderer::CreateDescriptorPool()
 void Renderer::CreateDescriptorSets()
 {
 
-	
+
 	VkDescriptorSetAllocateInfo allocInfo = {};
 	std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size());
 
@@ -826,7 +838,7 @@ void Renderer::CreateDescriptorSets()
 	}
 
 
-	
+
 	VkDescriptorSetAllocateInfo callocInfo = {};
 	std::vector<VkDescriptorSetLayout> clayouts;
 
@@ -844,7 +856,7 @@ void Renderer::CreateDescriptorSets()
 	m_computeDesc.resize(clayouts.size());
 	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
 
-	
+
 
 
 }
@@ -900,19 +912,19 @@ void Renderer::UpdateComputeDescriptors()
 		cameraBI.offset = 0;
 		cameraBI.range	= m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
 		cameraBI.buffer = m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
-		
+
 		VkDescriptorBufferInfo lightsBI = {};
 		lightsBI.offset	= 0;
 		lightsBI.range	= VK_WHOLE_SIZE;
 		lightsBI.buffer	= m_lightsBuffers[i]->GetBuffer(0);
-		
+
 		VkDescriptorBufferInfo visibleLightsBI = {};
 		visibleLightsBI.offset	= 0;
 		visibleLightsBI.range	= VK_WHOLE_SIZE;
 		visibleLightsBI.buffer	= m_visibleLightsBuffers[i]->GetBuffer(0);
 
 		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
-		
+
 		VkDescriptorImageInfo depthImageInfo = {};
 		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 		depthImageInfo.imageView	= m_resolvedDepthImage->GetImageView();
@@ -925,35 +937,35 @@ void Renderer::UpdateComputeDescriptors()
 		writeDS[0].descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		writeDS[0].descriptorCount	= 1;
 		writeDS[0].pBufferInfo		= &cameraBI;
-		
+
 		writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[1].dstSet			= m_computeDesc[i];
 		writeDS[1].dstBinding		= 1;
 		writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		writeDS[1].descriptorCount	= bufferInfos.size();
 		writeDS[1].pBufferInfo		= bufferInfos.data();
-		
+
 		writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[2].dstSet			= m_computeDesc[i];
 		writeDS[2].dstBinding		= 3;
 		writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		writeDS[2].descriptorCount	= 1;
 		writeDS[2].pImageInfo		= &depthImageInfo;
-		
-		
+
+
 		vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
 	}
 }
 
 void Renderer::UpdateLights(uint32_t index)
 {
-	
-	
+
+	PROFILE_FUNCTION();
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
 		glm::mat4 tMat = t->GetTransform();
-		
+
 		glm::vec3 newDir = glm::normalize(glm::vec3(tMat[2]));
 		float newIntensity = lightComp->intensity;
 		glm::vec3 newColor = lightComp->color.ToVec3();
@@ -963,11 +975,11 @@ void Renderer::UpdateLights(uint32_t index)
 		bool changed = newDir != light.direction || newIntensity != light.intensity || newColor != light.color;
 		if(changed)
 		{
-			
+
 			light.direction = newDir;
 			light.intensity = newIntensity;
 			light.color = newColor;
-			
+
 			for(auto& dict : m_changedLights)
 				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
@@ -978,7 +990,7 @@ void Renderer::UpdateLights(uint32_t index)
 		glm::mat4 tMat = t->GetTransform();
 
 		glm::vec3 newPos = glm::vec3(tMat[3]);
-		
+
 		float newRange = lightComp->range;
 		float newIntensity = lightComp->intensity;
 		glm::vec3 newColor = lightComp->color.ToVec3();
@@ -994,11 +1006,11 @@ void Renderer::UpdateLights(uint32_t index)
 			light.range = newRange;
 			light.intensity = newIntensity;
 			light.color = newColor;
-			
+
 			light.attenuation[0] = newAtt.quadratic;
 			light.attenuation[1] = newAtt.linear;
 			light.attenuation[2] = newAtt.constant;
-			
+
 			for(auto& dict : m_changedLights)
 				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
@@ -1007,7 +1019,7 @@ void Renderer::UpdateLights(uint32_t index)
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
 		glm::mat4 tMat = t->GetTransform();
-		
+
 		glm::vec3 newPos = glm::vec3(tMat[3]);
 		glm::vec3 newDir = glm::normalize(glm::vec3(tMat[2]));
 		float newRange = lightComp->range;
@@ -1022,7 +1034,7 @@ void Renderer::UpdateLights(uint32_t index)
 		bool changed = newPos != light.position || newDir != light.direction|| newIntensity != light.intensity
 				|| newColor != light.color || newRange != light.range || newCutoff != light.cutoff
 				|| newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
-		
+
 		if(changed)
 		{
 			light.position = newPos;
@@ -1031,7 +1043,7 @@ void Renderer::UpdateLights(uint32_t index)
 			light.intensity = newIntensity;
 			light.cutoff = newCutoff;
 			light.color = newColor;
-			
+
 			light.attenuation[0] = newAtt.quadratic;
 			light.attenuation[1] = newAtt.linear;
 			light.attenuation[2] = newAtt.constant;
@@ -1047,50 +1059,46 @@ void Renderer::UpdateLights(uint32_t index)
 		slotsAndDatas.push_back({slot, newLight});
 	}
 	m_changedLights[index].clear();
-	
+
 	m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
-	
+
 }
 
 
 void Renderer::Render(double dt)
 {
-	vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
-
+	PROFILE_FUNCTION();
 	uint32_t imageIndex;
-	VkResult result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-
-	if(result == VK_ERROR_OUT_OF_DATE_KHR)
+	VkResult result;
 	{
-		RecreateSwapchain();
-		return;
+		PROFILE_SCOPE("Pre frame stuff");
+		vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+
+		result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+
+		if(result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			RecreateSwapchain();
+			return;
+		}
+		else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+			throw std::runtime_error("Failed to acquire swap chain image");
+
+		// Check if a previous frame is using this image (i.e. there is its fence to wait on)
+		if(m_imagesInFlight[imageIndex] != VK_NULL_HANDLE)
+			vkWaitForFences(m_device, 1, &m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+		// Mark the image as now being in use by this frame
+		m_imagesInFlight[imageIndex] = m_inFlightFences[m_currentFrame];
+
+
+		VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
+
+
+		UpdateLights(imageIndex);
+
+		//m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
 	}
-	else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-		throw std::runtime_error("Failed to acquire swap chain image");
-
-	// Check if a previous frame is using this image (i.e. there is its fence to wait on)
-	if(m_imagesInFlight[imageIndex] != VK_NULL_HANDLE)
-		vkWaitForFences(m_device, 1, &m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
-	// Mark the image as now being in use by this frame
-	m_imagesInFlight[imageIndex] = m_inFlightFences[m_currentFrame];
-
-
-	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
-
-
-	UpdateLights(imageIndex);
-
-	//m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
-
-	static auto startTime = std::chrono::high_resolution_clock::now();
-
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-
-
-	int i = -1;
 	ComponentManager* cm = m_ecs->componentManager;
 
 
@@ -1105,188 +1113,213 @@ void Renderer::Render(double dt)
 	RenderPass* lastRenderPass = nullptr;
 	m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
-	
-
-
-	
-	glm::mat4 proj = camera.GetProjection();
-	//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
-	//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
-	//glm::mat4 vp = proj * rot * trf;
-	glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
-	uint32_t vpOffset = 0;
-	
-	CameraStruct cs = {vp, cameraTransform->pos};
-	m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
-
-	auto prepassBegin = m_depthPipeline->m_renderPass->GetBeginInfo(imageIndex);
-	vkCmdBeginRenderPass(cb, &prepassBegin, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
-
-	// This should be fine since all our shaders use set 0 for the camera so the descriptor doesn't get unbound by pipeline switches
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
-
-	for(auto* renderable : cm->GetComponents<Renderable>())
 	{
-		auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
-		glm::mat4 model =  transform->GetTransform();
-		renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-		renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+		PROFILE_SCOPE("Command Recording and submitting");
+		vkCmdResetQueryPool(cb, m_queryPools[m_currentFrame], 0, 4);
 
-		uint32_t offset;
-		uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_queryPools[m_currentFrame],0);
 
-		m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-		vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
-	}
-	vkCmdEndRenderPass(cb);
-	
-	VkImageMemoryBarrier imageMemoryBarrier = {};
-	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	// We won't be changing the layout of the image
-	imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	imageMemoryBarrier.image = m_resolvedDepthImage->GetImage();
-	imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
-	imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	vkCmdPipelineBarrier(
-		cb,
-		VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &imageMemoryBarrier);
-	uint32_t offset = 0;
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
-	
-	
-	vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
-	vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
-	
-	for(auto& pipeline : m_pipelines)
-	{
-		//if(pipeline.m_name == "depth") continue;
-		auto tempIt = materialIterator;// to be able to restore the iterator to its previous place after global pipeline is finished
-		if(pipeline.m_isGlobal)
-			materialIterator = cm->begin<Material>();
 
-		if(pipeline.m_renderPass != lastRenderPass)
+
+
+		glm::mat4 proj = camera.GetProjection();
+		//glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
+		//glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
+		//glm::mat4 vp = proj * rot * trf;
+		glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+		uint32_t vpOffset = 0;
+
+		CameraStruct cs = {vp, cameraTransform->pos};
+		m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
+
+		auto prepassBegin = m_depthPipeline->m_renderPass->GetBeginInfo(imageIndex);
+		vkCmdBeginRenderPass(cb, &prepassBegin, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
+
+		// This should be fine since all our shaders use set 0 for the camera so the descriptor doesn't get unbound by pipeline switches
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
 		{
-			if(lastRenderPass)
-				vkCmdEndRenderPass(cb);
-
-			lastRenderPass = pipeline.m_renderPass;
-			auto beginInfo = lastRenderPass->GetBeginInfo(imageIndex);
-			vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-			
-			//vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
-			
-		}
-
-
-		//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
-		
-		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
-		vkCmdPushConstants(cb, pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
-		
-
-		while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
-		{
-			Transform* transform = cm->GetComponent<Transform>(currentEntity);
-			Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
-			if(renderable == nullptr)
-				continue;
-
-			// We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
-			
-			//transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
-			//glm::mat4 model =  transform->GetTransform();
-
-			renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-			renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-
-			uint32_t offset;
-			uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
-
-			//m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-
-
-			if(!pipeline.m_isGlobal)
+			PROFILE_SCOPE("Prepass draw call loop");
+			for(auto* renderable : cm->GetComponents<Renderable>())
 			{
-				m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
+				PROFILE_SCOPE("Single draw command");
 
-				glm::vec4 ubs[] = {{std::sin(time) * 0.5f + 0.5f, 0,0,1.0f}, {materialIterator->_textureSlot, 0, 0, 0}};
+				auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+				glm::mat4 model =  transform->GetTransform();
+				renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+				renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
 
-				m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
+				uint32_t offset;
+				uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+				m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
+				vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+			}
+		}
+		vkCmdEndRenderPass(cb);
+		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPools[m_currentFrame], 1);
+
+		VkImageMemoryBarrier imageMemoryBarrier = {};
+		imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		// We won't be changing the layout of the image
+		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier.image = m_resolvedDepthImage->GetImage();
+		imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		vkCmdPipelineBarrier(
+				cb,
+				VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageMemoryBarrier);
+		uint32_t offset = 0;
+		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
+
+
+		vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
+		vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
+
+		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, m_queryPools[m_currentFrame], 2);
+
+		for(auto& pipeline : m_pipelines)
+		{
+			//if(pipeline.m_name == "depth") continue;
+			auto tempIt = materialIterator;// to be able to restore the iterator to its previous place after global pipeline is finished
+			if(pipeline.m_isGlobal)
+				materialIterator = cm->begin<Material>();
+
+			if(pipeline.m_renderPass != lastRenderPass)
+			{
+				if(lastRenderPass)
+					vkCmdEndRenderPass(cb);
+
+				lastRenderPass = pipeline.m_renderPass;
+				auto beginInfo = lastRenderPass->GetBeginInfo(imageIndex);
+				vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+				//vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
 
 			}
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
-			vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
 
 
-			i *= -1;
-			materialIterator++;
-			if(materialIterator != end)
+			//vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
+
+			vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
+			vkCmdPushConstants(cb, pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
+
+
+			PROFILE_SCOPE("Draw call loop");
+			while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
+			{
+				Transform* transform = cm->GetComponent<Transform>(currentEntity);
+				Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
+				if(renderable == nullptr)
+					continue;
+
+				// We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
+
+				//transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
+				//glm::mat4 model =  transform->GetTransform();
+
+				renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+				renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+
+				uint32_t offset;
+				uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+				//m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
+
+
+				if(!pipeline.m_isGlobal)
+				{
+					m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
+
+					glm::vec4 ubs[] = {{0.5f, 0,0,1.0f}, {materialIterator->_textureSlot, 0, 0, 0}};
+
+					m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
+
+				}
+				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
+				vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+
+
+				materialIterator++;
+				if(materialIterator != end)
+					currentEntity = materialIterator->GetOwner();
+			}
+			if(pipeline.m_isGlobal && tempIt != end)
+			{
+				materialIterator = tempIt;
 				currentEntity = materialIterator->GetOwner();
+			}
 		}
-		if(pipeline.m_isGlobal && tempIt != end)
-		{
-			materialIterator = tempIt;
-			currentEntity = materialIterator->GetOwner();
-		}
+
+
+
+		m_debugUI->Draw(&m_mainCommandBuffers[imageIndex]);
+
+
+		vkCmdEndRenderPass(cb);
+		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, m_queryPools[m_currentFrame], 3);
+		m_mainCommandBuffers[imageIndex].End();
+
+		VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &cb;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
+		submitInfo.pWaitDstStageMask = &wait;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
+
+		VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
+		VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
+
 	}
 
-
-
-	m_debugUI->Draw(&m_mainCommandBuffers[imageIndex]);
-
-
-	vkCmdEndRenderPass(cb);
-	m_mainCommandBuffers[imageIndex].End();
-
-	VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &cb;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
-	submitInfo.pWaitDstStageMask = &wait;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
-
-	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
-	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
-
-
-	VkPresentInfoKHR presentInfo = {};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &m_renderFinished[m_currentFrame];
-
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &m_swapchain;
-	presentInfo.pImageIndices = &imageIndex;
-	result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
-
-	if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
 	{
-		m_window->SetResized(false);
-		RecreateSwapchain();
-	}
-	else if(result != VK_SUCCESS)
-		throw std::runtime_error("Failed to present swap chain image");
-	m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
+		PROFILE_SCOPE("Present");
+		VkPresentInfoKHR presentInfo = {};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &m_renderFinished[m_currentFrame];
 
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &m_swapchain;
+		presentInfo.pImageIndices = &imageIndex;
+		result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+	}
+	{
+		PROFILE_SCOPE("Query results");
+		std::array<uint64_t, 4> queryResults;
+		VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
+
+		if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
+		{
+			m_window->SetResized(false);
+			RecreateSwapchain();
+		}
+		else if(result != VK_SUCCESS)
+			throw std::runtime_error("Failed to present swap chain image");
+
+		m_queryResults[m_currentFrame] = (queryResults[3] - queryResults[0]) * m_timestampPeriod;
+		LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
+
+		m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
+	}
 }
 
 
@@ -1321,16 +1354,16 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 		slot = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
 		m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
 
-	
+
 
 		uint32_t offset;
 		uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(i)]->GetBufferIndexAndOffset(slot, offset);
-		if(bufferIndex == m_transformDescSets[i].size())
+		if(bufferIndex >= m_transformDescSets[i].size())
 		{
 			VkDescriptorSetLayout transformLayouts = { m_depthPipeline->m_descSetLayouts[2]}; // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
 
 			m_transformDescSets[i].push_back(VK_NULL_HANDLE);
-			
+
 			VkDescriptorSetAllocateInfo allocInfo = {};
 			allocInfo.sType					= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 			allocInfo.descriptorPool		= m_descriptorPool;
@@ -1339,11 +1372,11 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 
 			VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, &m_transformDescSets[i][bufferIndex]), "Failed to allocate global descriptor sets");
 
-		
+
 			VkDescriptorBufferInfo	bufferI = {};
 			bufferI.buffer	= m_ubAllocators["transforms" + std::to_string(i)]->GetBuffer(slot);
 			bufferI.offset	= 0;
-			bufferI.range	= VK_WHOLE_SIZE;
+			bufferI.range	= sizeof(glm::mat4);
 
 			VkWriteDescriptorSet writeDS = {};
 			writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1355,7 +1388,7 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 
 			vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
 
-		
+
 		}
 	}
 }
@@ -1395,7 +1428,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
 
 	e->component->_slot = slot;
-	
+
 	m_lightMap[e->component->GetComponentID()] = {0}; // 0 = DirectionalLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
@@ -1403,9 +1436,9 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 	{
 		dict[slot] = light;
 	}
-	
+
 	m_computePushConstants.lightNum++;
-	
+
 }
 
 void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
@@ -1415,7 +1448,7 @@ void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
 		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
 
 	e->component->_slot = slot;
-	
+
 	m_lightMap[e->component->GetComponentID()] = { 1};  // 1 = PointLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
@@ -1433,7 +1466,7 @@ void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
 		slot = buffer->Allocate(); // slot should be the same for all of these, since we allocate to every buffer every time
 
 	e->component->_slot = slot;
-	
+
 	m_lightMap[e->component->GetComponentID()] = {2}; // 2 = SpotLight
 	Light* light = &m_lightMap[e->component->GetComponentID()];
 
@@ -1665,23 +1698,23 @@ VkExtent2D ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, G
 VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
 		VkDebugUtilsMessengerCallbackDataEXT const * pCallbackData, void * /*pUserData*/)
 {
-	
+
 	std::ostringstream message;
 	message << "\n";
 
 	std::string messageidName = "";
 	if(pCallbackData->pMessageIdName)
 		messageidName = pCallbackData->pMessageIdName;
-	
+
 	message << "\t" << "messageIDName   = <" << messageidName << ">\n";
-	
-	
+
+
 	message << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
-	
+
 	if(pCallbackData->pMessage)
 		message << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
-	
-	
+
+
 	if (0 < pCallbackData->queueLabelCount)
 	{
 		message << "\t" << "Queue Labels:\n";
@@ -1712,7 +1745,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 			}
 		}
 	}
-	
+
 	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
 		LOG_TRACE(message.str());
 	}

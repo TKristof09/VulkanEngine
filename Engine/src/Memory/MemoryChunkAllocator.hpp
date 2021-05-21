@@ -39,7 +39,7 @@ public:
 		typename ObjectList::iterator m_currentObject;
 
 		friend class MemoryChunkAllocator;
-		
+
 		iterator(typename MemoryChunks::iterator begin, typename MemoryChunks::iterator end):
 			m_currentChunk(begin),
 			m_end(end)
@@ -84,7 +84,7 @@ public:
 protected:
 	MemoryChunks m_chunks;
 
-	
+
 public:
 	MemoryChunkAllocator()
 	{

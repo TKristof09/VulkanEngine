@@ -4,12 +4,13 @@
 #include "Core/Scene/Scene.hpp"
 
 class ECSEngine;
+class MaterialSystem;
 
 class Application
 {
 public:
 	static Application* GetInstance() { return s_instance; }
-	
+
 	Application(uint32_t width, uint32_t height, uint32_t frameRate, const std::string& title = "Vulkan Application");
 
 	~Application();

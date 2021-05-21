@@ -43,7 +43,7 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 	transform->rot = ToGLM(rot);
 	transform->scale    = ToGLM(scale);
 
-	
+
 
 	for (int i = 0; i < node->mNumMeshes; ++i)
 	{

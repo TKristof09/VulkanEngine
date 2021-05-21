@@ -33,7 +33,7 @@ public:
 	void Render(double dt);
 
 	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
-	
+
 	void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
 
 	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
@@ -90,9 +90,9 @@ private:
 	std::shared_ptr<Image> m_resolvedDepthImage;
 
 	std::vector<VkDescriptorSet> m_tempDesc;
-	
+
 	std::unique_ptr<Pipeline> m_depthPipeline;
-	
+
 	friend class MaterialSystem;
 
 	// vulkan initialization stuff
@@ -112,7 +112,7 @@ private:
 	void RecreateSwapchain();
 	void CleanupSwapchain();
 
-	
+
 	void CreateUniformBuffers();
 
 	void CreateDescriptorSetLayout();
@@ -125,10 +125,14 @@ private:
 	void SetupDebugMessenger();
 
 	ECSEngine* m_ecs;
-	
+
 	std::shared_ptr<Window> m_window;
 
 	std::shared_ptr<DebugUI> m_debugUI;
+
+	std::vector<VkQueryPool> m_queryPools;
+	std::vector<uint64_t> m_queryResults;
+	uint64_t m_timestampPeriod;
 
 
 	VkInstance&				m_instance;
@@ -175,5 +179,5 @@ private:
 
 	size_t m_currentFrame = 0;
 
-	
+
 };

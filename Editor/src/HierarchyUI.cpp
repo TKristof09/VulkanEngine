@@ -42,7 +42,7 @@ HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* mater
 	{
 		Material* comp = (Material*)component;
 		window->AddElement(std::make_shared<Text>("Material:    " + comp->shaderName));
-		
+
 
 		auto table = std::make_shared<Table>();
 		int row = 0;
@@ -106,7 +106,7 @@ void HierarchyUI::EntitySelectedCallback(EntityID entity)
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
 	m_propertyDrawFunctions[Transform::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<Transform>(entity), &m_propertiesWindow);
 	m_propertiesWindow.AddElement(std::make_shared<Separator>());
-	
+
 	for(auto& [typeID, component] : components)
 	{
 		if(typeID == Transform::STATIC_COMPONENT_TYPE_ID || typeID == NameTag::STATIC_COMPONENT_TYPE_ID)

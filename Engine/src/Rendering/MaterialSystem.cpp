@@ -154,18 +154,18 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		cameraBI.offset = 0;
 		cameraBI.range	= m_renderer->m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
 		cameraBI.buffer = m_renderer->m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
-		
+
 		VkDescriptorBufferInfo lightsBI = {};
 		lightsBI.offset	= 0;
 		lightsBI.range	= VK_WHOLE_SIZE;
 		lightsBI.buffer	= m_renderer->m_lightsBuffers[i]->GetBuffer(0);
-		
+
 		VkDescriptorBufferInfo visibleLightsBI = {};
 		visibleLightsBI.offset	= 0;
 		visibleLightsBI.range	= VK_WHOLE_SIZE;
 		visibleLightsBI.buffer	= m_renderer->m_visibleLightsBuffers[i]->GetBuffer(0);
 		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
-		
+
 
 		std::array<VkWriteDescriptorSet, 2> writeDS({});
 		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -174,7 +174,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		writeDS[0].descriptorType	= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		writeDS[0].descriptorCount	= 1;
 		writeDS[0].pBufferInfo		= &cameraBI;
-		
+
 		writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[1].dstSet			= m_renderer->m_tempDesc[i];
 		writeDS[1].dstBinding		= 1;
@@ -182,7 +182,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		writeDS[1].descriptorCount	= bufferInfos.size();
 		writeDS[1].pBufferInfo		= bufferInfos.data();
 		vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
-		
+
 		for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
 		{
 			if(bufferInfo.set != materialDescriptorSetIndex)
@@ -269,7 +269,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 			vkUpdateDescriptorSets(VulkanContext::GetDevice(), 1, &writeDS, 0, nullptr);
 		}
 
-		
+
 	}
 }
 
@@ -295,7 +295,7 @@ void MaterialSystem::UpdateMaterial(Material* mat)
 
 
 			VkDescriptorImageInfo imageInfo = {};
-			imageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+			imageInfo.imageLayout	= texture.GetLayout();
 			imageInfo.sampler		= m_samplers[pipeline->m_name + name];
 			imageInfo.imageView		= texture.GetImageView();
 
@@ -313,7 +313,7 @@ void MaterialSystem::UpdateMaterial(Material* mat)
 
 			vkUpdateDescriptorSets(VulkanContext::GetDevice(), 1, &writeDS, 0, nullptr); // TODO this may need better synchro in the future, but for now update_unused_whil_pending is enough
 		}
-		
+
 	}
 
 }

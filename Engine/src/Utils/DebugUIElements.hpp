@@ -6,7 +6,7 @@
 #include <map>
 
 #include "ECS/CoreComponents/Transform.hpp"
-#include "FileDialog/FileDialog.hpp"
+#include "Utils/FileDialog/FileDialog.hpp"
 #include "Utils/Color.hpp"
 
 class DebugUI;
@@ -104,19 +104,19 @@ public:
         m_value(value)
     {
     	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-        
+
     	if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-    	
+
         ImGui::DragFloat(m_name.c_str(), m_value, 1, m_min, m_max);
 
         ImGui::PopID();
@@ -140,19 +140,19 @@ public:
         m_value(value)
     {
     	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-        
+
     	if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-    	
+
         ImGui::DragFloat2("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -176,19 +176,19 @@ public:
         m_value(value)
     {
     	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
-        
+
     	if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-    	
+
         ImGui::DragFloat3("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -212,7 +212,7 @@ public:
         m_value(value)
     {
     	m_hasTag = name != "";
-    	m_name = name != "" ? name : std::to_string((int)this);
+    	m_name = name != "" ? name : std::to_string((uint64_t)this);
 
     };
 
@@ -225,7 +225,7 @@ public:
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-    	
+
         ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -249,20 +249,20 @@ public:
         m_value(value)
     {
 		m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
 
         ImGui::PushID(this);
-    	
+
         if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-    	
+
         ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
 
         ImGui::PopID();
@@ -286,7 +286,7 @@ public:
 		m_cachedValue(*value)
 	{
 		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((int)this);
+		m_name = name != "" ? name : std::to_string((uint64_t)this);
 	}
 
 	void Update() override
@@ -312,10 +312,10 @@ public:
 			*m_value = glm::quat(glm::radians(m_euler));
 			m_cachedValue = *m_value;
 		}
-		
+
     }
 
-	
+
 private:
 	glm::quat* m_value;
 	glm::vec3 m_euler;
@@ -329,18 +329,18 @@ public:
         m_value(value)
     {
 		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((int)this);
+		m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
         ImGui::PushID(this);
-        
+
         if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-		
+
         ImGui::ColorEdit3(m_name.c_str(), &m_value->r);
 
         ImGui::PopID();
@@ -360,19 +360,19 @@ public:
         m_value(value)
     {
 		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((int)this);
+		m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
 
         ImGui::PushID(this);
-        
+
         if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-		
+
         ImGui::ColorEdit4(m_name.c_str(), &m_value->r);
 
         ImGui::PopID();
@@ -393,18 +393,18 @@ public:
         m_value(value)
     {
         m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((int)this);
+		m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
         ImGui::PushID(this);
-        
+
         if(m_hasTag)
         {
 	        ImGui::Text(m_name.c_str());
         	ImGui::SameLine();
         }
-		
+
         ImGui::Checkbox(m_name.c_str(), m_value);
 
 
@@ -428,7 +428,7 @@ public:
         m_callback(nullptr)
     {
         m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((int)this);
+		m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
 
     void Update() override
@@ -475,7 +475,7 @@ public:
 		m_path(path),
 		m_callback(nullptr)
 	{
-		m_name = std::to_string((int)this);
+		m_name = std::to_string((uint64_t)this);
 	}
 	void Update() override
     {
@@ -486,7 +486,7 @@ public:
 		ImGui::Text(fileName.c_str());
 
 		ImGui::SameLine();
-		
+
         if(ImGui::Button("..."))
         {
             *m_path = FileDialog::OpenFile(nullptr);
@@ -621,7 +621,7 @@ class Separator : public DebugUIElement
 public:
     Separator(const std::string& name = "")
     {
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
@@ -635,7 +635,7 @@ public:
     Table(const std::string& name = ""):
         m_maxColumn(0)
     {
-        m_name = name != "" ? name : std::to_string((int)this);
+        m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {

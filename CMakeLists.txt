@@ -13,14 +13,14 @@ set (CMAKE_VS_JUST_MY_CODE_DEBUGGING ON)
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 #SPIRV CROSS
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/SPIRV-Cross)
-set(SPIRV_CROSS_CLI OFF)
-set(SPIRV_CROSpS_ENABLE_TESTS OFF)
+set(SPIRV_CROSS_CLI CACHE OFF FORCE)
+set(SPIRV_CROSpS_ENABLE_TESTS CACHE OFF FORCE)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/spdlog)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 
-set(ASSIMP_BUILD_TESTS OFF)
+set(ASSIMP_BUILD_TESTS CACHE OFF FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/yaml-cpp)

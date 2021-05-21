@@ -22,27 +22,28 @@
 
 int main()
 {
+
 	Application editor(1920, 1080, 60, "Editor");
-	
+
 	Scene scene = editor.GetScene();
-	
+
 	ECSEngine* ecs = scene.ecs;
 	HierarchyUI hierarchyUi(&scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-	
 
 
-	
+
+
 
 	AssimpImporter importer;
 	Entity* e2 = importer.LoadFile("models/cube.obj", ecs);
 
 
-	for(int i = 0; i < 1; ++i)
+	for(int i = 0; i < 16; ++i)
 	{
-		for(int j = 0; j < 1; ++j)
+		for(int j = 0; j < 16; ++j)
 		{
-			
+
 			Entity* d = ecs->entityManager->CreateEntity();
 			auto l = d->AddComponent<PointLight>();
 			l->color = Color::Red;
@@ -51,12 +52,12 @@ int main()
 			l->attenuation = {1,0,1};
 			//l->cutoff = glm::radians(40.f);
 			auto dt = d->GetComponent<Transform>();
-			dt->pos = {i , j+1.1f , 0};	
+			dt->pos = {i * 50, j+1.1f , 0};
 		}
 	}
-	
-	
-	
+
+
+
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
 	//ecs->componentManager->AddComponent<Mesh>(id2, vertices2, indices2);
 
@@ -66,7 +67,7 @@ int main()
 	t->pos = { 0.0f, 2.0f, 10.0f };
 
 
-	
+
 	Transform* t2 = e2->GetComponent<Transform>();
 	//t2->pos = { 1.f, -2.0f, 1.0f };
 	//t2->scale = {10.f, 0.2f, 10.f};
@@ -74,8 +75,8 @@ int main()
 	//t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
 
 	//ecs->systemManager->AddSystem<TestSystem>(d->GetEntityID());
-	
+
 	editor.Run();
-	
+
 	return 0;
 }

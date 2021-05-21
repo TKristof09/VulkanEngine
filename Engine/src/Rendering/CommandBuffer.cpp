@@ -99,7 +99,7 @@ void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineS
     submitInfo.commandBufferCount       = 1;
     submitInfo.pCommandBuffers          = &m_commandBuffer;
 
-    if(waitSemaphore != VK_NULL_HANDLE && waitStage != VK_NULL_HANDLE)
+    if(waitSemaphore != VK_NULL_HANDLE && waitStage != 0)
     {
 
         // at which stage to wait for the semaphores

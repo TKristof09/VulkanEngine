@@ -4,6 +4,7 @@
 #include "ECS/CoreEvents/EntityEvents.hpp"
 #include "Utils/DebugUIElements.hpp"
 
+class MaterialSystem;
 typedef std::function<void(IComponent*, DebugUIWindow*)> PropertyDrawFunction; //void (*PropertyDrawFunction)(IComponent*, DebugUIWindow*);
 
 class HierarchyUI

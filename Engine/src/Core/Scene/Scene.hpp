@@ -5,8 +5,8 @@ class EventHandler;
 
 struct Scene
 {
-	std::string name;
-	
+	std::string name = "DefaultScene";
+
 	ECSEngine* ecs;
 	EventHandler* eventHandler;
 };

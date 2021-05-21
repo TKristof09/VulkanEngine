@@ -16,7 +16,7 @@ uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, Vk
 }
 
 Buffer::Buffer():
-	m_size(VK_NULL_HANDLE) {}
+	m_size(0) {}
 
 Buffer::Buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
 {
@@ -34,7 +34,7 @@ void Buffer::Free()
 	{
 		vkDestroyBuffer(VulkanContext::GetDevice(), m_buffer, nullptr);
 		vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
-		m_buffer = VK_NULL_HANDLE;		
+		m_buffer = VK_NULL_HANDLE;
 	}
 }
 
@@ -70,7 +70,7 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPrope
 	VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate buffer memory");
 
 	VK_CHECK(vkBindBufferMemory(VulkanContext::GetDevice(), m_buffer, m_memory, 0), "Failed to bind buffer memory");
-	
+
 }
 
 void Buffer::Copy(Buffer* dst, VkDeviceSize size)
@@ -156,14 +156,14 @@ void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t>
 	// we need to make sure that the start and end of the memory are multiples of nonCoherentAtomSize
 	// see https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkMapMemory.html
 	uint64_t correctOffset = offsets[0];
-	
+
 	uint64_t correctTotalSize = size * (offsets.back() - offsets.front());
 	VkDeviceSize nonCoherentAtomSize = VulkanContext::GetPhysicalDeviceProperties().limits.nonCoherentAtomSize;
 
 	uint32_t diff = offsets[0] % nonCoherentAtomSize;
 
 	correctOffset = offsets[0] - diff;
-	
+
 	correctTotalSize = (correctTotalSize + diff) + nonCoherentAtomSize - ((correctTotalSize + diff) % nonCoherentAtomSize);
 	if(correctOffset + correctTotalSize > m_size)
 	{
@@ -192,7 +192,7 @@ void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t>
 			correctOffset = offset - diff;
 			uint64_t correctSize = (size + diff) + nonCoherentAtomSize - ((size + diff) % nonCoherentAtomSize);
 
-			
+
 			ranges[i].sType		= VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
 			ranges[i].memory	= m_memory;
 			ranges[i].size		= correctSize;

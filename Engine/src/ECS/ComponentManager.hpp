@@ -83,11 +83,11 @@ public:
 		const ComponentTypeID typeId = T::STATIC_COMPONENT_TYPE_ID;
 
 		auto it = m_entityComponentMap[entityId].find(typeId);
-		
+
 
 		if(it != m_entityComponentMap[entityId].end()) // an entity can only have one of each component type
 			return (T*)m_componentMap[it->second];
-		
+
 		void* pMemory = GetComponentContainer<T>()->CreateObject();
 
 		ComponentID id = m_lastID++;
