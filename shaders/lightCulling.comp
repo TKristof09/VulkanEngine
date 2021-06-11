@@ -134,15 +134,6 @@ bool ConeAbovePlane(vec3 origin, vec3 forward, float cutoff, float size, vec4 pl
 }
 bool InFrustum(Light light)
 {
-	for(int i = 0; i < 6; i++)
-	{
-		if(dot(light.position, frustum.planes[i].xyz) + frustum.planes[i].w < -light.range)
-		{
-			return false;
-		}
-	}
-	return true;
-
 	if(light.type == DIRECTIONAL_LIGHT)
 		return true;
 
