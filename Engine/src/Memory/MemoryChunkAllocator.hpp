@@ -32,8 +32,16 @@ public:
 
 	using MemoryChunks = std::list<MemoryChunk*>;
 
-	class iterator : public std::iterator<std::forward_iterator_tag, T*>
+	class iterator
 	{
+	public:
+		using value_type = T*;
+		using iterator_category = std::forward_iterator_tag;
+		using pointer = T**;
+		using reference = T*&;
+		using difference_type = uint64_t;
+
+	private:
 		typename MemoryChunks::iterator m_currentChunk;
 		typename MemoryChunks::iterator m_end;
 		typename ObjectList::iterator m_currentObject;
