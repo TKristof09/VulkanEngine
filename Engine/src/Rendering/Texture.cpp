@@ -1,6 +1,6 @@
-#define STB_IMAGE_IMPLEMENTATION
 #include "Texture.hpp"
 #include "Buffer.hpp"
+#include <stb_image.h>
 Texture::Texture(const std::string& fileName, VkImageUsageFlags usageFlags):
 Image(LoadFile(fileName),
     {

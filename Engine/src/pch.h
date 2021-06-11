@@ -3,10 +3,12 @@
 #include <stdint.h>
 #include <cassert>
 #include <iostream>
-#include<array>
-#include<vector>
+#include <array>
+#include <vector>
 #include "Utils/Log.hpp"
 #include "Utils/Profiling.hpp"
+
+#define GLM_FORCE_INTRINSICS
 
 #ifdef VDEBUG
 // using int instead of VkResult enum beacuse i don't want to include vulkan here so this is just a dirty fix

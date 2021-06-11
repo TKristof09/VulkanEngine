@@ -16,7 +16,7 @@ m_format(createInfo.format),
 m_image(createInfo.image),
 m_imageView(VK_NULL_HANDLE),
 m_memory(VK_NULL_HANDLE),
-m_layout(createInfo.layout)
+m_layout(VK_IMAGE_LAYOUT_UNDEFINED)
 {
 	if(width == 0 && height == 0)
 		return;
@@ -38,7 +38,7 @@ m_layout(createInfo.layout)
 		ci.arrayLayers                  = 1;
 		ci.format                       = createInfo.format;
 		ci.tiling                       = createInfo.tiling;
-		ci.initialLayout                = createInfo.layout;
+		ci.initialLayout                = VK_IMAGE_LAYOUT_UNDEFINED;
 		ci.usage                        = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : createInfo.usage; // TODO possibly add transfer dst bit to not need to specify it when constructing an image
 		ci.sharingMode                  = VK_SHARING_MODE_EXCLUSIVE;
 		ci.samples                      = createInfo.msaaSamples; // msaa
@@ -55,7 +55,7 @@ m_layout(createInfo.layout)
 		VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate memory for texture");
 		vkBindImageMemory(VulkanContext::GetDevice(), m_image, m_memory, 0);
 	}
-	
+
     VkImageViewCreateInfo viewCreateInfo    = {};
     viewCreateInfo.sType                    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewCreateInfo.image                    = m_image;
@@ -74,6 +74,9 @@ m_layout(createInfo.layout)
     viewCreateInfo.subresourceRange.layerCount      = 1;
 
     VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
+
+	if(createInfo.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+		TransitionLayout(createInfo.layout);
 }
 
 Image::Image(VkExtent2D extent, ImageCreateInfo createInfo):
@@ -104,7 +107,7 @@ void Image::Free(bool destroyOnlyImageView)
 	{
 		vkDestroyImage(VulkanContext::GetDevice(), m_image, nullptr);
         m_image = VK_NULL_HANDLE;
-        
+
 	    vkFreeMemory(VulkanContext::GetDevice(), m_memory, nullptr);
 	}
 }
@@ -144,33 +147,10 @@ void Image::TransitionLayout(VkImageLayout newLayout)
     VkPipelineStageFlags destinationStage;
 
     // TODO need to understand barriers better
-    if (m_layout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-    {
-        barrier.srcAccessMask   = 0;
-        barrier.dstAccessMask   = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        sourceStage             = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        destinationStage        = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    }
-    else if (m_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-    {
-        barrier.srcAccessMask   = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
-
-        sourceStage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        destinationStage        = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    }
-    else if (m_layout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-    {
-        barrier.srcAccessMask   = 0;
-        barrier.dstAccessMask   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-        sourceStage             = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        destinationStage        = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    }
-    else
-        throw std::invalid_argument("unsupported layout transition!");
-
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     vkCmdPipelineBarrier(commandBuffer.GetCommandBuffer(),
                          sourceStage, destinationStage,
                          0,
@@ -222,7 +202,7 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
                          0, nullptr,
                          0, nullptr,
                          1, &barrier);
-	
+
     int32_t mipWidth    = m_width;
     int32_t mipHeight   = m_height;
 
@@ -271,7 +251,7 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
                              0, nullptr,
                              0, nullptr,
                              1, &barrier);
-       
+
 
         if (mipWidth > 1) mipWidth /= 2;
         if (mipHeight > 1) mipHeight /= 2;

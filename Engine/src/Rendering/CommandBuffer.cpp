@@ -88,7 +88,6 @@ void CommandBuffer::SubmitIdle(VkQueue queue)
     vkDestroyFence(VulkanContext::GetDevice(), fence, nullptr);
 
 }
-
 void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence)
 {
     if(m_running)
@@ -115,6 +114,33 @@ void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineS
         submitInfo.signalSemaphoreCount     = 1;
         submitInfo.pSignalSemaphores        = &signalSemaphore;
     }
+    if(fence != VK_NULL_HANDLE)
+    {
+        VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
+    }
+
+    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit command buffer");
+}
+
+void CommandBuffer::Submit(VkQueue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence)
+{
+    if(m_running)
+        End();
+
+    VkSubmitInfo submitInfo             = {};
+    submitInfo.sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount       = 1;
+    submitInfo.pCommandBuffers          = &m_commandBuffer;
+
+
+	submitInfo.waitSemaphoreCount       = waitSemaphores.size();
+	submitInfo.pWaitSemaphores          = waitSemaphores.data();
+	submitInfo.pWaitDstStageMask        = waitStages.data();
+
+
+	submitInfo.signalSemaphoreCount     = signalSemaphores.size();
+	submitInfo.pSignalSemaphores        = signalSemaphores.data();
+
     if(fence != VK_NULL_HANDLE)
     {
         VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");

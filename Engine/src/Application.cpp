@@ -16,11 +16,13 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
 {
 	s_instance = this;
 
+	std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
+
 	Log::Init();
+	LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
+
 	Instrumentor::Get().BeginSession("Editor");
 
-	//std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
-	LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
 
 	m_currentScene.eventHandler = new EventHandler();
 

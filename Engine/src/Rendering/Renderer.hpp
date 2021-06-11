@@ -69,6 +69,7 @@ private:
 		glm::ivec2 viewportSize;
 		glm::ivec2 tileNums;
 		int lightNum;
+		int debugMode;
 	};
 	struct CameraStruct
 	{
@@ -88,6 +89,8 @@ private:
 	void UpdateLights(uint32_t index);
 
 	std::shared_ptr<Image> m_resolvedDepthImage;
+	std::shared_ptr<Image> m_lightCullDebugImage;
+
 
 	std::vector<VkDescriptorSet> m_tempDesc;
 
@@ -141,6 +144,7 @@ private:
 
 	VkQueue&				m_graphicsQueue;
 	VkQueue					m_presentQueue;
+	VkQueue					m_computeQueue;
 
 	VkSurfaceKHR			m_surface;
 

@@ -26,20 +26,14 @@
 const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 
-struct UniformBufferObject
-{
-	glm::mat4 model;
-};
-
-
-
 struct QueueFamilyIndices
 {
 	std::optional<uint32_t> graphicsFamily;
 	std::optional<uint32_t> presentationFamily;
+	std::optional<uint32_t> computeFamily;
 
 	bool IsComplete() {
-		return graphicsFamily.has_value() && presentationFamily.has_value();
+		return graphicsFamily.has_value() && presentationFamily.has_value() && computeFamily.has_value();
 	}
 };
 struct SwapchainSupportDetails
@@ -125,7 +119,10 @@ Renderer::~Renderer()
 		vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
 	}
 
-
+	for(auto& pool : m_queryPools)
+	{
+		vkDestroyQueryPool(m_device, pool, nullptr);
+	}
 	TextureManager::ClearLoadedTextures();
 
 	CleanupSwapchain();
@@ -323,7 +320,7 @@ void Renderer::CreateDevice()
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies          = {families.graphicsFamily.value(), families.presentationFamily.value()};
+	std::set<uint32_t> uniqueQueueFamilies          = {families.graphicsFamily.value(), families.presentationFamily.value(), families.computeFamily.value()};
 
 	for(auto queue : uniqueQueueFamilies)
 	{
@@ -364,8 +361,9 @@ void Renderer::CreateDevice()
 	createInfo.pNext = &descriptorIndexingFeatures;
 
 	VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
-	vkGetDeviceQueue(VulkanContext::m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
-	vkGetDeviceQueue(VulkanContext::m_device, families.presentationFamily.value(), 0, &m_presentQueue);
+	vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
+	vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue);
+	vkGetDeviceQueue(m_device, families.computeFamily.value(), 0, &m_computeQueue);
 
 
 	m_queryPools.resize(MAX_FRAMES_IN_FLIGHT);
@@ -899,12 +897,20 @@ void Renderer::CreateDepthResources()
 	ci.msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	m_resolvedDepthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 
+
+	ci = {};
+	ci.format = VK_FORMAT_B8G8R8A8_UNORM;
+	ci.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+	ci.layout = VK_IMAGE_LAYOUT_GENERAL;
+	ci.useMips = false;
+	m_lightCullDebugImage = std::make_shared<Image>(m_swapchainExtent, ci);
+
 }
 
 void Renderer::UpdateComputeDescriptors()
 {
-	TextureManager::LoadTexture("./textures/texture.jpg");
-	Texture& t = TextureManager::GetTexture("./textures/texture.jpg");
+
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
 		VkDescriptorBufferInfo cameraBI = {};
@@ -925,11 +931,16 @@ void Renderer::UpdateComputeDescriptors()
 		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
 
 		VkDescriptorImageInfo depthImageInfo = {};
-		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
 		depthImageInfo.imageView	= m_resolvedDepthImage->GetImageView();
 		depthImageInfo.sampler		= m_computeSampler;
 
-		std::array<VkWriteDescriptorSet, 3> writeDS({});
+		VkDescriptorImageInfo debugImageInfo = {};
+		debugImageInfo.imageLayout	= VK_IMAGE_LAYOUT_GENERAL;
+		debugImageInfo.imageView	= m_lightCullDebugImage->GetImageView();
+		debugImageInfo.sampler		= VK_NULL_HANDLE;
+
+		std::array<VkWriteDescriptorSet, 4> writeDS({});
 		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[0].dstSet			= m_computeDesc[i];
 		writeDS[0].dstBinding		= 0;
@@ -951,15 +962,24 @@ void Renderer::UpdateComputeDescriptors()
 		writeDS[2].descriptorCount	= 1;
 		writeDS[2].pImageInfo		= &depthImageInfo;
 
+		writeDS[3].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[3].dstSet			= m_computeDesc[i];
+		writeDS[3].dstBinding		= 4;
+		writeDS[3].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writeDS[3].descriptorCount	= 1;
+		writeDS[3].pImageInfo		= &debugImageInfo;
 
 		vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
 	}
+
 }
 
 void Renderer::UpdateLights(uint32_t index)
 {
 
 	PROFILE_FUNCTION();
+	{ PROFILE_SCOPE("Loop #1");
+
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
@@ -980,9 +1000,12 @@ void Renderer::UpdateLights(uint32_t index)
 			light.color = newColor;
 
 			for(auto& dict : m_changedLights)
-				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
 	}
+	}
+	{ 		PROFILE_SCOPE("Loop #2");
+
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<PointLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
@@ -1011,9 +1034,12 @@ void Renderer::UpdateLights(uint32_t index)
 			light.attenuation[2] = newAtt.constant;
 
 			for(auto& dict : m_changedLights)
-				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
 	}
+	}
+	{		PROFILE_SCOPE("Loop #3");
+
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<SpotLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
@@ -1048,8 +1074,9 @@ void Renderer::UpdateLights(uint32_t index)
 			light.attenuation[2] = newAtt.constant;
 
 			for(auto& dict : m_changedLights)
-				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just update it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
 		}
+	}
 	}
 
 	std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
@@ -1141,17 +1168,18 @@ void Renderer::Render(double dt)
 			PROFILE_SCOPE("Prepass draw call loop");
 			for(auto* renderable : cm->GetComponents<Renderable>())
 			{
-				PROFILE_SCOPE("Single draw command");
-
 				auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
 				glm::mat4 model =  transform->GetTransform();
-				renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-				renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-
+				{
+					PROFILE_SCOPE("Bind buffers");
+					renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+					renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+				}
 				uint32_t offset;
 				uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
 
 				m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+
 				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
 				vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
 			}
@@ -1183,6 +1211,7 @@ void Renderer::Render(double dt)
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
 
 
+		m_computePushConstants.debugMode = 1;
 		vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
 		vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
 
@@ -1273,19 +1302,20 @@ void Renderer::Render(double dt)
 		m_mainCommandBuffers[imageIndex].End();
 
 		VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
-		VkSubmitInfo submitInfo = {};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &cb;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
-		submitInfo.pWaitDstStageMask = &wait;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
-
-		VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
-		VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
+//
+//	VkSubmitInfo submitInfo = {};
+//	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+//	submitInfo.commandBufferCount = 1;
+//	submitInfo.pCommandBuffers = &cb;
+//	submitInfo.waitSemaphoreCount = 1;
+//	submitInfo.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
+//	submitInfo.pWaitDstStageMask = &wait;
+//	submitInfo.signalSemaphoreCount = 1;
+//	submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
+//
+//	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
+//	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
+		m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
 	}
 
@@ -1301,11 +1331,12 @@ void Renderer::Render(double dt)
 		presentInfo.pImageIndices = &imageIndex;
 		result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
 	}
+	std::array<uint64_t, 4> queryResults;
 	{
 		PROFILE_SCOPE("Query results");
-		std::array<uint64_t, 4> queryResults;
 		VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
 
+	}
 		if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
 		{
 			m_window->SetResized(false);
@@ -1318,7 +1349,7 @@ void Renderer::Render(double dt)
 		LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
 
 		m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
-	}
+
 }
 
 
@@ -1603,10 +1634,14 @@ QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 		}
 		VkBool32 presentationSupport;
 		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentationSupport);
-		if(queueFamily.queueCount > 0 && presentationSupport)
+		if(queueFamily.queueCount > 0 && presentationSupport && !indices.presentationFamily.has_value())
 		{
 			indices.presentationFamily = i;
 		}
+
+		if(queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT && !(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT))
+			indices.computeFamily = i;
+
 		if(indices.IsComplete())
 		{
 			break;
@@ -1664,6 +1699,8 @@ VkPresentModeKHR ChooseSwapchainPresentMode(const std::vector<VkPresentModeKHR>&
 	for(const auto& presentMode : availablePresentModes)
 	{
 		if(presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+			return presentMode;
+		if(presentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
 			return presentMode;
 	}
 

@@ -6,14 +6,14 @@ struct ImageCreateInfo
 	VkFormat format;
 	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 	VkImageUsageFlags usage;
-	VkImageLayout layout;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImageAspectFlags aspectFlags;
 	VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	bool useMips = true;
-	
+
 	VkImage image = VK_NULL_HANDLE; // just to make it so that we can create an Image from the swapchain images
 };
 class Image {

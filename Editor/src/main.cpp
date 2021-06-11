@@ -32,11 +32,14 @@ int main()
 
 
 
+	Entity* camera = ecs->entityManager->CreateEntity();
+	Transform* t = camera->AddComponent<Transform>();
+	camera->AddComponent<Camera>(90.f, 1920/1080, 0.1f, 100.f);
+	t->pos = { 0.0f, 2.0f, 10.0f };
 
 
 
-	AssimpImporter importer;
-	Entity* e2 = importer.LoadFile("models/cube.obj", ecs);
+	Entity* e2 = AssimpImporter::LoadFile("models/sponza_one.fbx", ecs);
 
 
 	for(int i = 0; i < 16; ++i)
@@ -47,12 +50,12 @@ int main()
 			Entity* d = ecs->entityManager->CreateEntity();
 			auto l = d->AddComponent<PointLight>();
 			l->color = Color::Red;
-			l->intensity = 10.0f;
+			l->intensity = 5.0f;
 			l->range = 10.0f;
-			l->attenuation = {1,0,1};
+			l->attenuation = {1,1,1};
 			//l->cutoff = glm::radians(40.f);
 			auto dt = d->GetComponent<Transform>();
-			dt->pos = {i * 50, j+1.1f , 0};
+			dt->pos = {i * 5, 0.0f , j};
 		}
 	}
 
@@ -61,16 +64,12 @@ int main()
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
 	//ecs->componentManager->AddComponent<Mesh>(id2, vertices2, indices2);
 
-	Entity* camera = ecs->entityManager->CreateEntity();
-	Transform* t = camera->AddComponent<Transform>();
-	camera->AddComponent<Camera>(90.f, 1920/1080, 0.1f, 100.f);
-	t->pos = { 0.0f, 2.0f, 10.0f };
 
 
 
 	Transform* t2 = e2->GetComponent<Transform>();
-	//t2->pos = { 1.f, -2.0f, 1.0f };
-	//t2->scale = {10.f, 0.2f, 10.f};
+	t2->pos = { 0.f, 24.0f, 0.0f };
+	t2->scale = {0.1f, 0.1f, 0.1f};
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
 	//t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
 

@@ -12,8 +12,9 @@ public:
 	void Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo);
     void End();
 
-    void SubmitIdle(VkQueue queue);
+    void SubmitIdle(VkQueue queue = VulkanContext::GetGraphicsQueue());
     void Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence);
+	void Submit(VkQueue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence);
 
     const VkCommandBuffer& GetCommandBuffer() const
     {

@@ -23,6 +23,7 @@ layout(push_constant) uniform PC
 	ivec2 viewportSize;
 	ivec2 tileNums;
 	int lightNum;
+	int debugMode;
 };
 
 // we use these buffers later in the frag shader, and they only change once per frame, so they can go with the camera in set 0
@@ -50,26 +51,25 @@ vec3 GetNormalFromMap(){
 vec3 CalculateBaseLight(Light light, vec3 direction)
 {
 	direction = normalize(-direction);
-	
 
-    // diffuse 
+
+    // diffuse
     vec3 norm = GetNormalFromMap();
     float angle = max(dot(norm, direction), 0.0);
     vec3 diffuse = angle * light.color.xyz * light.intensity;
-    
+
     // specular
     vec3 viewDir = normalize(cameraPos - worldPos);
-    vec3 reflectDir = reflect(-direction, norm);  
+    vec3 reflectDir = reflect(-direction, norm);
     float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), material.specularExponent);
-    vec3 specularV = specularFactor * light.color * vec3(0.0)/*texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;  
-       
-    vec3 result = diffuse + specularV;
-    return result;
+    vec3 specularV = specularFactor * light.color * vec3(0.0)/*texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;
+
+    return diffuse + specularV;
 }
 
 vec3 CalculateDirectionalLight(Light light)
 {
-	return CalculateBaseLight(light, light.direction);	
+	return CalculateBaseLight(light, light.direction);
 }
 vec3 CalculatePointLight(Light light)
 {
@@ -79,35 +79,30 @@ vec3 CalculatePointLight(Light light)
 	if(distanceToLight > light.range)
 		return vec3(0,0,0);
 	lightDir = normalize(lightDir);
-	vec3 color = CalculateBaseLight(light, lightDir);
 
 	float attenuation = 1 / (light.attenuation.quadratic * distanceToLight * distanceToLight +
 						light.attenuation.linear * distanceToLight +
-						light.attenuation.constant + 0.00001); 
+						light.attenuation.constant + 0.00001);
 						// +0.00001 to prevent division with 0
 
-	return color * attenuation;
+	return CalculateBaseLight(light, lightDir) * attenuation;
 }
 vec3 CalculateSpotLight(Light light)
 {
 	vec3 lightDir = normalize(worldPos - light.position);
 	float angle = dot(lightDir, normalize(light.direction));
-	if(angle > light.cutoff){
-		return CalculatePointLight(light) * (1.0 -(1.0 - angle) / (1.0 - light.cutoff));
-	}
-	else
-		return vec3(0,0,0);
+	return  int(angle > light.cutoff) * CalculatePointLight(light) * (1.0 -(1.0 - angle) / (1.0 - light.cutoff));
 }
 
 void main() {
-    
+
 	ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
 	int tileIndex = tileID.y * tileNums.x + tileID.x;
 
 	uint tileLightNum = visibleLights[tileIndex].count;
 
 	vec3 illuminance = vec3(0.2); // ambient
-	
+
 	for(int i = 0; i < tileLightNum; ++i)
 	{
 		uint lightIndex = visibleLights[tileIndex].indices[i];
