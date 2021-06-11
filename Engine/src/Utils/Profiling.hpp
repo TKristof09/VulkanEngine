@@ -47,7 +47,7 @@ public:
         EndSession();
     }
 
-    void BeginSession(const std::string& name, const std::string& filepath = "results.json")
+    void BeginSession(const std::string& name, const std::string& filepath = "DebugTools/profile_results.json")
     {
         if (m_activeSession) { EndSession(); }
         m_activeSession = true;

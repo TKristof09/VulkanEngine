@@ -2,6 +2,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <assimp/postprocess.h>
+#include <assimp/DefaultLogger.hpp>
 
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
@@ -9,21 +10,31 @@
 #include "Rendering/TextureManager.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
+Assimp::Importer AssimpImporter::s_importer = {};
+
 Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
 {
-	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality);
+
+	auto* assimpLogger = Assimp::DefaultLogger::create("DebugTools/AssimpLogger.txt", Assimp::Logger::VERBOSE);
+	assimpLogger->info("Test info call");
+
+
+	s_importer.SetPropertyBool("GLOB_MEASURE_TIME", true);
+	const aiScene* scene = s_importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality);
 
 
 	if(!scene)
 	{
-		LOG_ERROR(importer.GetErrorString());
+		LOG_ERROR(s_importer.GetErrorString());
 		return nullptr;
 	}
 
 	Entity* rootEntity = ecsEngine->entityManager->CreateEntity();
 	ProcessNode(scene->mRootNode, scene, ecsEngine, rootEntity);
 	LOG_TRACE("Loaded {0}", file);
+
+	Assimp::DefaultLogger::kill();
+
 	return rootEntity;
 }
 
@@ -47,7 +58,7 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 
 	for (int i = 0; i < node->mNumMeshes; ++i)
 	{
-		LoadMesh(scene->mMeshes[node->mMeshes[i]], entity);
+		LoadMesh(scene->mMeshes[node->mMeshes[i]], ecsEngine->entityManager->CreateChild(entity));
 	}
 
 	for (int i = 0; i < node->mNumChildren; ++i)
