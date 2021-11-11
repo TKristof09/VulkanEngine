@@ -1,4 +1,5 @@
 #include "Utils/AssimpImporter.hpp"
+#include <assimp/material.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <assimp/postprocess.h>
@@ -58,7 +59,7 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 
 	for (int i = 0; i < node->mNumMeshes; ++i)
 	{
-		LoadMesh(scene->mMeshes[node->mMeshes[i]], ecsEngine->entityManager->CreateChild(entity));
+		LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecsEngine->entityManager->CreateChild(entity));
 	}
 
 	for (int i = 0; i < node->mNumChildren; ++i)
@@ -67,7 +68,7 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 	}
 }
 
-void AssimpImporter::LoadMesh(const aiMesh* mesh, Entity* entity)
+void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* entity)
 {
 
 	std::vector<Vertex> vertices;
@@ -103,11 +104,31 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, Entity* entity)
 			indices.push_back(face.mIndices[j]);
 		}
 	}
-	entity->AddComponent<Mesh>(vertices, indices );
-	TextureManager::LoadTexture("./textures/uv_checker.png");
-	TextureManager::LoadTexture("./textures/normal.jpg");
+
 	Material* mat2 = entity->AddComponent<Material>();
 	mat2->shaderName = "forwardplus";
-	mat2->textures["albedo"] = "./textures/uv_checker.png";
-	mat2->textures["normal"] = "./textures/normal.jpg";
+	aiMaterial* aiMat = scene->mMaterials[mesh->mMaterialIndex];
+	aiString tempPath;
+	if(aiMat->GetTexture(aiTextureType_DIFFUSE, 0, &tempPath) == aiReturn_SUCCESS)
+	{
+		std::string texturePath = tempPath.C_Str();
+		texturePath = "./models/" + texturePath;
+		auto it = texturePath.find("\\");
+		texturePath.replace(it, 1, "/", 1);
+		TextureManager::LoadTexture(texturePath);
+		mat2->textures["albedo"] = texturePath;
+	}
+	if(aiMat->GetTexture(aiTextureType_NORMALS, 0, &tempPath) == aiReturn_SUCCESS)
+	{
+		std::string texturePath = tempPath.C_Str();
+		texturePath = "./models/" + texturePath;
+		auto it = texturePath.find("\\");
+		texturePath.replace(it, 1, "/", 1);
+		TextureManager::LoadTexture(texturePath);
+		mat2->textures["normal"] = texturePath;
+	}
+	else
+		mat2->textures["normal"] = "./textures/normal.jpg";
+
+	entity->AddComponent<Mesh>(vertices, indices );
 }

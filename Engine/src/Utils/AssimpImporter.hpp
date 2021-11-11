@@ -18,7 +18,7 @@ public:
 
 private:
 	static void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, Entity* entity);
-	static void LoadMesh(const aiMesh* mesh, Entity* entity);
+	static void LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* entity);
 
 	static Assimp::Importer s_importer;
 };

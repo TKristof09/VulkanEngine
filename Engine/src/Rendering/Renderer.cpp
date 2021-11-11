@@ -1272,7 +1272,7 @@ void Renderer::Render(double dt)
 				{
 					m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
 
-					glm::vec4 ubs[] = {{0.5f, 0,0,1.0f}, {materialIterator->_textureSlot, 0, 0, 0}};
+					glm::vec4 ubs[] = {{materialIterator->_textureSlot, 0, 0, 0}, {0.5f, 0,0,1.0f}, };
 
 					m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
 
@@ -1346,7 +1346,7 @@ void Renderer::Render(double dt)
 			throw std::runtime_error("Failed to present swap chain image");
 
 		m_queryResults[m_currentFrame] = (queryResults[3] - queryResults[0]) * m_timestampPeriod;
-		LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
+		//LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
 
 		m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
 
