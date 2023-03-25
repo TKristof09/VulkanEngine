@@ -1,6 +1,9 @@
 #include "Texture.hpp"
 #include "Buffer.hpp"
+
+#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <filesystem>
 Texture::Texture(const std::string& fileName, VkImageUsageFlags usageFlags):
 Image(LoadFile(fileName),
     {
@@ -34,7 +37,10 @@ Image(LoadFile(fileName),
 std::pair<uint32_t, uint32_t> Texture::LoadFile(const std::string& fileName)
 {
     int width, height, channels;
-    m_pixels = stbi_load(fileName.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    std::filesystem::path f = fileName;
+    m_pixels = stbi_load(std::filesystem::absolute(f).string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+	LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
+    LOG_INFO("File: {0}", std::filesystem::absolute(f));
 
     m_width = static_cast<uint32_t>(width);
     m_height = static_cast<uint32_t>(height);

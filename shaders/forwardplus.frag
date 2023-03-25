@@ -62,9 +62,9 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
     vec3 viewDir = normalize(cameraPos - worldPos);
     vec3 reflectDir = reflect(-direction, norm);
     float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), material.specularExponent);
-    vec3 specularV = specularFactor * light.color * vec3(0.0)/*texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;
+    vec3 specularV = specularFactor * light.color /* texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;
 
-    return diffuse + specularV;
+    return diffuse + 0*specularV;
 }
 
 vec3 CalculateDirectionalLight(Light light)
@@ -118,7 +118,7 @@ void main() {
 		case SPOT_LIGHT:
 			illuminance += CalculateSpotLight(lights[lightIndex]);
 			break;
-		}
+        }
 	}
 
     outColor = vec4(illuminance * texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb, 1.0);

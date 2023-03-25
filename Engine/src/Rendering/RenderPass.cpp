@@ -1,4 +1,5 @@
 #include "RenderPass.hpp"
+#include "vulkan/vulkan_core.h"
 
 
 RenderPass::RenderPass(RenderPassCreateInfo createInfo)
@@ -27,7 +28,8 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 
 	uint32_t i = 0;
 
-	std::vector<VkAttachmentDescription2> attachments(createInfo.attachments.size());
+	std::vector<VkAttachmentDescription2> attachments;
+    attachments.reserve(createInfo.attachments.size()); // use reserve because we skip resolve attachments in case msaaSamples is 1
 	std::vector<std::vector<VkAttachmentReference2>> colorRefs(createInfo.subpassCount);
 	std::vector<std::vector<VkAttachmentReference2>> resolveRefs(createInfo.subpassCount);
 	std::vector<std::vector<VkAttachmentReference2>> inputRefs(createInfo.subpassCount);
@@ -40,27 +42,30 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 	for(uint32_t currentSubpass = 0; currentSubpass < createInfo.subpassCount; ++currentSubpass)
 	{
 		subpasses[currentSubpass].sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2;
-		
+
 		bool useDepth = false;
 		bool useResolve = false;
 
-		
+
 		depthResolves[currentSubpass].sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE;
-		
+
 		for(auto attachment : createInfo.attachments)
 		{
 
 			if(attachment.subpass != currentSubpass)
 				continue;
+			if(createInfo.msaaSamples == VK_SAMPLE_COUNT_1_BIT && (attachment.type == RenderPassAttachmentType::COLOR_RESOLVE || attachment.type == RenderPassAttachmentType::DEPTH_RESOLVE))
+                continue;
+
 			VkAttachmentDescription2 desc = {};
 			desc.sType = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2;
 			desc.format = attachment.format;
-			
+
 			if(attachment.type == RenderPassAttachmentType::COLOR_RESOLVE || attachment.type == RenderPassAttachmentType::DEPTH_RESOLVE)
 				desc.samples = VK_SAMPLE_COUNT_1_BIT;
 			else
 				desc.samples = createInfo.msaaSamples;
-			
+
 			desc.loadOp = attachment.loadOp;
 			desc.storeOp = attachment.storeOp;
 			desc.stencilLoadOp = attachment.stencilLoadOp;
@@ -68,15 +73,15 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 			desc.initialLayout = attachment.initialLayout;
 			desc.finalLayout = attachment.finalLayout;
 
-			attachments[i] = desc;
+			attachments.push_back(desc);
 
 			VkAttachmentReference2 ref = {};
 			ref.sType = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2;
 			ref.attachment = i;
 			ref.layout = attachment.internalLayout;
 
-			
-			
+
+
 			switch(attachment.type)
 			{
 				case RenderPassAttachmentType::COLOR: colorRefs[currentSubpass].push_back(ref); break;
@@ -91,7 +96,7 @@ void RenderPass::CreateRenderPass(RenderPassCreateInfo createInfo)
 					subpasses[currentSubpass].pNext = &depthResolves[currentSubpass];
 					useResolve = true;
 					break;
-					
+
 			}
 
 			if(attachment.preserve)

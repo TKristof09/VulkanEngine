@@ -282,7 +282,7 @@ class DragEulerAngles : public DebugUIElement
 public:
 	DragEulerAngles(glm::quat* value, const std::string& name=""):
 		m_value(value),
-		m_euler(glm::eulerAngles(*value)),
+		m_euler(glm::degrees(glm::eulerAngles(*value))),
 		m_cachedValue(*value)
 	{
 		m_hasTag = name != "";

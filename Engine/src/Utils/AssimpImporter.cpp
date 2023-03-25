@@ -128,7 +128,10 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
 		mat2->textures["normal"] = texturePath;
 	}
 	else
+	{
+		TextureManager::LoadTexture("./textures/normal.jpg");
 		mat2->textures["normal"] = "./textures/normal.jpg";
+	}
 
 	entity->AddComponent<Mesh>(vertices, indices );
 }

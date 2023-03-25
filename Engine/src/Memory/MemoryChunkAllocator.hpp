@@ -73,6 +73,7 @@ public:
 			}
 			return *this;
 		}
+        // TODO is this even correct? temp is a local variable
 		inline iterator& operator++(int)
 		{
 			iterator temp = *this;

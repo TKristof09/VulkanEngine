@@ -7,7 +7,7 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
 	if (createInfo.type == PipelineType::GRAPHICS)
 	{
 		if(createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
-		{	
+		{
 			m_shaders.emplace_back(m_name, VK_SHADER_STAGE_VERTEX_BIT, this);
 		}
 		if(createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -148,7 +148,7 @@ void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
 	std::vector<VkPushConstantRange> pcRanges;
 	for(auto [name, info] : m_pushConstants)
 	{
-		
+
 			VkPushConstantRange pcRange = {};
 			pcRange.stageFlags	= info.stages;
 			pcRange.offset		= info.offset;
@@ -209,13 +209,13 @@ void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
 	shaderCi.module = m_shaders[0].GetShaderModule(); // only 1 compute shader allowed
 
 	// ##################### PUSH CONSTANTS #####################
-	
+
 
 
 	std::vector<VkPushConstantRange> pcRanges;
 	for(auto [name, info] : m_pushConstants)
 	{
-		
+
 			VkPushConstantRange pcRange = {};
 			pcRange.stageFlags	= info.stages;
 			pcRange.offset		= info.offset;
@@ -233,7 +233,7 @@ void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
 
 	VK_CHECK(vkCreatePipelineLayout(VulkanContext::GetDevice(), &layoutCreateInfo, nullptr, &m_layout), "Failed to create compute pipeline layout");
 
-	
+
 	VkComputePipelineCreateInfo pipelineCI = {};
 	pipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	pipelineCI.layout = m_layout;
@@ -248,7 +248,7 @@ void Pipeline::CreateComputePipeline(PipelineCreateInfo createInfo)
 	}
 
 	VK_CHECK(vkCreateComputePipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &m_pipeline), "Failed to create compute pipeline");
-	
+
 }
 
 void Pipeline::CreateDescriptorSetLayout()
@@ -305,7 +305,7 @@ void Pipeline::CreateDescriptorSetLayout()
 		bindings[imageInfo.set].push_back(samplerLayoutBinding);
 
 	}
-	
+
 	for(uint32_t i = 0; i < bindings.size(); ++i)
 	{
 		if(bindings[i].size() == 0)

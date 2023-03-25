@@ -1,4 +1,5 @@
 #include "Rendering/Renderer.hpp"
+#include "vulkan/vulkan_core.h"
 #include <sstream>
 #include <optional>
 #include <set>
@@ -72,6 +73,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 {
 
 
+
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
 	scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
@@ -85,7 +87,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	CreateSwapchain();
 
 	m_computePushConstants.viewportSize = { m_swapchainExtent.width, m_swapchainExtent.height };
-	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
+	m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f); // TODO Make this take into account TILE_SIZE from common.glsl
 	m_computePushConstants.lightNum = 0;
 	m_changedLights.resize(m_swapchainImages.size());
 
@@ -221,7 +223,6 @@ void Renderer::CreateDebugUI()
 	initInfo.msaaSamples = m_msaaSamples;
 	initInfo.allocator = nullptr;
 
-
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
 }
 
@@ -274,6 +275,15 @@ void Renderer::CreateInstance()
 	debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	debugCreateInfo.pfnUserCallback = debugUtilsMessengerCallback;
 
+
+    //VkValidationFeatureEnableEXT enables[] = { VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT}
+    VkValidationFeatureEnableEXT enables[] = { VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT, VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT };
+    VkValidationFeaturesEXT features = {};
+    features.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+    features.enabledValidationFeatureCount = 2;
+    features.pEnabledValidationFeatures = enables;
+
+    debugCreateInfo.pNext = &features;
 	createInfo.pNext = &debugCreateInfo;
 #endif
 
@@ -315,7 +325,7 @@ void Renderer::CreateDevice()
 	vkGetPhysicalDeviceProperties(m_gpu, &VulkanContext::m_gpuProperties);
 	LOG_TRACE("Picked device: {0}", VulkanContext::m_gpuProperties.deviceName);
 
-	m_msaaSamples = GetMaxUsableSampleCount(m_gpu);
+	m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;//GetMaxUsableSampleCount(m_gpu); MSAA causes flickering bug
 
 	QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
@@ -487,9 +497,9 @@ void Renderer::CreateRenderPass()
 	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependency.dstSubpass = 0;
 	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.srcAccessMask = 0;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
 	RenderPassCreateInfo ci;
 	ci.attachments = {colorAttachment, depthAttachment, colorAttachmentResolve };
@@ -510,8 +520,8 @@ void Renderer::CreateRenderPass()
 	prePassDepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	prePassDepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	prePassDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	prePassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	prePassDepthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    prePassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	prePassDepthAttachment.clearValue.depthStencil = {0.0f, 0 };
 
 	RenderPassAttachment prePassDepthResolve = {};
@@ -522,28 +532,29 @@ void Renderer::CreateRenderPass()
 	prePassDepthResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	prePassDepthResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	prePassDepthResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	prePassDepthResolve.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	prePassDepthResolve.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    prePassDepthResolve.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 
 	std::vector<VkSubpassDependency2> dependencies(2);
 
+    // TODO might not need this dependency, since the prepass doesn't use any attachments from previous renderpasses, but maybe we wait for other renderpasses to finish reading from the depth image before writing to it again?
 	dependencies[0].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
 	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[0].dstSubpass = 0;
-	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
 	dependencies[1].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
 	dependencies[1].srcSubpass = 0;
 	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; // resolve write and depth write (including layout transitions )
+	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
 	RenderPassCreateInfo prepassCi;
@@ -676,7 +687,8 @@ void Renderer::CreateFramebuffers()
 		ci.height = m_swapchainExtent.height;
 		ci.attachmentDescriptions = {};
 		ci.attachmentDescriptions.push_back({ m_depthImage, {}});
-		ci.attachmentDescriptions.push_back({ m_resolvedDepthImage, {}});
+		if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
+            ci.attachmentDescriptions.push_back({ m_resolvedDepthImage, {}});
 		m_prePassRenderPass.AddFramebuffer(ci);
 	}
 }
@@ -891,6 +903,8 @@ void Renderer::CreateDepthResources()
 	ci.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	ci.msaaSamples = m_msaaSamples;
 	ci.useMips = false;
+    if(m_msaaSamples == VK_SAMPLE_COUNT_1_BIT)
+        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ;
 	m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
 
 	ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ;
@@ -932,7 +946,10 @@ void Renderer::UpdateComputeDescriptors()
 
 		VkDescriptorImageInfo depthImageInfo = {};
 		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
-		depthImageInfo.imageView	= m_resolvedDepthImage->GetImageView();
+        if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
+		    depthImageInfo.imageView	= m_resolvedDepthImage->GetImageView();
+        else
+		    depthImageInfo.imageView	= m_depthImage->GetImageView();
 		depthImageInfo.sampler		= m_computeSampler;
 
 		VkDescriptorImageInfo debugImageInfo = {};
@@ -1093,6 +1110,8 @@ void Renderer::UpdateLights(uint32_t index)
 
 void Renderer::Render(double dt)
 {
+
+
 	PROFILE_FUNCTION();
 	uint32_t imageIndex;
 	VkResult result;
@@ -1164,7 +1183,7 @@ void Renderer::Render(double dt)
 
 		// This should be fine since all our shaders use set 0 for the camera so the descriptor doesn't get unbound by pipeline switches
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
-		{
+        {
 			PROFILE_SCOPE("Prepass draw call loop");
 			for(auto* renderable : cm->GetComponents<Renderable>())
 			{
@@ -1187,25 +1206,21 @@ void Renderer::Render(double dt)
 		vkCmdEndRenderPass(cb);
 		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPools[m_currentFrame], 1);
 
-		VkImageMemoryBarrier imageMemoryBarrier = {};
-		imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		// We won't be changing the layout of the image
-		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		imageMemoryBarrier.image = m_resolvedDepthImage->GetImage();
-		imageMemoryBarrier.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
-		imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		vkCmdPipelineBarrier(
-				cb,
-				VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				0,
-				0, nullptr,
-				0, nullptr,
-				1, &imageMemoryBarrier);
+
+
+        std::vector<VkBufferMemoryBarrier> barriersBefore(2);
+        barriersBefore[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barriersBefore[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barriersBefore[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
+        barriersBefore[0].size = m_lightsBuffers[imageIndex]->GetSize();
+        barriersBefore[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barriersBefore[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barriersBefore[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barriersBefore[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
+        barriersBefore[1].size = m_visibleLightsBuffers[imageIndex]->GetSize();
+
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), 0, nullptr);
 		uint32_t offset = 0;
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
@@ -1214,6 +1229,19 @@ void Renderer::Render(double dt)
 		m_computePushConstants.debugMode = 1;
 		vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
 		vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
+
+        std::vector<VkBufferMemoryBarrier> barriersAfter(2);
+        barriersAfter[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barriersAfter[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barriersAfter[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barriersAfter[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
+        barriersAfter[0].size = m_lightsBuffers[imageIndex]->GetSize();
+        barriersAfter[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barriersAfter[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barriersAfter[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barriersAfter[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
+        barriersAfter[1].size = m_visibleLightsBuffers[imageIndex]->GetSize();
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), 0, nullptr);
 
 		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, m_queryPools[m_currentFrame], 2);
 
@@ -1337,18 +1365,18 @@ void Renderer::Render(double dt)
 		VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
 
 	}
-		if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
-		{
-			m_window->SetResized(false);
-			RecreateSwapchain();
-		}
-		else if(result != VK_SUCCESS)
-			throw std::runtime_error("Failed to present swap chain image");
+    if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
+    {
+        m_window->SetResized(false);
+        RecreateSwapchain();
+    }
+    else if(result != VK_SUCCESS)
+        throw std::runtime_error("Failed to present swap chain image");
 
-		m_queryResults[m_currentFrame] = (queryResults[3] - queryResults[0]) * m_timestampPeriod;
-		//LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
+    m_queryResults[m_currentFrame] = (queryResults[3] - queryResults[0]) * m_timestampPeriod;
+    //LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
 
-		m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
+    m_currentFrame = (m_currentFrame +1 ) % MAX_FRAMES_IN_FLIGHT;
 
 }
 
