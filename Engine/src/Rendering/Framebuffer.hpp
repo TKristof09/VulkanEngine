@@ -14,6 +14,8 @@ struct FramebufferImageInfo
 struct FramebufferCreateInfo
 {
 	uint32_t width, height;
+
+    bool imageless = false;
 	// uint32_t layers;
 
 	std::vector<FramebufferImageInfo> attachmentDescriptions; // respect the order of the attachments

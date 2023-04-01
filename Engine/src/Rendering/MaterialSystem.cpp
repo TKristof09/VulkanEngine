@@ -3,6 +3,7 @@
 #include "Rendering/Renderer.hpp"
 #include "ECS/ComponentManager.hpp"
 #include "TextureManager.hpp"
+#include "vulkan/vulkan_core.h"
 
 MaterialSystem::MaterialSystem(Scene* scene, Renderer* renderer):
 	m_renderer(renderer),
@@ -181,6 +182,8 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		writeDS[1].descriptorCount	= bufferInfos.size();
 		writeDS[1].pBufferInfo		= bufferInfos.data();
+
+
 		vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
 
 		for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <stdint.h>
 #include "Utils/Color.hpp"
 #include "ECS/Component.hpp"
 
@@ -9,8 +10,9 @@ struct DirectionalLight : public Component<DirectionalLight>
 	Color color;
 	float intensity;
 
-	
+
 	uint32_t _slot; //internal
+    uint32_t _shadowSlot; //internal
 };
 
 struct Attenuation
@@ -29,8 +31,9 @@ struct PointLight : public Component<PointLight>
 
 	Attenuation attenuation;
 
-	
+
 	uint32_t _slot; //internal
+    uint32_t _shadowSlot; //internal
 };
 
 struct SpotLight : public Component<SpotLight>
@@ -42,6 +45,7 @@ struct SpotLight : public Component<SpotLight>
 
 	Attenuation attenuation;
 
-	
+
 	uint32_t _slot; //internal
+    uint32_t _shadowSlot; //internal
 };

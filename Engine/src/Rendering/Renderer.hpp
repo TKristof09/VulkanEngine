@@ -24,6 +24,7 @@
 #include "ECS/ECSEngine.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 
+#define SHADOWMAP_SIZE 1024
 
 class Renderer
 {
@@ -58,6 +59,8 @@ private:
 		glm::vec3 position;
 		float range; // only for spot and point
 
+        uint32_t shadowSlot;
+
 	};
 	struct TileLights // TODO
 	{
@@ -91,8 +94,12 @@ private:
 	std::shared_ptr<Image> m_resolvedDepthImage;
 	std::shared_ptr<Image> m_lightCullDebugImage;
 
+    std::vector<std::unique_ptr<Image>> m_shadowmaps; // non point lights
+    RenderPass m_shadowRenderPass;
+    std::unique_ptr<Pipeline> m_shadowPipeline;
+    //std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
-	std::vector<VkDescriptorSet> m_tempDesc;
+	std::vector<VkDescriptorSet> m_tempDesc; // global desc set 0
 
 	std::unique_ptr<Pipeline> m_depthPipeline;
 

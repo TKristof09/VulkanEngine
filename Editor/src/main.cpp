@@ -43,7 +43,7 @@ int main()
     dlight->GetComponent<NameTag>()->name = "DLight";
 	auto dl = dlight->AddComponent<DirectionalLight>();
 	dl->color = Color::Green;
-	dl->intensity = 1.0f;
+	dl->intensity = 10.0f;
 
 
 

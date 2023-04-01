@@ -22,6 +22,7 @@ layout( push_constant ) uniform PC
 {
 	mat4 altCamera;
 };
+
 void main() {
-    gl_Position = viewProj * model * vec4(inPosition, 1.0);
+    gl_Position = altCamera * model * vec4(inPosition, 1.0);
 }

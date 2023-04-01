@@ -16,7 +16,8 @@ m_format(createInfo.format),
 m_image(createInfo.image),
 m_imageView(VK_NULL_HANDLE),
 m_memory(VK_NULL_HANDLE),
-m_layout(VK_IMAGE_LAYOUT_UNDEFINED)
+m_layout(VK_IMAGE_LAYOUT_UNDEFINED),
+m_aspect(createInfo.aspectFlags)
 {
 	if(width == 0 && height == 0)
 		return;
@@ -126,18 +127,13 @@ void Image::TransitionLayout(VkImageLayout newLayout)
 
     barrier.image                   = m_image;
 
-    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-    {
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    barrier.subresourceRange.aspectMask = m_aspect;
+
         if (hasStencilComponent(m_format))
         {
             barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         }
-    }
-    else
-    {
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
+
     barrier.subresourceRange.baseMipLevel       = 0;
     barrier.subresourceRange.levelCount         = m_mipLevels;
     barrier.subresourceRange.baseArrayLayer     = 0;

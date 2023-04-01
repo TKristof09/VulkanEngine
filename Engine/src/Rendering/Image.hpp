@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanContext.hpp"
+#include "vulkan/vulkan_core.h"
 
 struct ImageCreateInfo
 {
@@ -84,5 +85,6 @@ protected:
     VkFormat        m_format;
     VkDeviceMemory  m_memory;
     VkImageLayout   m_layout;
+    VkImageAspectFlags m_aspect;
 
 };

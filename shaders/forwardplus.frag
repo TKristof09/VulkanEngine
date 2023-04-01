@@ -36,6 +36,7 @@ layout(set = 0, binding = 2) readonly buffer VisibleLightsBuffer
 {
 	TileLights visibleLights[];
 };
+layout(set = 0, binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS_PER_TILE];
 
 layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 //layout(binding = 2, set = 1) uniform sampler2D specular[32];
