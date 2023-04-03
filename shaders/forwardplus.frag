@@ -42,9 +42,26 @@ layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 //layout(binding = 2, set = 1) uniform sampler2D specular[32];
 layout(binding = 2, set = 1) uniform sampler2D normal[32];
 
+float CalculateShadow(Light light)
+{
+    vec4 lsPos = light.lightSpaceMatrix * vec4(worldPos, 1.0);
+
+    vec3 projectedCoords = lsPos.xyz / lsPos.w;
+
+    projectedCoords.xy = projectedCoords.xy * 0.5 + vec2(0.5);
+    float depth = texture(shadowMaps[nonuniformEXT(light.shadowSlot)], vec2(projectedCoords.x, 1-projectedCoords.y)).x;
+    /*
+    if(depth > 0.0)
+    	debugPrintfEXT("Z: %f  <-> depth: %f", projectedCoords.z, depth);
+    if(projectedCoords.x > 0.7 && projectedCoords.y > 0.4)
+    	debugPrintfEXT("UV: %f, %f", projectedCoords.x, projectedCoords.y);
+    */
+
+    return projectedCoords.z + 0.005 > depth ? 1.0 : 0.0;
+}
 
 vec3 GetNormalFromMap(){
-	vec3 n = texture(normal[nonuniformEXT(uint(material.textureIndex.x))],fragTexCoord).rgb;
+	vec3 n = texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
 	n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
 	n = normalize(TBN * n);
 	return n;
@@ -70,7 +87,7 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
 
 vec3 CalculateDirectionalLight(Light light)
 {
-	return CalculateBaseLight(light, light.direction);
+	return CalculateBaseLight(light, light.direction)  * CalculateShadow(light);
 }
 vec3 CalculatePointLight(Light light)
 {
@@ -122,5 +139,5 @@ void main() {
         }
 	}
 
-    outColor = vec4(illuminance * texture(albedo[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb, 1.0);
+    outColor = vec4(illuminance /* texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb*/, 1.0);
 }

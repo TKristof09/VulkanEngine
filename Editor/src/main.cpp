@@ -35,19 +35,19 @@ int main()
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
 	camera->AddComponent<Camera>(90.f, 1920/1080, 0.1f, 1000.f);
-	t->pos = { 0.0f, 0.0f, 9.0f };
+	t->pos = { 0.0f, 20.0f, 9.0f };
 
-    Entity* e2 = AssimpImporter::LoadFile("models/sponza.fbx", ecs);
+    Entity* e2 = AssimpImporter::LoadFile("models/simple_test.fbx", ecs);
 
 	Entity* dlight = ecs->entityManager->CreateEntity();
     dlight->GetComponent<NameTag>()->name = "DLight";
 	auto dl = dlight->AddComponent<DirectionalLight>();
-	dl->color = Color::Green;
-	dl->intensity = 10.0f;
+	dl->color = Color::White;
+	dl->intensity = 1.0f;
 
 
 
-
+    /*
 	Entity* lightParent = ecs->entityManager->CreateEntity();
     lightParent->GetComponent<NameTag>()->name = "point lights";
 	for(int i = 0; i < 16; ++i)
@@ -64,20 +64,22 @@ int main()
 			auto dt = d->GetComponent<Transform>();
 			dt->pos = {i * 5, 1.0f , j*5};
 		}
-	}
+	}*/
 
 
 	//EntityID id2 = ecs->entityManager->CreateChild(id);
 	//ecs->componentManager->AddComponent<Mesh>(id2, vertices2, indices2);
 
 
-
+    /*
 	Transform* t2 = e2->GetComponent<Transform>();
 	t2->pos = { 0.f, 24.0f, 0.0f };
 	t2->scale = {0.1f, 0.1f, 0.1f};
 	e2->GetComponent<Transform>()->pos.y -= 200;
+    */
 	//t2->lPosition = {3.0f, -0.5f,-1.0f};
-	//t2->rot = glm::rotate(t2->rot, glm::radians(45.f), glm::vec3(0,1,0));
+	Transform* t2 = dlight->GetComponent<Transform>();
+    t2->rot = glm::rotate(t2->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
 	//ecs->systemManager->AddSystem<TestSystem>(lightParent->GetEntityID());
 

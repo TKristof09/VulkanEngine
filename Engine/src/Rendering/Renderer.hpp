@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <set>
 
+#include "Utils/DebugUIElements.hpp"
 #include "VulkanContext.hpp"
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
@@ -59,7 +60,9 @@ private:
 		glm::vec3 position;
 		float range; // only for spot and point
 
+        glm::vec3 filler;
         uint32_t shadowSlot;
+        glm::mat4 lightSpaceMatrix; // potentially put the shadowslot in the matrix
 
 	};
 	struct TileLights // TODO
@@ -95,6 +98,8 @@ private:
 	std::shared_ptr<Image> m_lightCullDebugImage;
 
     std::vector<std::unique_ptr<Image>> m_shadowmaps; // non point lights
+	std::vector<VkDescriptorSet> m_shadowDesc;
+    void UpdateShadowDescriptors();
     RenderPass m_shadowRenderPass;
     std::unique_ptr<Pipeline> m_shadowPipeline;
     //std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps

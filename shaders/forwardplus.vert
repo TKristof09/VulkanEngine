@@ -32,5 +32,5 @@ void main() {
 	worldPos = tempWorldPos.xyz;
 	cameraPos = cameraPosition;
 
-    gl_Position = viewProj * model * vec4(inPosition, 1.0);
+    gl_Position = viewProj * model * vec4(inPosition, 1.0); // can't just use the tempWorldPos because we loose precision or something and depth tests start to fail
 }

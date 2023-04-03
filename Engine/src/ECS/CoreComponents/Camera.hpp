@@ -17,7 +17,7 @@ struct Camera : public Component<Camera>
 	{
 		float f = 1.0f / tan(fovRadians / 2.0f);
 	    return glm::mat4(
-	        f / aspect, 0.0f,  0.0f,  0.0f,
+	            f / aspect, 0.0f,  0.0f,  0.0f,
 	                  0.0f,    f,  0.0f,  0.0f,
 	                  0.0f, 0.0f,  0.0f, -1.0f,
 	                  0.0f, 0.0f, zNear,  0.0f);

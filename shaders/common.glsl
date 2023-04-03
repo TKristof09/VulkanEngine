@@ -26,7 +26,9 @@ struct Light
 	vec3 position;
 	float range; // only for spot and point
 
-    uint shadowSlot;
+    vec3 filler;
+    int shadowSlot;
+    mat4 lightSpaceMatrix;
 
 };
 struct TileLights

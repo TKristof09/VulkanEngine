@@ -1,7 +1,6 @@
 #include "Rendering/Renderer.hpp"
 #include "Rendering/Image.hpp"
 #include "glm/ext/matrix_transform.hpp"
-#include "vulkan/vulkan_core.h"
 #include <memory>
 #include <sstream>
 #include <optional>
@@ -169,6 +168,7 @@ void Renderer::RecreateSwapchain()
 	CreateFramebuffers();
 	CreateCommandBuffers();
 	UpdateComputeDescriptors();
+    UpdateShadowDescriptors();
 
 
 	DebugUIInitInfo initInfo = {};
@@ -362,6 +362,7 @@ void Renderer::CreateDevice()
     device12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     device12Features.imagelessFramebuffer = VK_TRUE;
     // these are for dynamic descriptor indexing
+    deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 	device12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 	device12Features.runtimeDescriptorArray = VK_TRUE;
 	device12Features.descriptorBindingPartiallyBound = VK_TRUE;
@@ -714,7 +715,7 @@ void Renderer::CreatePipeline()
 
 	}
 
-    	// Depth prepass pipeline
+    // Shadow prepass pipeline
 	LOG_WARN("Creating shadow pipeline");
 	PipelineCreateInfo shadowPipeline;
 	shadowPipeline.type				= PipelineType::GRAPHICS;
@@ -729,7 +730,7 @@ void Renderer::CreatePipeline()
 	shadowPipeline.stages			= VK_SHADER_STAGE_VERTEX_BIT;
 	shadowPipeline.useMultiSampling	= true;
 	shadowPipeline.useColorBlend	= false;
-	shadowPipeline.viewportExtent	= m_swapchainExtent;
+	shadowPipeline.viewportExtent	= {1024,1024};
 
 	shadowPipeline.isGlobal			= true;
 
@@ -960,7 +961,21 @@ void Renderer::CreateDescriptorSets()
 	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
 
 
+    VkDescriptorSetAllocateInfo sallocInfo = {};
+	std::vector<VkDescriptorSetLayout> slayouts;
 
+	if(m_shadowDesc.size() != 0)
+		return;
+	for (int i = 0; i < m_swapchainImages.size(); ++i)
+	{
+        slayouts.push_back(m_shadowPipeline->m_descSetLayouts[0]);
+	}
+	sallocInfo.sType				= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	sallocInfo.descriptorPool		= m_descriptorPool;
+	sallocInfo.descriptorSetCount	= static_cast<uint32_t>(slayouts.size());
+	sallocInfo.pSetLayouts			= slayouts.data();
+	m_shadowDesc.resize(slayouts.size());
+	VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &sallocInfo, m_shadowDesc.data()), "Failed to allocate descriptor sets");
 
 }
 
@@ -1084,6 +1099,31 @@ void Renderer::UpdateComputeDescriptors()
 	}
 
 }
+void Renderer::UpdateShadowDescriptors()
+{
+
+	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+	{
+
+		VkDescriptorBufferInfo lightsBI = {};
+		lightsBI.offset	= 0;
+		lightsBI.range	= VK_WHOLE_SIZE;
+		lightsBI.buffer	= m_lightsBuffers[i]->GetBuffer(0);
+
+
+		VkWriteDescriptorSet writeDS = {};
+
+		writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS.dstSet			= m_shadowDesc[i];
+		writeDS.dstBinding		= 1;
+		writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDS.descriptorCount	= 1;
+		writeDS.pBufferInfo		= &lightsBI;
+
+        vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
+	}
+
+}
 
 void Renderer::UpdateLights(uint32_t index)
 {
@@ -1091,12 +1131,13 @@ void Renderer::UpdateLights(uint32_t index)
 	PROFILE_FUNCTION();
 	{ PROFILE_SCOPE("Loop #1");
 
+    glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
 		glm::mat4 tMat = t->GetTransform();
 
-		glm::vec3 newDir = glm::normalize(glm::vec3(tMat[2]));
+		glm::vec3 newDir = glm::normalize(-glm::vec3(tMat[2]));
 		float newIntensity = lightComp->intensity;
 		glm::vec3 newColor = lightComp->color.ToVec3();
 
@@ -1109,6 +1150,9 @@ void Renderer::UpdateLights(uint32_t index)
 			light.direction = newDir;
 			light.intensity = newIntensity;
 			light.color = newColor;
+            glm::mat4 viewMat = glm::inverse(tMat); //might be better to construct it with -pos and -rot instead of using inverse
+            glm::mat4 vpMat = proj * viewMat;
+            light.lightSpaceMatrix = vpMat;
 
 			for(auto& dict : m_changedLights)
 				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
@@ -1303,12 +1347,9 @@ void Renderer::Render(double dt)
         auto shadowBegin = m_shadowRenderPass.GetBeginInfo(0);
         {
 			PROFILE_SCOPE("Shadow pass draw call loop");
-            glm::mat4 proj = glm::ortho(-10.f, 10.f, -10.f, 10.f, 0.001f, 1000.f);
             for(auto* light : cm->GetComponents<DirectionalLight>())
             {
 
-                glm::mat4 viewMat = glm::inverse(cm->GetComponent<Transform>(light->GetOwner())->GetTransform());
-                glm::mat4 vpMat = proj * viewMat;
                 VkRenderPassAttachmentBeginInfo attachmentBegin = {};
                 attachmentBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO;
                 attachmentBegin.attachmentCount = 1;
@@ -1318,8 +1359,10 @@ void Renderer::Render(double dt)
 
                 vkCmdBeginRenderPass(cb, &shadowBegin, VK_SUBPASS_CONTENTS_INLINE);
         		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
+                uint32_t offset = 0;
+		        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &m_shadowDesc[imageIndex], 1, &offset);
 
-                vkCmdPushConstants(cb, m_shadowPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &vpMat);
+                vkCmdPushConstants(cb, m_shadowPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &light->_slot);
                 for(auto* renderable : cm->GetComponents<Renderable>())
                 {
                     auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
@@ -1634,7 +1677,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     ImageCreateInfo ci;
     ci.format = VK_FORMAT_D32_SFLOAT;
     ci.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    ci.layout = VK_IMAGE_LAYOUT_UNDEFINED; // the render pass will transfer to good layout
+    ci.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // the render pass will transfer to good layout
     ci.useMips = false;
     ci.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 

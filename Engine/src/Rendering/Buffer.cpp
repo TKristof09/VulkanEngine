@@ -157,7 +157,7 @@ void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t>
 	// see https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkMapMemory.html
 	uint64_t correctOffset = offsets[0];
 
-	uint64_t correctTotalSize = size * (offsets.back() - offsets.front());
+	uint64_t correctTotalSize = size + (offsets.back() - offsets.front());
 	VkDeviceSize nonCoherentAtomSize = VulkanContext::GetPhysicalDeviceProperties().limits.nonCoherentAtomSize;
 
 	uint32_t diff = offsets[0] % nonCoherentAtomSize;
