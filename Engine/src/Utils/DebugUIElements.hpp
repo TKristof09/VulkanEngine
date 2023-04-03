@@ -1,13 +1,17 @@
 #pragma once
 #include <imgui/imgui.h>
-#include <imgui/imgui_stdlib.h>
+#include <imgui/misc/cpp/imgui_stdlib.h>
+#include <memory>
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <map>
 
 #include "ECS/CoreComponents/Transform.hpp"
+#include "Utils/DebugUIElements.hpp"
 #include "Utils/FileDialog/FileDialog.hpp"
 #include "Utils/Color.hpp"
+#include "Rendering/Image.hpp"
+#include "backends/imgui_impl_vulkan.h"
 
 class DebugUI;
 
@@ -678,6 +682,42 @@ private:
     std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<DebugUIElement>> m_elements;
     uint32_t m_maxColumn;
 
+};
+
+class UIImage : public DebugUIElement
+{
+public:
+    UIImage(Image* image):
+        m_image(image)
+    {
+        if(s_sampler == VK_NULL_HANDLE)
+        {
+            VkSamplerCreateInfo info = {};
+            info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            info.magFilter = VK_FILTER_LINEAR;
+            info.minFilter = VK_FILTER_LINEAR;
+            info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            info.minLod = -1000;
+            info.maxLod = 1000;
+            info.maxAnisotropy = 1.0f;
+            VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &info, nullptr, &s_sampler), "Failed to create debug ui image sampler");
+        }
+        m_desc = ImGui_ImplVulkan_AddTexture(s_sampler, m_image->GetImageView(), m_image->GetLayout());
+    }
+    void Update() override
+    {
+        ImGui::PushID(this);
+
+        ImGui::Image(m_desc, ImVec2(m_image->GetWidth(), m_image->GetHeight()));
+        ImGui::PopID();
+    }
+private:
+    Image* m_image;
+    static VkSampler s_sampler;
+    VkDescriptorSet m_desc;
 };
 
 class DebugUIWindow

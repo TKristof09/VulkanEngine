@@ -109,9 +109,14 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 	CreateDescriptorPool();
 	CreateDescriptorSets();
 	UpdateComputeDescriptors();
+    UpdateShadowDescriptors();
 	CreateDebugUI();
 	CreateCommandBuffers();
 	CreateSyncObjects();
+
+
+    m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
+    AddDebugUIWindow(m_rendererDebugWindow.get());
 }
 
 Renderer::~Renderer()
@@ -1658,6 +1663,8 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 
     }
     vkUpdateDescriptorSets(m_device, writeDSVector.size(), writeDSVector.data(), 0, nullptr);
+
+    m_rendererDebugWindow->AddElement(std::make_shared<UIImage>(m_shadowmaps[slot].get()));
 
 }
 

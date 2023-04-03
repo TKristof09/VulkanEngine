@@ -191,4 +191,7 @@ private:
 	size_t m_currentFrame = 0;
 
 
+    std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
+
+
 };
