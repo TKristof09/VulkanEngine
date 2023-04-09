@@ -135,6 +135,7 @@ Renderer::~Renderer()
 	CleanupSwapchain();
 
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
+	vkDestroySampler(m_device, m_shadowSampler, nullptr);
 
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
@@ -203,6 +204,7 @@ void Renderer::CleanupSwapchain()
 
 	m_renderPass.Destroy();
 	m_prePassRenderPass.Destroy();
+    m_shadowRenderPass.Destroy();
 
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 	for(auto& img : m_swapchainImages)
@@ -651,26 +653,27 @@ void Renderer::CreatePipeline()
 	compute.type = PipelineType::COMPUTE;
 	m_compute = std::make_unique<Pipeline>("lightCulling", compute);
 
-	VkSamplerCreateInfo ci = {};
-	ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	ci.magFilter = VK_FILTER_LINEAR;
-	ci.minFilter = VK_FILTER_LINEAR;
-	ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	ci.anisotropyEnable = VK_TRUE;
-	ci.maxAnisotropy = 1.0f;
-	ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-	ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-	ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
-	ci.compareOp     = VK_COMPARE_OP_ALWAYS;
-	ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	ci.mipLodBias = 0.0f;
-	ci.minLod = 0.0f;
-	ci.maxLod = 1.0f;
+    {
+        VkSamplerCreateInfo ci = {};
+        ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        ci.magFilter = VK_FILTER_LINEAR;
+        ci.minFilter = VK_FILTER_LINEAR;
+        ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.anisotropyEnable = VK_TRUE;
+        ci.maxAnisotropy = 1.0f;
+        ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
+        ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
+        ci.compareOp     = VK_COMPARE_OP_ALWAYS;
+        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        ci.mipLodBias = 0.0f;
+        ci.minLod = 0.0f;
+        ci.maxLod = 1.0f;
 
-	VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create depth texture sampler");
-
+        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create depth texture sampler");
+    }
 
 	// Depth prepass pipeline
 	LOG_WARN("Creating depth pipeline");
@@ -735,6 +738,27 @@ void Renderer::CreatePipeline()
 
 	m_shadowPipeline = std::make_unique<Pipeline>("shadow", shadowPipeline); // depth shader is fine for the shadow maps too since we only need the depth info from it
 
+    {
+        VkSamplerCreateInfo ci = {};
+        ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        ci.magFilter = VK_FILTER_LINEAR;
+        ci.minFilter = VK_FILTER_LINEAR;
+        ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.anisotropyEnable = VK_FALSE;
+        ci.maxAnisotropy = 1.0f;
+        ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
+        ci.compareEnable = VK_TRUE; // this is used for percentage closer filtering for shadow maps
+        ci.compareOp     = VK_COMPARE_OP_GREATER;
+        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        ci.mipLodBias = 0.0f;
+        ci.minLod = 0.0f;
+        ci.maxLod = 1.0f;
+
+        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSampler), "Failed to create shadow texture sampler");
+    }
 }
 
 void Renderer::CreateFramebuffers()
@@ -1688,7 +1712,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     VkDescriptorImageInfo imageInfo = {};
     imageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
     imageInfo.imageView	= m_shadowmaps[slot]->GetImageView();
-    imageInfo.sampler	= m_computeSampler;
+    imageInfo.sampler	= m_shadowSampler;
 
     std::vector<VkWriteDescriptorSet> writeDSVector;
     for (int i = 0; i < m_swapchainImages.size(); ++i) {

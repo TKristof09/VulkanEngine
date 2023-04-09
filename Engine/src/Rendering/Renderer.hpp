@@ -102,6 +102,7 @@ private:
     void UpdateShadowDescriptors();
     RenderPass m_shadowRenderPass;
     std::unique_ptr<Pipeline> m_shadowPipeline;
+    VkSampler m_shadowSampler;
     //std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
 	std::vector<VkDescriptorSet> m_tempDesc; // global desc set 0

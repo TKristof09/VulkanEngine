@@ -36,7 +36,7 @@ layout(set = 0, binding = 2) readonly buffer VisibleLightsBuffer
 {
 	TileLights visibleLights[];
 };
-layout(set = 0, binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS_PER_TILE];
+layout(set = 0, binding = 3) uniform sampler2DShadow shadowMaps[MAX_LIGHTS_PER_TILE];
 
 layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 //layout(binding = 2, set = 1) uniform sampler2D specular[32];
@@ -49,9 +49,23 @@ float CalculateShadow(Light light)
     vec3 projectedCoords = lsPos.xyz / lsPos.w;
 
     projectedCoords.xy = projectedCoords.xy * 0.5 + vec2(0.5);
-    float depth = texture(shadowMaps[nonuniformEXT(light.shadowSlot)], vec2(projectedCoords.x, 1-projectedCoords.y)).x; // not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
 
-    return projectedCoords.z + 0.005 > depth ? 1.0 : 0.0;
+    vec3 samplePoint = vec3(projectedCoords.x, 1-projectedCoords.y, projectedCoords.z + 0.005);
+    return texture(shadowMaps[nonuniformEXT(light.shadowSlot)], samplePoint);
+    /*
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMaps[nonuniformEXT(light.shadowSlot)], 0);
+
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            float depth = texture(shadowMaps[nonuniformEXT(light.shadowSlot)], vec2(projectedCoords.x, 1-projectedCoords.y) + texelSize * vec2(x,y)).x; // not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
+                                                                                                                shadow += projectedCoords.z + 0.005 > depth ? 1.0 : 0.0;
+        }
+    }
+
+    return shadow / 9.0;*/
 }
 
 vec3 GetNormalFromMap(){
