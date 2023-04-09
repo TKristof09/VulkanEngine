@@ -9,6 +9,8 @@
 #include "Utils/Profiling.hpp"
 
 #define GLM_FORCE_INTRINSICS
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 #ifdef VDEBUG
 // using int instead of VkResult enum beacuse i don't want to include vulkan here so this is just a dirty fix

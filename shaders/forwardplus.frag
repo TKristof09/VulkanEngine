@@ -49,13 +49,7 @@ float CalculateShadow(Light light)
     vec3 projectedCoords = lsPos.xyz / lsPos.w;
 
     projectedCoords.xy = projectedCoords.xy * 0.5 + vec2(0.5);
-    float depth = texture(shadowMaps[nonuniformEXT(light.shadowSlot)], vec2(projectedCoords.x, 1-projectedCoords.y)).x;
-    /*
-    if(depth > 0.0)
-    	debugPrintfEXT("Z: %f  <-> depth: %f", projectedCoords.z, depth);
-    if(projectedCoords.x > 0.7 && projectedCoords.y > 0.4)
-    	debugPrintfEXT("UV: %f, %f", projectedCoords.x, projectedCoords.y);
-    */
+    float depth = texture(shadowMaps[nonuniformEXT(light.shadowSlot)], vec2(projectedCoords.x, 1-projectedCoords.y)).x; // not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
 
     return projectedCoords.z + 0.005 > depth ? 1.0 : 0.0;
 }
