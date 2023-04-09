@@ -136,6 +136,7 @@ Renderer::~Renderer()
 
 	vkDestroySampler(m_device, m_computeSampler, nullptr);
 	vkDestroySampler(m_device, m_shadowSampler, nullptr);
+	vkDestroySampler(m_device, m_shadowSamplerPCF, nullptr);
 
 	vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
@@ -732,7 +733,7 @@ void Renderer::CreatePipeline()
 	shadowPipeline.stages			= VK_SHADER_STAGE_VERTEX_BIT;
 	shadowPipeline.useMultiSampling	= true;
 	shadowPipeline.useColorBlend	= false;
-	shadowPipeline.viewportExtent	= {1024,1024};
+	shadowPipeline.viewportExtent	= {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
 
 	shadowPipeline.isGlobal			= true;
 
@@ -741,23 +742,44 @@ void Renderer::CreatePipeline()
     {
         VkSamplerCreateInfo ci = {};
         ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        ci.magFilter = VK_FILTER_NEAREST;
+        ci.minFilter = VK_FILTER_NEAREST;
+        ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        ci.anisotropyEnable = VK_FALSE;
+        ci.maxAnisotropy = 1.0f;
+        ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
+        ci.compareEnable = VK_FALSE; // this is used for percentage closer filtering for shadow maps
+        ci.compareOp     = VK_COMPARE_OP_NEVER;
+        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        ci.mipLodBias = 0.0f;
+        ci.minLod = 0.0f;
+        ci.maxLod = 1.0f;
+
+        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSampler), "Failed to create shadow texture sampler");
+    }
+    {
+        VkSamplerCreateInfo ci = {};
+        ci.sType	= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         ci.magFilter = VK_FILTER_LINEAR;
         ci.minFilter = VK_FILTER_LINEAR;
-        ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         ci.anisotropyEnable = VK_FALSE;
         ci.maxAnisotropy = 1.0f;
         ci.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
         ci.unnormalizedCoordinates = VK_FALSE; // this should always be false because UV coords are in [0,1) not in [0, width),etc...
         ci.compareEnable = VK_TRUE; // this is used for percentage closer filtering for shadow maps
         ci.compareOp     = VK_COMPARE_OP_GREATER;
-        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         ci.mipLodBias = 0.0f;
         ci.minLod = 0.0f;
         ci.maxLod = 1.0f;
 
-        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSampler), "Failed to create shadow texture sampler");
+        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSamplerPCF), "Failed to create shadow texture sampler");
     }
 }
 
@@ -1713,19 +1735,36 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     imageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
     imageInfo.imageView	= m_shadowmaps[slot]->GetImageView();
     imageInfo.sampler	= m_shadowSampler;
+    VkDescriptorImageInfo imageInfoPCF = {};
+    imageInfoPCF.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
+    imageInfoPCF.imageView	= m_shadowmaps[slot]->GetImageView();
+    imageInfoPCF.sampler	= m_shadowSamplerPCF;
 
     std::vector<VkWriteDescriptorSet> writeDSVector;
     for (int i = 0; i < m_swapchainImages.size(); ++i) {
 
-        VkWriteDescriptorSet writeDS = {};
-        writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS.dstSet			= m_tempDesc[i];
-        writeDS.dstBinding		= 3;
-        writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writeDS.descriptorCount	= 1;
-        writeDS.pImageInfo		= &imageInfo;
+        {
+            VkWriteDescriptorSet writeDS = {};
+            writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeDS.dstSet			= m_tempDesc[i];
+            writeDS.dstBinding		= 3;
+            writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writeDS.descriptorCount	= 1;
+            writeDS.pImageInfo		= &imageInfo;
 
-        writeDSVector.push_back(writeDS);
+            writeDSVector.push_back(writeDS);
+        }
+        {
+            VkWriteDescriptorSet writeDS = {};
+            writeDS.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeDS.dstSet			= m_tempDesc[i];
+            writeDS.dstBinding		= 4;
+            writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writeDS.descriptorCount	= 1;
+            writeDS.pImageInfo		= &imageInfoPCF;
+
+            writeDSVector.push_back(writeDS);
+        }
 
     }
     vkUpdateDescriptorSets(m_device, writeDSVector.size(), writeDSVector.data(), 0, nullptr);

@@ -25,7 +25,7 @@
 #include "ECS/ECSEngine.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 
-#define SHADOWMAP_SIZE 1024
+#define SHADOWMAP_SIZE 2048
 
 class Renderer
 {
@@ -103,6 +103,7 @@ private:
     RenderPass m_shadowRenderPass;
     std::unique_ptr<Pipeline> m_shadowPipeline;
     VkSampler m_shadowSampler;
+    VkSampler m_shadowSamplerPCF;
     //std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
 	std::vector<VkDescriptorSet> m_tempDesc; // global desc set 0
