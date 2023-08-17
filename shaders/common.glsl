@@ -8,6 +8,8 @@
 #define BLOCKER_SAMPLES 64
 #define PCF_SAMPLES 64
 
+#define NUM_CASCADES 4
+
 struct Attenuation
 {
 	// quadratic*x^2+linear*x+constant
@@ -31,7 +33,9 @@ struct Light
 
     vec3 filler;
     int shadowSlot;
-    mat4 lightSpaceMatrix;
+    mat4 lightSpaceMatrices[NUM_CASCADES];
+    mat4 lightViewMatrices[NUM_CASCADES];
+    vec2 zPlanes[NUM_CASCADES];
 
 };
 struct TileLights

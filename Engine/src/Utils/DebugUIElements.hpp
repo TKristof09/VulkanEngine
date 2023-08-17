@@ -700,8 +700,8 @@ public:
             info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
             info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
             info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            info.minLod = -1000;
-            info.maxLod = 1000;
+            info.minLod = 1;
+            info.maxLod = 1;
             info.maxAnisotropy = 1.0f;
             VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &info, nullptr, &s_sampler), "Failed to create debug ui image sampler");
         }
@@ -710,8 +710,20 @@ public:
     void Update() override
     {
         ImGui::PushID(this);
-
-        ImGui::Image(m_desc, ImVec2(m_image->GetWidth(), m_image->GetHeight()));
+        uint32_t width = m_image->GetWidth();
+        uint32_t height = m_image->GetHeight();
+        float aspect = width / (float)height;
+        if(width > (uint32_t)ImGui::GetWindowWidth())
+        {
+            width = (uint32_t)ImGui::GetWindowWidth();;
+            height = width / aspect;
+        }
+        if(height > (uint32_t)ImGui::GetWindowHeight())
+        {
+            height = (uint32_t)ImGui::GetWindowHeight();;
+            width = height * aspect;
+        }
+        ImGui::Image(m_desc, ImVec2(width, height));
         ImGui::PopID();
     }
 private:

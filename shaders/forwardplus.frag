@@ -24,6 +24,7 @@ layout(push_constant) uniform PC
     ivec2 tileNums;
     int lightNum;
     int debugMode;
+    //vec4 cascadeSplits; // TODO change from vec4
 };
 
 // we use these buffers later in the frag shader, and they only change once per frame, so they can go with the camera in set 0
@@ -36,8 +37,8 @@ layout(set = 0, binding = 2) readonly buffer VisibleLightsBuffer
 {
     TileLights visibleLights[];
 };
-layout(set = 0, binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS_PER_TILE];
-layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapsPCF[MAX_LIGHTS_PER_TILE];
+layout(set = 0, binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS_PER_TILE * NUM_CASCADES];
+layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapsPCF[MAX_LIGHTS_PER_TILE * NUM_CASCADES];
 
 layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 //layout(binding = 2, set = 1) uniform sampler2D specular[32];
@@ -70,26 +71,47 @@ float PCF(vec3 coords, sampler2DShadow shadowMapPCF, float radius)
     }
     return sum / PCF_SAMPLES;
 }
+//TODO understand
+//calulate the eye space depth from clip space depth
+float ZClipToEye(float z, float zNear, float zFar) {
+    return zNear * zFar / (zFar - z * (zFar - zNear));
+}
+
 float CalculateShadow(Light light)
 {
 
-    float lightSize = 0.1;
-    float NEAR_PLANE = 0.1;
+    int cascadeIndex = 0;
+    float cascadeSplits[4] = {0.1, 500.0, 1000.0, 1500.0};
+    for(int i = 0; i < NUM_CASCADES-1; ++i)
+    {
+        if(gl_FragCoord.z <= 0.1 / cascadeSplits[i] && gl_FragCoord.z > 0.1 / cascadeSplits[i+1])
+        {
+            cascadeIndex = i;
+            break;
+        }
+    }
+    int slot = light.shadowSlot * NUM_CASCADES + cascadeIndex;
+    float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
+    float NEAR_PLANE = light.zPlanes[cascadeIndex].y;
+    float FAR_PLANE = light.zPlanes[cascadeIndex].x;
 
-    vec4 lsPos = light.lightSpaceMatrix * vec4(worldPos, 1.0);
+    vec4 lsPos = light.lightSpaceMatrices[cascadeIndex] * vec4(worldPos, 1.0);
 
     vec3 projectedCoords = (lsPos.xyz / lsPos.w) * vec3(0.5,0.5,1) + vec3(0.5,0.5, 0.005); // bias
     projectedCoords.y = 1 - projectedCoords.y;// not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
-
-    float searchWidth = lightSize * (projectedCoords.z - NEAR_PLANE) / projectedCoords.z;
-    float blockerDist = FindBlockerDistance(projectedCoords, shadowMaps[nonuniformEXT(light.shadowSlot)], 0.01);
+    /*
+    vec4 pos_vs = (light.lightViewMatrices[cascadeIndex] * vec4(worldPos, 1.0));//ZClipToEye(projectedCoords.z, NEAR_PLANE, FAR_PLANE);
+    float z_vs = pos_vs.z / pos_vs.w;
+    float searchWidth = lightSize * (z_vs - NEAR_PLANE) / z_vs;
+    float blockerDist = FindBlockerDistance(projectedCoords, shadowMaps[nonuniformEXT(slot)], searchWidth);
     if(blockerDist == -1)
         return 1;
+    float blockerDistVS = ZClipToEye(blockerDist, NEAR_PLANE, FAR_PLANE);
+    float penumbraSize =  (z_vs - blockerDistVS)/ blockerDistVS;
+    float kernelSize = lightSize * penumbraSize * NEAR_PLANE / z_vs;
+    */
 
-    float penumbraSize = (projectedCoords.z - blockerDist)  / blockerDist;
-    float kernelSize = penumbraSize * lightSize * NEAR_PLANE / projectedCoords.z;
-
-    return PCF(projectedCoords, shadowMapsPCF[nonuniformEXT(light.shadowSlot)], kernelSize);
+    return PCF(projectedCoords, shadowMapsPCF[nonuniformEXT(slot)], 0.001);
 }
 
 vec3 GetNormalFromMap(){

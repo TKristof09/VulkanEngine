@@ -15,6 +15,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include "TextureManager.hpp"
 #include "ECS/ComponentManager.hpp"
@@ -25,6 +26,7 @@
 #include "ECS/CoreComponents/Material.hpp"
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
+
 
 
 struct QueueFamilyIndices
@@ -114,6 +116,69 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 
     m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
     AddDebugUIWindow(m_rendererDebugWindow.get());
+
+
+    m_frustrumEntity = m_ecs->entityManager->CreateEntity();
+    //auto mesh = m_frustrumEntity->AddComponent<Mesh>();
+    {
+        auto button = std::make_shared<Button>("Show frustrum");
+        button->RegisterCallback([=](Button* b){
+
+                if(m_frustrumEntity->GetComponent<Mesh>())
+                {
+                    m_frustrumEntity->RemoveComponent<Mesh>();
+                }
+                if(!m_frustrumEntity->GetComponent<Material>())
+                {
+                    auto mat = m_frustrumEntity->AddComponent<Material>();
+                    mat->shaderName = "forwardplus";
+                }
+                Camera camera = *(*(m_ecs->componentManager->begin<Camera>()));
+                Transform* cameraTransform = m_ecs->componentManager->GetComponent<Transform>(camera.GetOwner());
+
+                glm::mat4 inverseVP = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection()); // TODO implement a function for inverse projection matrix instead of using generic inverse
+
+                float zNear = 0.1f;
+                float cascadeDepthStart = 1;
+                float cascadeDepthEnd = zNear / (500.0f);
+                std::vector<glm::vec4> boundingVertices = {
+                {-1.0f,	-1.0f,	cascadeDepthStart,	1.0f}, // near bottom left
+                {-1.0f,	1.0f,	cascadeDepthStart,	1.0f}, // near top left
+                {1.0f,	-1.0f,	cascadeDepthStart,	1.0f}, // near bottom right
+                {1.0f,	1.0f,	cascadeDepthStart,	1.0f}, // near top right
+                {-1.0f,	-1.0f,	cascadeDepthEnd,	1.0f}, // far bottom left
+                {-1.0f,	1.0f,	cascadeDepthEnd,	1.0f}, // far top left
+                {1.0f,	-1.0f,	cascadeDepthEnd,	1.0f}, // far bottom right
+                {1.0f,	1.0f,	cascadeDepthEnd,	1.0f}  // far top right
+                };
+                auto mesh = m_frustrumEntity->AddComponent<Mesh>();
+                std::vector<Vertex> vertices;
+                for (glm::vec4& vert : boundingVertices)
+                {
+                    vert = inverseVP * vert;
+                    vert /= vert.w;
+                    vertices.push_back({vert, {}, {}, {}});
+                }
+                mesh->vertices = vertices;
+                mesh->indices = {
+                    0,2,1,  2,3,1, // near
+                    4,6,5,  6,7,5, // far
+                    4,0,5,  0,1,5, // left
+                    1,3,5,  7,5,3, // top
+                    3,2,6,  6,7,3, // right
+                    0,2,6,  0,6,4  // bottom
+                };
+        });
+        m_rendererDebugWindow->AddElement(button);
+    }
+    {
+        auto button = std::make_shared<Button>("Hide frustrum");
+        button->RegisterCallback([=](Button* b){
+                m_frustrumEntity->RemoveComponent<Mesh>();
+                });
+        m_rendererDebugWindow->AddElement(button);
+    }
+
 }
 
 Renderer::~Renderer()
@@ -234,6 +299,7 @@ void Renderer::CreateDebugUI()
 	initInfo.allocator = nullptr;
 
 	m_debugUI = std::make_shared<DebugUI>(initInfo);
+
 }
 
 void Renderer::CreateInstance()
@@ -885,7 +951,7 @@ void Renderer::CreateDescriptorPool()
 	poolSizes[0].type                               = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount                    = static_cast<uint32_t>(m_swapchainImages.size());
 	poolSizes[1].type                               = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount                    = 10000; // +1 for imgui
+	poolSizes[1].descriptorCount                    = 20000; // +1 for imgui
 	poolSizes[2].type								= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	poolSizes[2].descriptorCount					= 100; //static_cast<uint32_t>(m_swapchainImages.size());;
 	poolSizes[3].type								= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -1176,7 +1242,6 @@ void Renderer::UpdateLights(uint32_t index)
 	PROFILE_FUNCTION();
 	{ PROFILE_SCOPE("Loop #1");
 
-    glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
 	for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
 	{
 		Transform* t = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
@@ -1195,9 +1260,6 @@ void Renderer::UpdateLights(uint32_t index)
 			light.direction = newDir;
 			light.intensity = newIntensity;
 			light.color = newColor;
-            glm::mat4 viewMat = glm::inverse(tMat); //might be better to construct it with -pos and -rot instead of using inverse
-            glm::mat4 vpMat = proj * viewMat;
-            light.lightSpaceMatrix = vpMat;
 
 			for(auto& dict : m_changedLights)
 				dict[lightComp->_slot] =  &light; // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
@@ -1290,7 +1352,85 @@ void Renderer::UpdateLights(uint32_t index)
 
 }
 
+std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
+{
+    std::array<glm::mat4, NUM_CASCADES> resVP;
+    std::array<glm::mat4, NUM_CASCADES> resV;
+    std::array<glm::vec2, NUM_CASCADES> zPlanes;
 
+    float maxDepthNDC = zNear / maxDepth;
+    float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
+    float step = maxDepth / NUM_CASCADES;
+    for (int i = 0; i < NUM_CASCADES; ++i)
+    {
+        float cascadeDepthStart = zNear / glm::max(zNear, (i * step));
+        float cascadeDepthEnd = zNear / ((i+1) * step);
+
+        glm::vec3 min(std::numeric_limits<float>::infinity());
+        glm::vec3 max(-std::numeric_limits<float>::infinity());
+        // cube between -1,-1,0 and 1,1,1
+        std::vector<glm::vec4> boundingVertices = {
+                {-1.0f,	-1.0f,	cascadeDepthStart,	1.0f}, // near bottom left
+                {-1.0f,	1.0f,	cascadeDepthStart,	1.0f}, // near top left
+                {1.0f,	-1.0f,	cascadeDepthStart,	1.0f}, // near bottom right
+                {1.0f,	1.0f,	cascadeDepthStart,	1.0f}, // near top right
+                {-1.0f,	-1.0f,	cascadeDepthEnd,	1.0f}, // far bottom left
+                {-1.0f,	1.0f,	cascadeDepthEnd,	1.0f}, // far top left
+                {1.0f,	-1.0f,	cascadeDepthEnd,	1.0f}, // far bottom right
+                {1.0f,	1.0f,	cascadeDepthEnd,	1.0f}  // far top right
+            };
+        // clip space to world space
+        for (glm::vec4& vert : boundingVertices)
+        {
+            vert = invCamera * vert;
+            vert /= vert.w;
+        }
+
+        glm::vec3 center(0.0f);
+        for (const glm::vec4& vert : boundingVertices)
+        {
+            center += glm::vec3(vert);
+        }
+        center /= boundingVertices.size();
+
+        glm::vec3 up(lightDir.y, -lightDir.x, 0.0f); //TODO
+        glm::mat4 lightView = glm::lookAt(center - lightDir, center, glm::normalize(up));
+
+        // world space to light space
+        for (glm::vec4& vert : boundingVertices)
+        {
+            vert = lightView * vert;
+            min.x = glm::min(min.x, vert.x);
+            min.y = glm::min(min.y, vert.y);
+            min.z = glm::min(min.z, vert.z);
+            max.x = glm::max(max.x, vert.x);
+            max.y = glm::max(max.y, vert.y);
+            max.z = glm::max(max.z, vert.z);
+        }
+
+        // make the cascade constant size in world space
+        float radius = glm::distance(boundingVertices[0], boundingVertices[7]) / 2.0f;
+
+        min.x = center.x - radius;
+        min.y = center.y - radius;
+        max.x = center.x + radius;
+        max.y = center.y + radius;
+
+        /*
+        // round the boundaries to pixel size
+        float pixelSize = radius * 2.0f / SHADOWMAP_SIZE;
+        min.x = std::round(min.y / pixelSize) * pixelSize;
+        max.x = std::round(max.y / pixelSize) * pixelSize;
+        min.y = std::round(min.y / pixelSize) * pixelSize;
+        max.y = std::round(max.y / pixelSize) * pixelSize;
+        */
+        //glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
+        resV[i] = lightView;
+        resVP[i] = glm::ortho(min.x, max.x, min.y, max.y, max.z, min.z) * lightView; // for z we do max for near and min for far because of reverse z
+        zPlanes[i] = glm::vec2(max.z, min.z);
+    }
+    return {resVP, resV, zPlanes};
+}
 void Renderer::Render(double dt)
 {
 
@@ -1389,41 +1529,63 @@ void Renderer::Render(double dt)
 		vkCmdEndRenderPass(cb);
 		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPools[m_currentFrame], 1);
 
-        auto shadowBegin = m_shadowRenderPass.GetBeginInfo(0);
+
         {
+            glm::mat4 inverseVP = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection()); // TODO implement a function for inverse projection matrix instead of using generic inverse
+            auto shadowBegin = m_shadowRenderPass.GetBeginInfo(0);
 			PROFILE_SCOPE("Shadow pass draw call loop");
             for(auto* light : cm->GetComponents<DirectionalLight>())
             {
+                Light internalLight = m_lightMap[light->GetComponentID()];
+                auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, camera.zNear, MAX_SHADOW_DEPTH);
+                internalLight.lightSpaceMatrices = cascadesVP;
+                internalLight.lightViewMatrices = cascadesV;
+                internalLight.zPlanes = zPlanes;
+                m_lightsBuffers[imageIndex]->UpdateBuffer(light->_slot, &internalLight);
 
-                VkRenderPassAttachmentBeginInfo attachmentBegin = {};
-                attachmentBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO;
-                attachmentBegin.attachmentCount = 1;
-                VkImageView view = m_shadowmaps[light->_shadowSlot]->GetImageView();
-                attachmentBegin.pAttachments = &view;
-                shadowBegin.pNext = &attachmentBegin;
-
-                vkCmdBeginRenderPass(cb, &shadowBegin, VK_SUBPASS_CONTENTS_INLINE);
-        		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
-                uint32_t offset = 0;
-		        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &m_shadowDesc[imageIndex], 1, &offset);
-
-                vkCmdPushConstants(cb, m_shadowPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &light->_slot);
-                for(auto* renderable : cm->GetComponents<Renderable>())
+                for (int i = 0; i < NUM_CASCADES; ++i)
                 {
-                    auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+
+                    VkRenderPassAttachmentBeginInfo attachmentBegin = {};
+                    attachmentBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO;
+                    attachmentBegin.attachmentCount = 1;
+                    VkImageView view = m_shadowmaps[light->_shadowSlot][i]->GetImageView();
+                    attachmentBegin.pAttachments = &view;
+                    shadowBegin.pNext = &attachmentBegin;
+
+                    vkCmdBeginRenderPass(cb, &shadowBegin, VK_SUBPASS_CONTENTS_INLINE);
+                    if(i == 0) // only bind these once, they will stay the same among the cascades
                     {
-                        PROFILE_SCOPE("Bind buffers");
-                        renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                        renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+                        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
+                        uint32_t offset = 0;
+                        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &m_shadowDesc[imageIndex], 1, &offset);
                     }
-                    uint32_t offset;
-                    uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+                    struct {
+                        uint32_t slot;
+                        uint32_t cascadeIndex;
+                    } pc;
+                    pc.slot = light->_slot;
+                    pc.cascadeIndex = i;
+                    vkCmdPushConstants(cb, m_shadowPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
 
 
-                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-                    vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+                    for(auto* renderable : cm->GetComponents<Renderable>())
+                    {
+                        auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+                        {
+                            PROFILE_SCOPE("Bind buffers");
+                            renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+                            renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+                        }
+                        uint32_t offset;
+                        uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+
+                        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
+                        vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+                    }
+                    vkCmdEndRenderPass(cb);
                 }
-                vkCmdEndRenderPass(cb);
             }
 		}
         //TODO timestamp
@@ -1728,18 +1890,34 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 
     slot = m_shadowmaps.size();
     e->component->_shadowSlot = slot;
-    m_shadowmaps.push_back(std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci));
+
+
+    std::vector<std::unique_ptr<Image>> vec(NUM_CASCADES);
+    for (int i = 0; i < NUM_CASCADES; ++i)
+    {
+        vec[i] = std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci);
+    }
+    m_shadowmaps.push_back(std::move(vec));
 
     light->shadowSlot = slot;
-    VkDescriptorImageInfo imageInfo = {};
-    imageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
-    imageInfo.imageView	= m_shadowmaps[slot]->GetImageView();
-    imageInfo.sampler	= m_shadowSampler;
-    VkDescriptorImageInfo imageInfoPCF = {};
-    imageInfoPCF.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
-    imageInfoPCF.imageView	= m_shadowmaps[slot]->GetImageView();
-    imageInfoPCF.sampler	= m_shadowSamplerPCF;
+    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos;
+    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF;
+    for (int i = 0; i < NUM_CASCADES; ++i)
+    {
 
+
+        imageInfos[i].imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
+        imageInfos[i].imageView	= m_shadowmaps[slot][i]->GetImageView();
+        imageInfos[i].sampler	= m_shadowSampler;
+
+        imageInfosPCF[i].imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
+        imageInfosPCF[i].imageView	= m_shadowmaps[slot][i]->GetImageView();
+        imageInfosPCF[i].sampler	= m_shadowSamplerPCF;
+
+        auto debugImage = std::make_shared<UIImage>(m_shadowmaps[slot][i].get());
+        debugImage->SetName(std::string("Cascade #") + std::to_string(i));
+        m_rendererDebugWindow->AddElement(debugImage);
+    }
     std::vector<VkWriteDescriptorSet> writeDSVector;
     for (int i = 0; i < m_swapchainImages.size(); ++i) {
 
@@ -1749,8 +1927,9 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
             writeDS.dstSet			= m_tempDesc[i];
             writeDS.dstBinding		= 3;
             writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDS.descriptorCount	= 1;
-            writeDS.pImageInfo		= &imageInfo;
+            writeDS.descriptorCount	= imageInfos.size();
+            writeDS.dstArrayElement = slot * NUM_CASCADES;
+            writeDS.pImageInfo		= imageInfos.data();
 
             writeDSVector.push_back(writeDS);
         }
@@ -1760,8 +1939,9 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
             writeDS.dstSet			= m_tempDesc[i];
             writeDS.dstBinding		= 4;
             writeDS.descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDS.descriptorCount	= 1;
-            writeDS.pImageInfo		= &imageInfoPCF;
+            writeDS.descriptorCount	= imageInfosPCF.size();
+            writeDS.dstArrayElement = slot * NUM_CASCADES;
+            writeDS.pImageInfo		= imageInfosPCF.data();
 
             writeDSVector.push_back(writeDS);
         }
@@ -1769,7 +1949,6 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     }
     vkUpdateDescriptorSets(m_device, writeDSVector.size(), writeDSVector.data(), 0, nullptr);
 
-    m_rendererDebugWindow->AddElement(std::make_shared<UIImage>(m_shadowmaps[slot].get()));
 
 }
 

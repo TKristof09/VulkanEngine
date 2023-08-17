@@ -34,8 +34,8 @@ int main()
 
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
-	camera->AddComponent<Camera>(90.f, 1920/1080, 0.1f, 1000.f);
-	t->pos = { 0.0f, 20.0f, 9.0f };
+	camera->AddComponent<Camera>(90.f, 1920/1080.0f, 0.1f);
+	t->pos = { 0.0f, 60.0f, 0.0f };
 
     Entity* e2 = AssimpImporter::LoadFile("models/simple_test.fbx", ecs);
 

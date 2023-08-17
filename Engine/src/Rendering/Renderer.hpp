@@ -22,10 +22,12 @@
 #include "Pipeline.hpp"
 #include "RenderPass.hpp"
 #include "Framebuffer.hpp"
-#include "ECS/ECSEngine.hpp"
+#include "ECS/ECS.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 
 #define SHADOWMAP_SIZE 2048
+#define MAX_SHADOW_DEPTH 2000
+#define NUM_CASCADES 4
 
 class Renderer
 {
@@ -62,7 +64,9 @@ private:
 
         glm::vec3 filler;
         uint32_t shadowSlot;
-        glm::mat4 lightSpaceMatrix; // potentially put the shadowslot in the matrix
+        std::array<glm::mat4, NUM_CASCADES> lightSpaceMatrices; // potentially put the shadowslot in the matrix
+        std::array<glm::mat4, NUM_CASCADES> lightViewMatrices; // potentially put the shadowslot in the matrix
+        std::array<glm::vec2, NUM_CASCADES> zPlanes;
 
 	};
 	struct TileLights // TODO
@@ -97,7 +101,7 @@ private:
 	std::shared_ptr<Image> m_resolvedDepthImage;
 	std::shared_ptr<Image> m_lightCullDebugImage;
 
-    std::vector<std::unique_ptr<Image>> m_shadowmaps; // non point lights
+    std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps; // non point lights, store NUM_CASCADES images for each light
 	std::vector<VkDescriptorSet> m_shadowDesc;
     void UpdateShadowDescriptors();
     RenderPass m_shadowRenderPass;
@@ -201,4 +205,5 @@ private:
     std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
 
 
+    Entity* m_frustrumEntity;
 };

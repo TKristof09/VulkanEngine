@@ -26,9 +26,10 @@ layout(binding = 0, set = 2) uniform  ModelMatrix {
 
 layout( push_constant ) uniform PC
 {
-	uint slot;
+	int slot;
+    int cascadeIndex;
 };
 
 void main() {
-    gl_Position = lights[slot].lightSpaceMatrix * model * vec4(inPosition, 1.0);
+    gl_Position = lights[slot].lightSpaceMatrices[cascadeIndex] * model * vec4(inPosition, 1.0);
 }
