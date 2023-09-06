@@ -36,7 +36,6 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 		ci.depthCompareOp	= VK_COMPARE_OP_GREATER_OR_EQUAL; //maybe it should even be EQUAL since we only need to render the fragments that are in the depth image
 		ci.depthWriteEnable	= false;
 		ci.useDepth			= true;
-		ci.subpass			= 0;
 		ci.stages			= (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 		ci.useMultiSampling	= true;
 		ci.useColorBlend	= true;

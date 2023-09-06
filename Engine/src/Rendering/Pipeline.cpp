@@ -1,8 +1,10 @@
 #include "Pipeline.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
+#include "Rendering/VulkanContext.hpp"
+#include "vulkan/vulkan_core.h"
 
 Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
-	:m_name(shaderName), m_priority(priority), m_isGlobal(createInfo.isGlobal), m_renderPass(createInfo.renderPass)
+	:m_name(shaderName), m_priority(priority), m_isGlobal(createInfo.isGlobal)
 {
 	if (createInfo.type == PipelineType::GRAPHICS)
 	{
@@ -168,6 +170,25 @@ void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
 
 	VK_CHECK(vkCreatePipelineLayout(VulkanContext::GetDevice(), &layoutCreateInfo, nullptr, &m_layout), "Failed to create pipeline layout");
 
+
+	// ##################### RENDERING #####################
+    VkPipelineRenderingCreateInfo renderingCreateInfo = {};
+    renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    VkFormat defaultColorFormat = VulkanContext::GetSwapchainImageFormat();
+    if(createInfo.colorFormats.empty() && createInfo.useColor)
+    {
+        renderingCreateInfo.colorAttachmentCount    = 1;
+        renderingCreateInfo.pColorAttachmentFormats = &defaultColorFormat;
+    }
+    else
+    {
+        renderingCreateInfo.colorAttachmentCount    = createInfo.colorFormats.size();
+        renderingCreateInfo.pColorAttachmentFormats = createInfo.colorFormats.data();
+    }
+
+    renderingCreateInfo.depthAttachmentFormat   = createInfo.useDepth ? createInfo.depthFormat : VK_FORMAT_UNDEFINED;
+    renderingCreateInfo.stencilAttachmentFormat = createInfo.useStencil ? createInfo.stencilFormat : VK_FORMAT_UNDEFINED;
+
 	// ##################### PIPELINE #####################
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType					= VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -193,8 +214,10 @@ void Pipeline::CreateGraphicsPipeline(PipelineCreateInfo createInfo)
 	//pipelineInfo.pDynamicState = &dynamicState;
 
 	pipelineInfo.layout		= m_layout;
-	pipelineInfo.renderPass = createInfo.renderPass->GetRenderPass();
-	pipelineInfo.subpass	= createInfo.subpass;
+	pipelineInfo.renderPass = VK_NULL_HANDLE;
+	pipelineInfo.subpass	= 0;
+
+    pipelineInfo.pNext = &renderingCreateInfo;
 
 	VK_CHECK(vkCreateGraphicsPipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline), "Failed to create graphics pipeline");
 

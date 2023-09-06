@@ -1,4 +1,5 @@
 ﻿#include "Utils/DebugUI.hpp"
+#include "Rendering/VulkanContext.hpp"
 
 DebugUI::DebugUI(DebugUIInitInfo initInfo) :
 	m_show_demo_window(true)
@@ -21,8 +22,10 @@ DebugUI::DebugUI(DebugUIInitInfo initInfo) :
 	imguiInitInfo.MinImageCount = 2;
 	imguiInitInfo.ImageCount = initInfo.imageCount;
 	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
+    imguiInitInfo.UseDynamicRendering = true;
+    imguiInitInfo.ColorAttachmentFormat = VulkanContext::GetSwapchainImageFormat();
 
-	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
+	ImGui_ImplVulkan_Init(&imguiInitInfo, VK_NULL_HANDLE);
 
 	// upload font textures
 	CommandBuffer cb;
@@ -52,7 +55,7 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
-	
+
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
@@ -71,9 +74,11 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 	imguiInitInfo.MinImageCount = 2;
 	imguiInitInfo.ImageCount = initInfo.imageCount;
 	imguiInitInfo.MSAASamples = initInfo.msaaSamples;
+    imguiInitInfo.UseDynamicRendering = true;
+    imguiInitInfo.ColorAttachmentFormat = VulkanContext::GetSwapchainImageFormat();
 
 
-	ImGui_ImplVulkan_Init(&imguiInitInfo, initInfo.renderPass->GetRenderPass());
+	ImGui_ImplVulkan_Init(&imguiInitInfo, VK_NULL_HANDLE);
 	CommandBuffer cb;
 	cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
@@ -95,7 +100,7 @@ void DebugUI::Draw(CommandBuffer* cb)
 		ImGui::ShowDemoWindow(&m_show_demo_window);
 
 	ImGui::Render();
-	
+
 
 	/*VkCommandBufferInheritanceInfo inheritanceInfo = {};
 	inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
