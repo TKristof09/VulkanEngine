@@ -14,6 +14,7 @@ struct VulkanContext
     static VkFormat GetSwapchainImageFormat() { return m_swapchainImageFormat; }
     static VkFormat GetDepthFormat() { return m_depthFormat; }
     static VkFormat GetStencilFormat() { return m_stencilFormat; }
+    static VkExtent2D GetSwapchainExtent() { return m_swapchainExtent; }
 
 	static void Cleanup()
 	{
@@ -53,4 +54,5 @@ private:
     inline static VkFormat m_swapchainImageFormat = VK_FORMAT_UNDEFINED;
     inline static VkFormat m_depthFormat = VK_FORMAT_D32_SFLOAT;
     inline static VkFormat m_stencilFormat = VK_FORMAT_UNDEFINED;
+    inline static VkExtent2D m_swapchainExtent = {};
 };

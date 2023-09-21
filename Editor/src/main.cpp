@@ -9,6 +9,7 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
+#include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Utils/Color.hpp"
 #include "Utils/AssimpImporter.hpp"
 #include "Rendering/TextureManager.hpp"
@@ -35,9 +36,11 @@ int main()
 	Entity* camera = ecs->entityManager->CreateEntity();
 	Transform* t = camera->AddComponent<Transform>();
 	camera->AddComponent<Camera>(90.f, 1920/1080.0f, 0.1f);
-	t->pos = { 0.0f, 60.0f, 0.0f };
+	t->pos = { 0.0f, 60.0f, -10.0f };
+    //t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(0,1,0));
 
     Entity* e2 = AssimpImporter::LoadFile("models/simple_test.fbx", ecs);
+    //e2->GetComponent<Transform>()->scale = {0.01f, 0.01f, 0.01f};
 
 	Entity* dlight = ecs->entityManager->CreateEntity();
     dlight->GetComponent<NameTag>()->name = "DLight";

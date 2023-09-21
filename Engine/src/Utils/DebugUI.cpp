@@ -1,5 +1,6 @@
 ﻿#include "Utils/DebugUI.hpp"
 #include "Rendering/VulkanContext.hpp"
+#include "vulkan/vulkan_core.h"
 
 DebugUI::DebugUI(DebugUIInitInfo initInfo) :
 	m_show_demo_window(true)
@@ -110,8 +111,7 @@ void DebugUI::Draw(CommandBuffer* cb)
 
 	m_commandBuffers[imageIndex]->Begin(VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT, inheritanceInfo);
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), GetCommandBuffer(imageIndex));
-	m_commandBuffers[imageIndex]->End();*/
-
+    m_commandBuffers[imageIndex]->End();*/
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb->GetCommandBuffer());
 
 }

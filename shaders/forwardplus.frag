@@ -76,7 +76,6 @@ float PCF(vec3 coords, sampler2DShadow shadowMapPCF, float radius)
 float ZClipToEye(float z, float zNear, float zFar) {
     return zNear * zFar / (zFar - z * (zFar - zNear));
 }
-
 float CalculateShadow(Light light)
 {
 
@@ -120,6 +119,7 @@ vec3 GetNormalFromMap(){
     n = normalize(TBN * n);
     return n;
 }
+
 vec3 CalculateBaseLight(Light light, vec3 direction)
 {
     direction = normalize(-direction);
@@ -141,7 +141,7 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
 
 vec3 CalculateDirectionalLight(Light light)
 {
-    return CalculateBaseLight(light, light.direction)  * CalculateShadow(light);
+    return CalculateBaseLight(light, light.direction);//  * CalculateShadow(light);
 }
 vec3 CalculatePointLight(Light light)
 {
@@ -193,5 +193,5 @@ void main() {
         }
     }
 
-    outColor = vec4(illuminance * vec3(1.0,0,0) /* texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb*/, 1.0);
+    outColor = vec4(illuminance * texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb, 1.0);
 }

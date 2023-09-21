@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <set>
 
+#include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Utils/DebugUIElements.hpp"
 #include "VulkanContext.hpp"
 #include "Window.hpp"
@@ -20,8 +21,6 @@
 #include "Shader.hpp"
 #include "Memory/BufferAllocator.hpp"
 #include "Pipeline.hpp"
-#include "RenderPass.hpp"
-#include "Framebuffer.hpp"
 #include "ECS/ECS.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 
@@ -91,6 +90,7 @@ private:
 	std::vector<VkDescriptorSet> m_computeDesc;
 	std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
 	std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
+    VkBuffer m_visibleLightsBuffer;
 	void UpdateComputeDescriptors();
 	VkSampler m_computeSampler;
 	ComputePushConstants m_computePushConstants;
@@ -104,7 +104,6 @@ private:
     std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps; // non point lights, store NUM_CASCADES images for each light
 	std::vector<VkDescriptorSet> m_shadowDesc;
     void UpdateShadowDescriptors();
-    RenderPass m_shadowRenderPass;
     std::unique_ptr<Pipeline> m_shadowPipeline;
     VkSampler m_shadowSampler;
     VkSampler m_shadowSamplerPCF;
@@ -123,9 +122,7 @@ private:
 	void CreateSurface();
 	void CreateDevice();
 	void CreateSwapchain();
-	void CreateRenderPass();
 	void CreatePipeline();
-	void CreateFramebuffers();
 	void CreateCommandPool();
 	void CreateCommandBuffers();
 	void CreateSyncObjects();
@@ -171,8 +168,6 @@ private:
 	VkFormat				m_swapchainImageFormat;
 	VkExtent2D				m_swapchainExtent;
 
-	RenderPass			m_renderPass;
-	RenderPass			m_prePassRenderPass;
 
 	std::multiset<Pipeline> m_pipelines;
 	std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
@@ -204,6 +199,8 @@ private:
 
     std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
 
+    RenderGraph m_renderGraph;
 
+    // TODO remove
     Entity* m_frustrumEntity;
 };

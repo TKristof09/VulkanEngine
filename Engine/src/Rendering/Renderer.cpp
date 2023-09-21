@@ -1,5 +1,6 @@
 #include "Rendering/Renderer.hpp"
 #include "Rendering/Image.hpp"
+#include "Rendering/VulkanContext.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include <memory>
 #include <sstream>
@@ -9,6 +10,7 @@
 #include <limits>
 #include <chrono>
 #include <array>
+#include <stdint.h>
 #include <string>
 #include <vulkan/vulkan.h>
 
@@ -24,6 +26,10 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
+
+#include "Rendering/RenderGraph/RenderGraph.hpp"
+#include "Rendering/RenderGraph/RenderPass.hpp"
+#include "vulkan/vulkan_core.h"
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -95,7 +101,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 
 	m_transformDescSets.resize(m_swapchainImages.size());
 
-	CreateRenderPass();
 	CreatePipeline();
 	CreateCommandPool();
 
@@ -103,7 +108,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 
 	CreateColorResources();
 	CreateDepthResources();
-	CreateFramebuffers();
 	CreateUniformBuffers();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
@@ -179,6 +183,228 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
         m_rendererDebugWindow->AddElement(button);
     }
 
+
+    // TODO: temporary, remove later
+    {
+
+        auto& depthPass = m_renderGraph.AddRenderPass("depthPass", QueueTypeFlagBits::Graphics);
+        AttachmentInfo depthInfo = {};
+        depthInfo.clear = true;
+        depthInfo.clearValue.depthStencil = {0.0f, 0};
+        depthPass.AddDepthOutput("depthImage", depthInfo);
+        depthPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t imageIndex){
+                ComponentManager* cm = m_ecs->componentManager;
+                Camera camera = *(*(cm->begin<Camera>()));
+                Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
+                glm::mat4 proj = camera.GetProjection();
+                //glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
+                //glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
+                //glm::mat4 vp = proj * rot * trf;
+                glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+                uint32_t vpOffset = 0;
+
+                CameraStruct cs = {vp, cameraTransform->pos};
+                m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
+		        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
+                PROFILE_SCOPE("Prepass draw call loop");
+                for(auto* renderable : cm->GetComponents<Renderable>())
+                {
+                auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+                glm::mat4 model =  transform->GetTransform();
+                {
+                PROFILE_SCOPE("Bind buffers");
+                renderable->vertexBuffer.Bind(cb);
+                renderable->indexBuffer.Bind(cb);
+                }
+                uint32_t offset;
+                uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+                m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
+                vkCmdDrawIndexed(cb.GetCommandBuffer(), static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+                }
+        });
+
+        auto& lightingPass = m_renderGraph.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
+        AttachmentInfo colorInfo = {};
+        colorInfo.clear = true;
+        colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+        lightingPass.AddColorOutput("colorImage", colorInfo);
+        lightingPass.AddDepthInput("depthImage");
+        lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer");
+        //TODO shadow maps
+        lightingPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t imageIndex){
+                ComponentManager* cm = m_ecs->componentManager;
+                auto materialIterator = cm->begin<Material>();
+                auto end = cm->end<Material>();
+                EntityID currentEntity = materialIterator->GetOwner();
+                uint32_t offset = 0;
+
+                for(auto& pipeline : m_pipelines)
+                {
+                    //if(pipeline.m_name == "depth") continue;
+                    auto tempIt = materialIterator;// to be able to restore the iterator to its previous place after global pipeline is finished
+                    if(pipeline.m_isGlobal)
+                        materialIterator = cm->begin<Material>();
+
+
+
+                    //vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
+
+                    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
+                    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
+                    vkCmdPushConstants(cb.GetCommandBuffer(), pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
+
+
+                    PROFILE_SCOPE("Draw call loop");
+                    while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
+                    {
+                        Transform* transform = cm->GetComponent<Transform>(currentEntity);
+                        Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
+                        if(renderable == nullptr)
+                            continue;
+
+                        // We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
+
+                        //transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
+                        //glm::mat4 model =  transform->GetTransform();
+
+                        renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+                        renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
+
+                        uint32_t offset;
+                        uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+
+                        //m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
+                        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
+
+
+                        if(!pipeline.m_isGlobal)
+                        {
+                            m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
+
+                            glm::vec4 ubs[] = {{materialIterator->_textureSlot, 0, 0, 0}, {0.5f, 0,0,1.0f}, };
+
+                            m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
+
+                        }
+                        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
+                        vkCmdDrawIndexed(cb.GetCommandBuffer(), static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
+
+
+                        materialIterator++;
+                        if(materialIterator != end)
+                            currentEntity = materialIterator->GetOwner();
+                    }
+                    if(pipeline.m_isGlobal && tempIt != end)
+                    {
+                        materialIterator = tempIt;
+                        currentEntity = materialIterator->GetOwner();
+                    }
+                }
+
+
+        });
+        //auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
+        // TODO
+
+        auto& lightCullPass = m_renderGraph.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
+        auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer");
+        auto& depthTexture = lightCullPass.AddTextureInput("depthImage");
+        lightCullPass.SetInitialiseCallback([&](RenderGraph& graph){
+                for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
+                {
+                    auto& buf = graph.GetPhysicalBuffer(visibleLightsBuffer);
+                    VkDescriptorBufferInfo visibleLightsBI = {};
+                    visibleLightsBI.offset	= 0;
+                    visibleLightsBI.range	= VK_WHOLE_SIZE;
+                    visibleLightsBI.buffer	= buf.GetVkBuffer();
+
+                    VkDescriptorImageInfo depthImageInfo = {};
+                    depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
+                    VkDescriptorImageInfo debugImageInfo = {};
+                    debugImageInfo.imageLayout	= VK_IMAGE_LAYOUT_GENERAL;
+                    debugImageInfo.imageView	= m_lightCullDebugImage->GetImageView();
+                    debugImageInfo.sampler		= VK_NULL_HANDLE;
+                    depthImageInfo.imageView = graph.GetPhysicalImage(depthTexture).GetImageView();
+                    depthImageInfo.sampler = m_computeSampler;
+                    std::array<VkWriteDescriptorSet,3> writeDS = {};
+                    writeDS[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeDS[0].descriptorCount = 1;
+                    writeDS[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    writeDS[0].dstBinding = 2;
+                    writeDS[0].dstSet = m_computeDesc[i];
+                    writeDS[0].pBufferInfo = &visibleLightsBI;
+                    writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeDS[1].dstSet			= m_computeDesc[i];
+                    writeDS[1].dstBinding		= 3;
+                    writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    writeDS[1].descriptorCount	= 1;
+                    writeDS[1].pImageInfo		= &depthImageInfo;
+                    writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeDS[2].dstSet			= m_computeDesc[i];
+                    writeDS[2].dstBinding		= 4;
+                    writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                    writeDS[2].descriptorCount	= 1;
+                    writeDS[2].pImageInfo		= &debugImageInfo;
+                    vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
+                }
+        });
+        lightCullPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t imageIndex){
+                //TODO this barrier should be done automatically by the rendergraph
+                std::vector<VkBufferMemoryBarrier> barriersBefore(2);
+                barriersBefore[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                barriersBefore[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                barriersBefore[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
+                barriersBefore[0].size = m_lightsBuffers[imageIndex]->GetSize();
+                barriersBefore[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                barriersBefore[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barriersBefore[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                barriersBefore[1].buffer = m_visibleLightsBuffer;
+                barriersBefore[1].size = VK_WHOLE_SIZE;
+
+                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), 0, nullptr);
+
+                uint32_t offset = 0;
+                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
+
+
+                m_computePushConstants.debugMode = 1;
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
+                vkCmdDispatch(cb.GetCommandBuffer(), m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
+                //TODO this barrier should be done automatically by the rendergraph
+                std::vector<VkBufferMemoryBarrier> barriersAfter(2);
+                barriersAfter[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                barriersAfter[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                barriersAfter[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barriersAfter[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
+                barriersAfter[0].size = m_lightsBuffers[imageIndex]->GetSize();
+                barriersAfter[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                barriersAfter[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                barriersAfter[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barriersAfter[1].buffer = m_visibleLightsBuffer;
+                barriersAfter[1].size = VK_WHOLE_SIZE;
+                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), 0, nullptr);
+
+        });
+
+
+        auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
+        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
+        uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex){
+                m_debugUI->Draw(&cb);
+        });
+
+
+
+        m_renderGraph.Build();
+        m_visibleLightsBuffer = m_renderGraph.GetPhysicalBuffer(visibleLightsBuffer).GetVkBuffer();
+    }
+
 }
 
 Renderer::~Renderer()
@@ -221,16 +447,16 @@ void Renderer::RecreateSwapchain()
 
 	vkDeviceWaitIdle(m_device);
 
+    LOG_INFO("Recreating swapchain...");
+
 	CleanupSwapchain();
 
 	vkDeviceWaitIdle(m_device);
 
 	CreateSwapchain();
-	CreateRenderPass();
 	//CreatePipeline();
 	CreateColorResources();
 	CreateDepthResources();
-	CreateFramebuffers();
 	CreateCommandBuffers();
 	UpdateComputeDescriptors();
     UpdateShadowDescriptors();
@@ -245,7 +471,6 @@ void Renderer::RecreateSwapchain()
 	initInfo.queueFamily = families.graphicsFamily.value();
 	initInfo.queue = m_graphicsQueue;
 
-	initInfo.renderPass = &m_renderPass;
 	initInfo.pipelineCache = nullptr;
 	initInfo.descriptorPool = m_descriptorPool;
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
@@ -268,15 +493,8 @@ void Renderer::CleanupSwapchain()
 
 	m_mainCommandBuffers.clear();
 
-	m_renderPass.Destroy();
-	m_prePassRenderPass.Destroy();
-    m_shadowRenderPass.Destroy();
 
 	vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
-	for(auto& img : m_swapchainImages)
-	{
-		img->Free(true);
-	}
 	m_swapchainImages.clear();
 
 }
@@ -291,7 +509,6 @@ void Renderer::CreateDebugUI()
 	initInfo.queueFamily = families.graphicsFamily.value();
 	initInfo.queue = m_graphicsQueue;
 
-	initInfo.renderPass = &m_renderPass;
 	initInfo.pipelineCache = nullptr;
 	initInfo.descriptorPool = m_descriptorPool;
 	initInfo.imageCount = static_cast<uint32_t>(m_swapchainImages.size());
@@ -307,7 +524,7 @@ void Renderer::CreateInstance()
 	VkApplicationInfo appinfo = {};
 	appinfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appinfo.pApplicationName = "VulkanEngine";
-	appinfo.apiVersion = VK_API_VERSION_1_2;
+	appinfo.apiVersion = VK_API_VERSION_1_3;
 
 	VkInstanceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -428,7 +645,6 @@ void Renderer::CreateDevice()
 
     VkPhysicalDeviceVulkan12Features device12Features = {};
     device12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    device12Features.imagelessFramebuffer = VK_TRUE;
     // these are for dynamic descriptor indexing
     deviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 	device12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
@@ -436,7 +652,10 @@ void Renderer::CreateDevice()
 	device12Features.descriptorBindingPartiallyBound = VK_TRUE;
 	device12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 
-
+    VkPhysicalDeviceVulkan13Features device13Features = {};
+    device13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    device13Features.dynamicRendering = VK_TRUE;
+    device13Features.maintenance4 = VK_TRUE; // need it because the spirv compiler uses localsizeid even though it doesnt need to for now, but i might switch to spec constants in the future anyway
 
 
 
@@ -450,6 +669,7 @@ void Renderer::CreateDevice()
 	createInfo.queueCreateInfoCount     = static_cast<uint32_t>(queueCreateInfos.size());
 
 	createInfo.pNext = &device12Features;
+    device12Features.pNext = &device13Features;
 
 	VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
 	vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
@@ -479,6 +699,8 @@ void Renderer::CreateSwapchain()
 	auto extent = ChooseSwapchainExtent(details.capabilities, m_window->GetWindow());
 	auto presentMode = ChooseSwapchainPresentMode(details.presentModes);
 
+    VulkanContext::m_swapchainExtent = extent;
+
 	VkSwapchainCreateInfoKHR createInfo = {};
 	createInfo.sType			= VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	createInfo.surface          = m_surface;
@@ -487,7 +709,7 @@ void Renderer::CreateSwapchain()
 	createInfo.imageColorSpace  = surfaceFormat.colorSpace;
 	createInfo.imageExtent      = extent;
 	createInfo.presentMode      = presentMode;
-	createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	createInfo.imageArrayLayers = 1;
 
 	QueueFamilyIndices indices        = FindQueueFamilies(m_gpu, m_surface);
@@ -517,7 +739,10 @@ void Renderer::CreateSwapchain()
 	VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, tempImages.data()), "Failed to get swapchain images");
 	m_swapchainExtent = extent;
 	m_swapchainImageFormat = surfaceFormat.format;
+    VulkanContext::m_swapchainImageFormat = m_swapchainImageFormat;
 
+    m_renderGraph.SetupSwapchainImages(tempImages);
+    // TODO remove
 	for (size_t i = 0; i < tempImages.size(); i++)
 	{
 		ImageCreateInfo ci = {};
@@ -531,173 +756,11 @@ void Renderer::CreateSwapchain()
 	LOG_TRACE("Created swapchain and images");
 }
 
-void Renderer::CreateRenderPass()
-{
-
-	// Main render pass
-	RenderPassAttachment colorAttachment = {};
-	colorAttachment.type = RenderPassAttachmentType::COLOR;
-	colorAttachment.format = m_swapchainImageFormat;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
-		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	else
-		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	colorAttachment.internalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.clearValue.color = {0.f, 0.f, 0.f, 1.0f};
-
-
-	RenderPassAttachment depthAttachment = {};
-	depthAttachment.type = RenderPassAttachmentType::DEPTH;
-	depthAttachment.format = VK_FORMAT_D32_SFLOAT;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	depthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-	RenderPassAttachment colorAttachmentResolve = {}; // To "combine" all the samples from the msaa attachment
-	colorAttachmentResolve.type = RenderPassAttachmentType::COLOR_RESOLVE;
-	colorAttachmentResolve.format = m_swapchainImageFormat;
-	colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	colorAttachmentResolve.internalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	VkSubpassDependency2 dependency = {};
-	dependency.sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-	RenderPassCreateInfo ci;
-	ci.attachments = {colorAttachment, depthAttachment, colorAttachmentResolve };
-	ci.msaaSamples = m_msaaSamples;
-	ci.subpassCount = 1;
-	ci.dependencies = { dependency };
-
-	m_renderPass = RenderPass(ci);
-	LOG_TRACE("Created main render pass");
-
-
-	// Render pass for the depth prepass
-	RenderPassAttachment prePassDepthAttachment = {};
-	prePassDepthAttachment.type = RenderPassAttachmentType::DEPTH;
-	prePassDepthAttachment.format = VK_FORMAT_D32_SFLOAT;
-	prePassDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	prePassDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	prePassDepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	prePassDepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	prePassDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	prePassDepthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    prePassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	prePassDepthAttachment.clearValue.depthStencil = {0.0f, 0 };
-
-	RenderPassAttachment prePassDepthResolve = {};
-	prePassDepthResolve.type = RenderPassAttachmentType::DEPTH_RESOLVE;
-	prePassDepthResolve.format = VK_FORMAT_D32_SFLOAT;
-	prePassDepthResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	prePassDepthResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	prePassDepthResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	prePassDepthResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	prePassDepthResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	prePassDepthResolve.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    prePassDepthResolve.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-
-	std::vector<VkSubpassDependency2> dependencies(2);
-
-    // TODO might not need this dependency, since the prepass doesn't use any attachments from previous renderpasses, but maybe we wait for other renderpasses to finish reading from the depth image before writing to it again?
-	dependencies[0].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
-	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependencies[0].dstSubpass = 0;
-	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	dependencies[1].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
-	dependencies[1].srcSubpass = 0;
-	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; // resolve write and depth write (including layout transitions )
-	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	RenderPassCreateInfo prepassCi;
-	prepassCi.attachments = {prePassDepthAttachment, prePassDepthResolve};
-	prepassCi.msaaSamples = m_msaaSamples;
-	prepassCi.subpassCount = 1;
-	prepassCi.dependencies = dependencies;
-
-	m_prePassRenderPass = RenderPass(prepassCi);
-	LOG_TRACE("Created prepass render pass");
-
-
-	// Render pass for the depth prepass
-	RenderPassAttachment shadowPassDepthAttachment = {};
-	shadowPassDepthAttachment.type = RenderPassAttachmentType::DEPTH;
-	shadowPassDepthAttachment.format = VK_FORMAT_D32_SFLOAT;
-	shadowPassDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	shadowPassDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	shadowPassDepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	shadowPassDepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	shadowPassDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	shadowPassDepthAttachment.internalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    shadowPassDepthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	shadowPassDepthAttachment.clearValue.depthStencil = {0.0f, 0 };
-
-
-	std::vector<VkSubpassDependency2> shadowDependencies(2);
-
-    // TODO might not need this dependency, since the prepass doesn't use any attachments from previous renderpasses, but maybe we wait for other renderpasses to finish reading from the depth image before writing to it again?
-	shadowDependencies[0].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
-	shadowDependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-	shadowDependencies[0].dstSubpass = 0;
-	shadowDependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	shadowDependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	shadowDependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	shadowDependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-	shadowDependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	shadowDependencies[1].sType = VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2;
-	shadowDependencies[1].srcSubpass = 0;
-	shadowDependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-	shadowDependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    shadowDependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; // depth write (including layout transitions )
-	shadowDependencies[1].dstStageMask =  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	shadowDependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	shadowDependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	RenderPassCreateInfo shadowPassCi;
-	shadowPassCi.attachments = {shadowPassDepthAttachment};
-	shadowPassCi.msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	shadowPassCi.subpassCount = 1;
-	shadowPassCi.dependencies = shadowDependencies;
-
-	m_shadowRenderPass = RenderPass(shadowPassCi);
-	LOG_TRACE("Created shadow pass render pass");
-}
 
 Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority)
 {
 	LOG_TRACE("Creating pipeline for {0}", name);
 
-	createInfo.renderPass = &m_renderPass;
 	createInfo.viewportExtent = m_swapchainExtent;
 	createInfo.msaaSamples = m_msaaSamples;
 	auto it = m_pipelines.emplace(name, createInfo, priority);
@@ -746,14 +809,13 @@ void Renderer::CreatePipeline()
 	LOG_WARN("Creating depth pipeline");
 	PipelineCreateInfo depthPipeline;
 	depthPipeline.type				= PipelineType::GRAPHICS;
+    depthPipeline.useColor          = false;
 	//depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
 	depthPipeline.depthCompareOp	= VK_COMPARE_OP_GREATER;
 	depthPipeline.depthWriteEnable	= true;
 	depthPipeline.useDepth			= true;
 	depthPipeline.depthClampEnable  = false;
 	depthPipeline.msaaSamples		= m_msaaSamples;
-	depthPipeline.renderPass		= &m_prePassRenderPass;
-	depthPipeline.subpass			= 0;
 	depthPipeline.stages			= VK_SHADER_STAGE_VERTEX_BIT;
 	depthPipeline.useMultiSampling	= true;
 	depthPipeline.useColorBlend		= false;
@@ -783,19 +845,19 @@ void Renderer::CreatePipeline()
 		m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)); // MAX_LIGHTS_PER_TILE
 
 	}
+    std::cout << m_visibleLightsBuffers[0]->GetSize() << std::endl;
 
     // Shadow prepass pipeline
 	LOG_WARN("Creating shadow pipeline");
 	PipelineCreateInfo shadowPipeline;
 	shadowPipeline.type				= PipelineType::GRAPHICS;
+    shadowPipeline.useColor         = false;
 	//depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
 	shadowPipeline.depthCompareOp	= VK_COMPARE_OP_GREATER;
 	shadowPipeline.depthWriteEnable	= true;
 	shadowPipeline.useDepth			= true;
 	shadowPipeline.depthClampEnable = false;
 	shadowPipeline.msaaSamples		= VK_SAMPLE_COUNT_1_BIT;
-	shadowPipeline.renderPass		= &m_shadowRenderPass;
-	shadowPipeline.subpass			= 0;
 	shadowPipeline.stages			= VK_SHADER_STAGE_VERTEX_BIT;
 	shadowPipeline.useMultiSampling	= true;
 	shadowPipeline.useColorBlend	= false;
@@ -849,55 +911,6 @@ void Renderer::CreatePipeline()
     }
 }
 
-void Renderer::CreateFramebuffers()
-{
-	for (size_t i = 0; i < m_swapchainImages.size(); i++)
-	{
-
-		FramebufferCreateInfo ci = {};
-		ci.width = m_swapchainExtent.width;
-		ci.height = m_swapchainExtent.height;
-		if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
-		{
-
-			ci.attachmentDescriptions.push_back({ m_colorImage, {}});
-			ci.attachmentDescriptions.push_back({ m_depthImage, {}});
-			ci.attachmentDescriptions.push_back({ m_swapchainImages[i], {}});
-		}
-		else
-		{
-			ci.attachmentDescriptions.push_back({ m_swapchainImages[i], {}});
-			ci.attachmentDescriptions.push_back({ m_depthImage, {}});
-		}
-
-		m_renderPass.AddFramebuffer(ci);
-
-		ci = {};
-		ci.width = m_swapchainExtent.width;
-		ci.height = m_swapchainExtent.height;
-		ci.attachmentDescriptions = {};
-		ci.attachmentDescriptions.push_back({ m_depthImage, {}});
-		if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
-            ci.attachmentDescriptions.push_back({ m_resolvedDepthImage, {}});
-		m_prePassRenderPass.AddFramebuffer(ci);
-
-
-		ci = {};
-		ci.width = SHADOWMAP_SIZE;
-		ci.height = SHADOWMAP_SIZE;
-		ci.attachmentDescriptions = {};
-        ci.imageless = true;
-
-        ImageCreateInfo imageCi;
-        imageCi.format = VK_FORMAT_D32_SFLOAT;
-        imageCi.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-        imageCi.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        imageCi.useMips = false;
-        imageCi.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		ci.attachmentDescriptions.push_back({{}, imageCi});
-		m_shadowRenderPass.AddFramebuffer(ci);
-	}
-}
 
 
 
@@ -1162,7 +1175,7 @@ void Renderer::UpdateComputeDescriptors()
 		visibleLightsBI.range	= VK_WHOLE_SIZE;
 		visibleLightsBI.buffer	= m_visibleLightsBuffers[i]->GetBuffer(0);
 
-		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
+		std::array<VkDescriptorBufferInfo, 1> bufferInfos = {lightsBI};
 
 		VkDescriptorImageInfo depthImageInfo = {};
 		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
@@ -1177,7 +1190,7 @@ void Renderer::UpdateComputeDescriptors()
 		debugImageInfo.imageView	= m_lightCullDebugImage->GetImageView();
 		debugImageInfo.sampler		= VK_NULL_HANDLE;
 
-		std::array<VkWriteDescriptorSet, 4> writeDS({});
+		std::array<VkWriteDescriptorSet, 2> writeDS({});
 		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[0].dstSet			= m_computeDesc[i];
 		writeDS[0].dstBinding		= 0;
@@ -1192,6 +1205,7 @@ void Renderer::UpdateComputeDescriptors()
 		writeDS[1].descriptorCount	= bufferInfos.size();
 		writeDS[1].pBufferInfo		= bufferInfos.data();
 
+        /*
 		writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[2].dstSet			= m_computeDesc[i];
 		writeDS[2].dstBinding		= 3;
@@ -1205,7 +1219,7 @@ void Renderer::UpdateComputeDescriptors()
 		writeDS[3].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 		writeDS[3].descriptorCount	= 1;
 		writeDS[3].pImageInfo		= &debugImageInfo;
-
+        */
 		vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
 	}
 
@@ -1216,6 +1230,7 @@ void Renderer::UpdateShadowDescriptors()
 	for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
 	{
 
+        // descriptor containing the light buffer which has the light space matrices
 		VkDescriptorBufferInfo lightsBI = {};
 		lightsBI.offset	= 0;
 		lightsBI.range	= VK_WHOLE_SIZE;
@@ -1434,6 +1449,7 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
 void Renderer::Render(double dt)
 {
 
+    vkDeviceWaitIdle(m_device);
 
 	PROFILE_FUNCTION();
 	uint32_t imageIndex;
@@ -1467,6 +1483,7 @@ void Renderer::Render(double dt)
 
 		//m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
 	}
+/*
 	ComponentManager* cm = m_ecs->componentManager;
 
 
@@ -1538,6 +1555,9 @@ void Renderer::Render(double dt)
             {
                 Light internalLight = m_lightMap[light->GetComponentID()];
                 auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, camera.zNear, MAX_SHADOW_DEPTH);
+                std::cout << "VP: " << glm::to_string(cascadesVP[0] * glm::vec4(cameraTransform->pos, 1.0)) << std::endl;
+                std::cout << "V:  " << glm::to_string(cascadesV[0] * glm::vec4(cameraTransform->pos, 1.0)) << std::endl;
+
                 internalLight.lightSpaceMatrices = cascadesVP;
                 internalLight.lightViewMatrices = cascadesV;
                 internalLight.zPlanes = zPlanes;
@@ -1713,23 +1733,15 @@ void Renderer::Render(double dt)
 		vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, m_queryPools[m_currentFrame], 3);
 		m_mainCommandBuffers[imageIndex].End();
 
-		VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//
-//	VkSubmitInfo submitInfo = {};
-//	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-//	submitInfo.commandBufferCount = 1;
-//	submitInfo.pCommandBuffers = &cb;
-//	submitInfo.waitSemaphoreCount = 1;
-//	submitInfo.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
-//	submitInfo.pWaitDstStageMask = &wait;
-//	submitInfo.signalSemaphoreCount = 1;
-//	submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
-//
-//	VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset fence");
-//	VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "Failed to submit command buffers");
-		m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
 	}
+*/
+    m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], imageIndex);
+
+    VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
 	{
 		PROFILE_SCOPE("Present");
@@ -1737,6 +1749,7 @@ void Renderer::Render(double dt)
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = &m_renderFinished[m_currentFrame];
+
 
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = &m_swapchain;
@@ -2276,5 +2289,8 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 		LOG_ERROR(message.str());
 	}
 
-	return VK_TRUE;
+
+
+
+return VK_TRUE;
 }

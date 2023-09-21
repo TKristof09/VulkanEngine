@@ -1,0 +1,6 @@
+digraph G {
+depthPass -> lightingPass;
+depthPass -> lightCullPass;
+lightingPass -> uiPass;
+lightCullPass -> lightingPass;
+}
