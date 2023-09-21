@@ -163,7 +163,7 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 		VkDescriptorBufferInfo visibleLightsBI = {};
 		visibleLightsBI.offset	= 0;
 		visibleLightsBI.range	= VK_WHOLE_SIZE;
-		visibleLightsBI.buffer	= m_renderer->m_visibleLightsBuffer;
+		visibleLightsBI.buffer	= m_renderer->m_visibleLightsBuffers[i]->GetBuffer(0);
 		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
 
 

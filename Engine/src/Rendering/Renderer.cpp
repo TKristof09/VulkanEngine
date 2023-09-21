@@ -233,7 +233,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
         colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
-        lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer");
+        lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", true);
         //TODO shadow maps
         lightingPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t imageIndex){
                 ComponentManager* cm = m_ecs->componentManager;
@@ -311,44 +311,29 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
         // TODO
 
         auto& lightCullPass = m_renderGraph.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
-        auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer");
+        auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer", "", true);
         auto& depthTexture = lightCullPass.AddTextureInput("depthImage");
         lightCullPass.SetInitialiseCallback([&](RenderGraph& graph){
                 for(uint32_t i=0; i < m_swapchainImages.size(); ++i)
                 {
-                    auto& buf = graph.GetPhysicalBuffer(visibleLightsBuffer);
-                    VkDescriptorBufferInfo visibleLightsBI = {};
-                    visibleLightsBI.offset	= 0;
-                    visibleLightsBI.range	= VK_WHOLE_SIZE;
-                    visibleLightsBI.buffer	= buf.GetVkBuffer();
-
                     VkDescriptorImageInfo depthImageInfo = {};
                     depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
-                    VkDescriptorImageInfo debugImageInfo = {};
-                    debugImageInfo.imageLayout	= VK_IMAGE_LAYOUT_GENERAL;
-                    debugImageInfo.imageView	= m_lightCullDebugImage->GetImageView();
-                    debugImageInfo.sampler		= VK_NULL_HANDLE;
                     depthImageInfo.imageView = graph.GetPhysicalImage(depthTexture).GetImageView();
-                    depthImageInfo.sampler = m_computeSampler;
-                    std::array<VkWriteDescriptorSet,3> writeDS = {};
-                    writeDS[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeDS[0].descriptorCount = 1;
-                    writeDS[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    writeDS[0].dstBinding = 2;
-                    writeDS[0].dstSet = m_computeDesc[i];
-                    writeDS[0].pBufferInfo = &visibleLightsBI;
-                    writeDS[1].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeDS[1].dstSet			= m_computeDesc[i];
-                    writeDS[1].dstBinding		= 3;
-                    writeDS[1].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    writeDS[1].descriptorCount	= 1;
-                    writeDS[1].pImageInfo		= &depthImageInfo;
-                    writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    depthImageInfo.sampler		= m_computeSampler;
+                    std::array<VkWriteDescriptorSet,1> writeDS = {};
+
+                    writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeDS[0].dstSet			= m_computeDesc[i];
+                    writeDS[0].dstBinding		= 3;
+                    writeDS[0].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    writeDS[0].descriptorCount	= 1;
+                    writeDS[0].pImageInfo		= &depthImageInfo;
+                    /*writeDS[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writeDS[2].dstSet			= m_computeDesc[i];
                     writeDS[2].dstBinding		= 4;
                     writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
                     writeDS[2].descriptorCount	= 1;
-                    writeDS[2].pImageInfo		= &debugImageInfo;
+                    writeDS[2].pImageInfo		= &debugImageInfo;*/
                     vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
                 }
         });
@@ -363,10 +348,23 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
                 barriersBefore[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
                 barriersBefore[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
                 barriersBefore[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                barriersBefore[1].buffer = m_visibleLightsBuffer;
+                barriersBefore[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);;
                 barriersBefore[1].size = VK_WHOLE_SIZE;
 
-                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), 0, nullptr);
+                // image barrier to wait for the depth image to be ready for reading
+                std::vector<VkImageMemoryBarrier> imageBarriersBefore(1);
+                imageBarriersBefore[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                imageBarriersBefore[0].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                imageBarriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                imageBarriersBefore[0].oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+                imageBarriersBefore[0].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;;
+                imageBarriersBefore[0].image = m_renderGraph.GetPhysicalImage(depthTexture).GetImage();
+                imageBarriersBefore[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                imageBarriersBefore[0].subresourceRange.levelCount = 1;
+                imageBarriersBefore[0].subresourceRange.layerCount = 1;
+
+
+                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT , VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), imageBarriersBefore.size(), imageBarriersBefore.data());
 
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
@@ -386,9 +384,23 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
                 barriersAfter[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
                 barriersAfter[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
                 barriersAfter[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barriersAfter[1].buffer = m_visibleLightsBuffer;
+                barriersAfter[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);;
                 barriersAfter[1].size = VK_WHOLE_SIZE;
-                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), 0, nullptr);
+
+                // transition depth image back to depth attachment optimal
+                std::vector<VkImageMemoryBarrier> imageBarriersAfter(1);
+                imageBarriersAfter[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                imageBarriersAfter[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                imageBarriersAfter[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                imageBarriersAfter[0].oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageBarriersAfter[0].newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+                imageBarriersAfter[0].image = m_renderGraph.GetPhysicalImage(depthTexture).GetImage();
+                imageBarriersAfter[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                imageBarriersAfter[0].subresourceRange.levelCount = 1;
+                imageBarriersAfter[0].subresourceRange.layerCount = 1;
+
+                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT , 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), imageBarriersAfter.size(), imageBarriersAfter.data());
+
 
         });
 
@@ -402,7 +414,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene):
 
 
         m_renderGraph.Build();
-        m_visibleLightsBuffer = m_renderGraph.GetPhysicalBuffer(visibleLightsBuffer).GetVkBuffer();
     }
 
 }
@@ -1175,7 +1186,7 @@ void Renderer::UpdateComputeDescriptors()
 		visibleLightsBI.range	= VK_WHOLE_SIZE;
 		visibleLightsBI.buffer	= m_visibleLightsBuffers[i]->GetBuffer(0);
 
-		std::array<VkDescriptorBufferInfo, 1> bufferInfos = {lightsBI};
+		std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
 
 		VkDescriptorImageInfo depthImageInfo = {};
 		depthImageInfo.imageLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL; // TODO: depth_read_only_optimal
@@ -1190,7 +1201,7 @@ void Renderer::UpdateComputeDescriptors()
 		debugImageInfo.imageView	= m_lightCullDebugImage->GetImageView();
 		debugImageInfo.sampler		= VK_NULL_HANDLE;
 
-		std::array<VkWriteDescriptorSet, 2> writeDS({});
+		std::array<VkWriteDescriptorSet, 3> writeDS({});
 		writeDS[0].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDS[0].dstSet			= m_computeDesc[i];
 		writeDS[0].dstBinding		= 0;
@@ -1212,14 +1223,13 @@ void Renderer::UpdateComputeDescriptors()
 		writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		writeDS[2].descriptorCount	= 1;
 		writeDS[2].pImageInfo		= &depthImageInfo;
-
-		writeDS[3].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDS[3].dstSet			= m_computeDesc[i];
-		writeDS[3].dstBinding		= 4;
-		writeDS[3].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		writeDS[3].descriptorCount	= 1;
-		writeDS[3].pImageInfo		= &debugImageInfo;
-        */
+*/
+		writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDS[2].dstSet			= m_computeDesc[i];
+		writeDS[2].dstBinding		= 4;
+		writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writeDS[2].descriptorCount	= 1;
+		writeDS[2].pImageInfo		= &debugImageInfo;
 		vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
 	}
 

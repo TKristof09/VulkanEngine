@@ -200,6 +200,7 @@ void RenderGraph::CreatePhysicalResources()
             info.createInfo.aspectFlags = inputTextureInfo.aspectFlags;
             info.createInfo.msaaSamples = inputTextureInfo.samples;
             info.createInfo.useMips = inputTextureInfo.mipLevels > 1;
+            info.createInfo.layout = inputTextureInfo.layout;
 
             switch(inputTextureInfo.sizeModifier)
             {

@@ -249,7 +249,7 @@ void main()
 				for(int y = 0; y < TILE_SIZE; ++y)
 				{
 
-					imageStore(debugTexture, ivec2(TILE_SIZE, TILE_SIZE) * tileID + ivec2(x, y), vec4(float(lightCount) / MAX_LIGHTS_PER_TILE, float(int(lightCount == MAX_LIGHTS_PER_TILE)), 0.0, 1.0));
+					imageStore(debugTexture, ivec2(TILE_SIZE, TILE_SIZE) * tileID + ivec2(x, y), vec4(float(lightCount) / MAX_LIGHTS_PER_TILE, float(int(lightCount == MAX_LIGHTS_PER_TILE)), float(int(lightCount > 0)), 1.0));
 				}
 			}
 		}
