@@ -1,6 +1,6 @@
 digraph G {
-depthPass -> lightingPass;
-depthPass -> lightCullPass;
-lightingPass -> uiPass;
-lightCullPass -> lightingPass;
+depthPass -> lightingPass [label="Event"];
+depthPass -> lightCullPass [label="ImageBarrier"];
+lightingPass -> uiPass [label="ImageBarrier"];
+lightCullPass -> lightingPass [label="BufferBarrier"];
 }
