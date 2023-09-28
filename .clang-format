@@ -7,7 +7,7 @@ AlignConsecutiveAssignments:
   Enabled: true
   AcrossEmptyLines: false
   AcrossComments: true
-  AlignCompound: false
+  AlignCompound: true
   PadOperators: true
 AlignConsecutiveBitFields:
   Enabled: false

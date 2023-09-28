@@ -35,3 +35,4 @@ Engine.log
 /CMakeSettings.json
 DebugTools
 results.json
+graph.dot

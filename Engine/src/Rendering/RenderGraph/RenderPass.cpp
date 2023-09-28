@@ -55,7 +55,7 @@ RenderingTextureResource& RenderPass2::AddColorOutput(const std::string& name, A
     }
 
     info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
     if(attachmentInfo.clear)
     {
@@ -95,7 +95,7 @@ RenderingTextureResource& RenderPass2::AddDepthInput(const std::string& name)
     info.format      = VK_FORMAT_D32_SFLOAT;
     info.usageFlags  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
     VkClearValue clear{};
     clear.depthStencil.depth = 0.0f;
     info.SetClearValue(clear);
@@ -116,7 +116,7 @@ RenderingTextureResource& RenderPass2::AddDepthOutput(const std::string& name, A
     info.format      = VK_FORMAT_D32_SFLOAT;
     info.usageFlags  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 
     if(attachmentInfo.clear)
@@ -148,7 +148,7 @@ RenderingTextureResource& RenderPass2::AddResolveOutput(const std::string& name)
     }
 
     info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
     resource.SetTextureInfo(info);
     resource.AddUse(m_id, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);

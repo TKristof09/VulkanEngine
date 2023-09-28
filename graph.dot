@@ -1,6 +1,0 @@
-digraph G {
-depthPass -> lightingPass [label="Event"];
-depthPass -> lightCullPass [label="ImageBarrier"];
-lightingPass -> uiPass [label="ImageBarrier"];
-lightCullPass -> lightingPass [label="BufferBarrier"];
-}

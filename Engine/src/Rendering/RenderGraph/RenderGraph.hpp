@@ -75,6 +75,7 @@ private:
     void CreatePhysicalResources();
     void CreatePhysicalPasses();
     void AddSynchronization();
+    void CheckPhysicalResources();
     void InitialisePasses();
 
 
@@ -83,7 +84,7 @@ private:
     std::vector<std::unordered_set<int32_t>> m_graph;
     bool m_isBuilt = false;
 
-    std::vector<std::unique_ptr<RenderingResource>> m_ressources;
+    std::vector<std::unique_ptr<RenderingResource>> m_resources;
     std::unordered_map<std::string, uint32_t> m_resourceIds;
     std::unordered_map<std::string, std::vector<uint32_t>> m_resourceReads;
     std::unordered_map<std::string, std::vector<uint32_t>> m_resourceWrites;
@@ -102,7 +103,10 @@ private:
     std::vector<Image> m_swapchainImages;  // TODO: maybe keep the Renderer as the owner of these?
     RenderingTextureResource m_swapchainResource;
 
+    VkImageLayout m_finalRenderTargetLayout;
 
+
+    // list of all barriers that need to be executed after each pass, indexed by passId
     std::vector<std::vector<VkBufferMemoryBarrier2>> m_bufferBarriers;
     std::vector<std::vector<VkImageMemoryBarrier2>> m_imageBarriers;
 

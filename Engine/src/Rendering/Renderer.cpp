@@ -204,7 +204,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 PROFILE_SCOPE("Prepass draw call loop");
                 for(auto* renderable : cm->GetComponents<Renderable>())
                 {
-                    auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+                    auto *transform  = cm->GetComponent<Transform>(renderable->GetOwner());
                     glm::mat4 model = transform->GetTransform();
                     {
                         PROFILE_SCOPE("Bind buffers");
@@ -333,39 +333,27 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                     writeDS[2].pImageInfo		= &debugImageInfo;*/
                     vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
                 }
+                visibleLightsBuffer.SetBufferPointer(m_visibleLightsBuffers[0]->GetBufferPointer(0));
             });
         lightCullPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
                 // TODO this barrier should be done automatically by the rendergraph
-                std::vector<VkBufferMemoryBarrier> barriersBefore(2);
-                barriersBefore[0].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-                barriersBefore[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                barriersBefore[0].buffer        = m_lightsBuffers[imageIndex]->GetBuffer(0);
-                barriersBefore[0].size          = m_lightsBuffers[imageIndex]->GetSize();
-                barriersBefore[1].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-                barriersBefore[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barriersBefore[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                barriersBefore[1].buffer        = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
-                ;
-                barriersBefore[1].size = VK_WHOLE_SIZE;
+                VkBufferMemoryBarrier2 barrierBefore = {};
+                barrierBefore.sType                  = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+                barrierBefore.srcStageMask           = VK_PIPELINE_STAGE_2_HOST_BIT;
+                barrierBefore.srcAccessMask          = VK_ACCESS_2_HOST_WRITE_BIT;
+                barrierBefore.dstStageMask           = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                barrierBefore.dstAccessMask          = VK_ACCESS_2_SHADER_READ_BIT;
+                barrierBefore.buffer                 = m_lightsBuffers[imageIndex]->GetBuffer(0);
+                barrierBefore.size                   = m_lightsBuffers[imageIndex]->GetSize();
 
-                // image barrier to wait for the depth image to be ready for reading
-                std::vector<VkImageMemoryBarrier> imageBarriersBefore(1);
-                imageBarriersBefore[0].sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                imageBarriersBefore[0].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                imageBarriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                imageBarriersBefore[0].oldLayout     = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-                imageBarriersBefore[0].newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                ;
-                imageBarriersBefore[0].image                       = m_renderGraph.GetPhysicalImage(depthTexture).GetImage();
-                imageBarriersBefore[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                imageBarriersBefore[0].subresourceRange.levelCount = 1;
-                imageBarriersBefore[0].subresourceRange.layerCount = 1;
+                VkDependencyInfo dependencyInfo         = {};
+                dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                dependencyInfo.bufferMemoryBarrierCount = 1;
+                dependencyInfo.pBufferMemoryBarriers    = &barrierBefore;
 
-
-                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), imageBarriersBefore.size(), imageBarriersBefore.data());
+                vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
 
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
@@ -375,33 +363,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 m_computePushConstants.debugMode = 1;
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
                 vkCmdDispatch(cb.GetCommandBuffer(), m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
-                // TODO this barrier should be done automatically by the rendergraph
-                std::vector<VkBufferMemoryBarrier> barriersAfter(2);
-                barriersAfter[0].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-                barriersAfter[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                barriersAfter[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barriersAfter[0].buffer        = m_lightsBuffers[imageIndex]->GetBuffer(0);
-                barriersAfter[0].size          = m_lightsBuffers[imageIndex]->GetSize();
-                barriersAfter[1].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-                barriersAfter[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                barriersAfter[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barriersAfter[1].buffer        = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
-                ;
-                barriersAfter[1].size = VK_WHOLE_SIZE;
-
-                // transition depth image back to depth attachment optimal
-                std::vector<VkImageMemoryBarrier> imageBarriersAfter(1);
-                imageBarriersAfter[0].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                imageBarriersAfter[0].srcAccessMask               = VK_ACCESS_SHADER_READ_BIT;
-                imageBarriersAfter[0].dstAccessMask               = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                imageBarriersAfter[0].oldLayout                   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageBarriersAfter[0].newLayout                   = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-                imageBarriersAfter[0].image                       = m_renderGraph.GetPhysicalImage(depthTexture).GetImage();
-                imageBarriersAfter[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                imageBarriersAfter[0].subresourceRange.levelCount = 1;
-                imageBarriersAfter[0].subresourceRange.layerCount = 1;
-
-                vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), imageBarriersAfter.size(), imageBarriersAfter.data());
             });
 
 
@@ -659,6 +620,7 @@ void Renderer::CreateDevice()
     device13Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     device13Features.dynamicRendering                 = VK_TRUE;
     device13Features.maintenance4                     = VK_TRUE;  // need it because the spirv compiler uses localsizeid even though it doesnt need to for now, but i might switch to spec constants in the future anyway
+    device13Features.synchronization2                 = VK_TRUE;
 
 
     VkDeviceCreateInfo createInfo      = {};
@@ -1153,7 +1115,7 @@ void Renderer::UpdateComputeDescriptors()
         VkDescriptorBufferInfo visibleLightsBI = {};
         visibleLightsBI.offset                 = 0;
         visibleLightsBI.range                  = VK_WHOLE_SIZE;
-        visibleLightsBI.buffer                 = m_visibleLightsBuffers[i]->GetBuffer(0);
+        visibleLightsBI.buffer                 = m_visibleLightsBuffers[0]->GetBuffer(0);
 
         std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
 
@@ -1457,6 +1419,7 @@ void Renderer::Render(double dt)
 
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
     }
+    vkDeviceWaitIdle(m_device);
     /*
         ComponentManager* cm = m_ecs->componentManager;
 

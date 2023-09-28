@@ -3,6 +3,9 @@
 #include "RenderPass.hpp"
 #include "vulkan/vulkan_core.h"
 
+class Image;
+class Buffer;
+
 class RenderingResource
 {
 public:
@@ -95,10 +98,14 @@ public:
         : RenderingResource(Type::Texture, name) {}
 
     void SetTextureInfo(const TextureInfo& textureInfo) { m_textureInfo = textureInfo; }
+    void SetImagePointer(Image* image) { m_image = image; }
+
     [[nodiscard]] TextureInfo GetTextureInfo() const { return m_textureInfo; }
+    [[nodiscard]] Image* GetImagePointer() const { return m_image; }
 
 private:
     TextureInfo m_textureInfo;
+    Image* m_image = nullptr;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };
 
 struct BufferInfo
@@ -115,9 +122,12 @@ public:
         : RenderingResource(Type::Buffer, name) {}
 
     void SetBufferInfo(const BufferInfo& bufferInfo) { m_bufferInfo = bufferInfo; }
+    void SetBufferPointer(Buffer* buffer) { m_buffer = buffer; }
 
     [[nodiscard]] BufferInfo GetBufferInfo() const { return m_bufferInfo; }
+    [[nodiscard]] Buffer* GetBufferPointer() const { return m_buffer; }
 
 private:
     BufferInfo m_bufferInfo;
+    Buffer* m_buffer = nullptr;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };

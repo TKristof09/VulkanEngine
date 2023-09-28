@@ -3,10 +3,10 @@
 #include "Rendering/RenderGraph/RenderPass.hpp"
 #include "Rendering/RenderGraph/RenderingResource.hpp"
 #include "Rendering/VulkanContext.hpp"
-#include "vulkan/vulkan.h"
 #include "vulkan/vulkan_core.h"
+#include <vulkan/vulkan.h>
 #include <stack>
-#include <stdint.h>
+#include <vulkan/vk_enum_string_helper.h>
 
 void RenderGraph::SetupSwapchainImages(const std::vector<VkImage>& swapchainImages)
 {
@@ -45,22 +45,22 @@ RenderingTextureResource& RenderGraph::GetTextureResource(const std::string& nam
     */
     auto it = m_resourceIds.find(name);
     if(it != m_resourceIds.end())
-        return static_cast<RenderingTextureResource&>(*m_ressources[it->second]);
+        return static_cast<RenderingTextureResource&>(*m_resources[it->second]);
 
-    m_resourceIds[name] = m_ressources.size();
-    m_ressources.push_back(std::make_unique<RenderingTextureResource>(name));
-    return static_cast<RenderingTextureResource&>(*m_ressources.back());
+    m_resourceIds[name] = m_resources.size();
+    m_resources.push_back(std::make_unique<RenderingTextureResource>(name));
+    return static_cast<RenderingTextureResource&>(*m_resources.back());
 }
 
 RenderingBufferResource& RenderGraph::GetBufferResource(const std::string& name)
 {
     auto it = m_resourceIds.find(name);
     if(it != m_resourceIds.end())
-        return static_cast<RenderingBufferResource&>(*m_ressources[it->second]);
+        return static_cast<RenderingBufferResource&>(*m_resources[it->second]);
 
-    m_resourceIds[name] = m_ressources.size();
-    m_ressources.push_back(std::make_unique<RenderingBufferResource>(name));
-    return static_cast<RenderingBufferResource&>(*m_ressources.back());
+    m_resourceIds[name] = m_resources.size();
+    m_resources.push_back(std::make_unique<RenderingBufferResource>(name));
+    return static_cast<RenderingBufferResource&>(*m_resources.back());
 }
 
 void RenderGraph::RegisterResourceRead(const std::string& name, const RenderPass2& renderPass)
@@ -80,6 +80,8 @@ void RenderGraph::Build()
     CreatePhysicalResources();
     CreatePhysicalPasses();
     InitialisePasses();
+    CheckPhysicalResources();
+
     AddSynchronization();
     ToDOT("graph.dot");
 
@@ -138,6 +140,7 @@ void RenderGraph::OrderPasses()
 
 void RenderGraph::FindResourceLifetimes()
 {
+    /*
     for(uint32_t i = 0; i < m_orderedPasses.size(); ++i)
     {
         auto* pass = m_orderedPasses[i];
@@ -165,7 +168,7 @@ void RenderGraph::FindResourceLifetimes()
             resource->AddAccess(i);
         for(auto* resource : pass->GetStorageBufferOutputs())
             resource->AddAccess(i);
-    }
+    }*/
 }
 
 void RenderGraph::CreatePhysicalResources()
@@ -175,6 +178,7 @@ void RenderGraph::CreatePhysicalResources()
         int32_t width  = -1;
         int32_t height = -1;
         ImageCreateInfo createInfo;
+        std::vector<uint32_t> virtualResourceIds;
     };
     std::vector<ImageInfo> imageInfos;
     struct BufferCreateInfo
@@ -182,6 +186,7 @@ void RenderGraph::CreatePhysicalResources()
         uint64_t size;
         VkBufferUsageFlags usage;
         VkMemoryPropertyFlags memoryFlags;
+        std::vector<uint32_t> virtualResourceIds;
     };
     std::vector<BufferCreateInfo> bufferInfos;
 
@@ -214,17 +219,18 @@ void RenderGraph::CreatePhysicalResources()
                 {
                     info.width  = VulkanContext::GetSwapchainExtent().width * inputTextureInfo.width;
                     info.height = VulkanContext::GetSwapchainExtent().height * inputTextureInfo.height;
-                    ;
                 }
             default:
                 LOG_ERROR("Unsupported size modifier");
             }
 
+            info.virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
             imageInfos.push_back(info);
         }
         else
         {
             imageInfos[resource->GetPhysicalId()].createInfo.usage |= resource->GetTextureInfo().usageFlags;
+            imageInfos[resource->GetPhysicalId()].virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
         }
     };
     auto AddOrUpdateBufferInfo = [&](RenderingBufferResource* resource)
@@ -234,12 +240,19 @@ void RenderGraph::CreatePhysicalResources()
             auto bufferInfo = resource->GetBufferInfo();
             uint32_t id     = m_transientBuffers.size();
             resource->SetPhysicalId(id);
-            bufferInfos.push_back({bufferInfo.size, bufferInfo.usageFlags, bufferInfo.memoryFlags});
+
+            BufferCreateInfo info{};
+            info.size        = bufferInfo.size;
+            info.usage       = bufferInfo.usageFlags;
+            info.memoryFlags = bufferInfo.memoryFlags;
+            info.virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
+            bufferInfos.push_back(info);
         }
         else
         {
-            bufferInfos[resource->GetPhysicalId()].usage |= resource->GetBufferInfo().usageFlags;
+            bufferInfos[resource->GetPhysicalId()].usage       |= resource->GetBufferInfo().usageFlags;
             bufferInfos[resource->GetPhysicalId()].memoryFlags |= resource->GetBufferInfo().memoryFlags;
+            bufferInfos[resource->GetPhysicalId()].virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
         }
     };
 
@@ -346,13 +359,62 @@ void RenderGraph::CreatePhysicalResources()
         }
     }
 
+    m_transientImages.reserve(imageInfos.size());
+    m_transientBuffers.reserve(bufferInfos.size());
     for(auto& info : imageInfos)
     {
-        m_transientImages.emplace_back(info.width, info.height, info.createInfo);
+        auto* ptr = &m_transientImages.emplace_back(info.width, info.height, info.createInfo);
+
+        for(auto id : info.virtualResourceIds)
+        {
+            static_cast<RenderingTextureResource*>(m_resources[id].get())->SetImagePointer(ptr);
+        }
     }
     for(auto& info : bufferInfos)
     {
-        m_transientBuffers.emplace_back(info.size, info.usage, info.memoryFlags);
+        auto* ptr = &m_transientBuffers.emplace_back(info.size, info.usage, info.memoryFlags);
+
+        for(auto id : info.virtualResourceIds)
+        {
+            static_cast<RenderingBufferResource*>(m_resources[id].get())->SetBufferPointer(ptr);
+        }
+    }
+
+    // TODO merge the usages of the virtual resources that have been merged together into the same physical resource
+    for(const auto& info : imageInfos)
+    {
+        std::unordered_map<uint32_t, std::pair<VkPipelineStageFlags2, VkAccessFlags2>> usages;
+        for(auto id : info.virtualResourceIds)
+        {
+            for(auto [passId, usage] : m_resources[id]->GetUsages())
+            {
+                auto [stages, access]  = usage;
+                usages[passId].first  |= stages;
+                usages[passId].second |= access;
+            }
+        }
+        for(auto id : info.virtualResourceIds)
+        {
+            m_resources[id]->m_uses = usages;
+        }
+    }
+
+    for(const auto& info : bufferInfos)
+    {
+        std::unordered_map<uint32_t, std::pair<VkPipelineStageFlags2, VkAccessFlags2>> usages;
+        for(auto id : info.virtualResourceIds)
+        {
+            for(auto [passId, usage] : m_resources[id]->GetUsages())
+            {
+                auto [stages, access]  = usage;
+                usages[passId].first  |= stages;
+                usages[passId].second |= access;
+            }
+        }
+        for(auto id : info.virtualResourceIds)
+        {
+            m_resources[id]->m_uses = usages;
+        }
     }
 }
 
@@ -477,6 +539,39 @@ void RenderGraph::CreatePhysicalPasses()
     }
 }
 
+void RenderGraph::CheckPhysicalResources()
+{
+    bool ok = true;
+    for(auto& resource : m_resources)
+    {
+        switch(resource->GetType())
+        {
+        case RenderingResource::Type::Texture:
+            {
+                auto* texture = static_cast<RenderingTextureResource*>(resource.get());
+                if(!texture->GetImagePointer())
+                {
+                    LOG_ERROR("Texture resource %s has no image assigned", texture->GetName());
+                    ok = false;
+                }
+            }
+            break;
+        case RenderingResource::Type::Buffer:
+            {
+                auto* buffer = static_cast<RenderingBufferResource*>(resource.get());
+                if(!buffer->GetBufferPointer())
+                {
+                    LOG_ERROR("Buffer resource %s has no buffer assigned", buffer->GetName());
+                    ok = false;
+                }
+            }
+            break;
+        }
+    }
+    if(!ok)
+        throw std::runtime_error("Physical resources are not valid");
+}
+
 
 inline VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access)
 {
@@ -484,7 +579,7 @@ inline VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access)
         return VK_IMAGE_LAYOUT_GENERAL;
 
     // attachment with write access
-    if(access & VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+    if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT))
         return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
     // read only attachment
     if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT))
@@ -499,50 +594,101 @@ inline VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access)
     return VK_IMAGE_LAYOUT_GENERAL;
 }
 
-inline bool IsDepthStencilFormat(VkFormat format)
+inline bool IsDepthFormat(VkFormat format)
 {
-    return format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_X8_D24_UNORM_PACK32 || format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+    return format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+inline bool HasStencil(VkFormat format)
+{
+    return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+}
+
+bool HasWriteAccess(VkAccessFlags2 access)
+{
+    return access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT);
 }
 
 void RenderGraph::AddSynchronization()
 {
     // just a helper function to avoid code duplication
-    auto SetupImageSync = [&](uint32_t i, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+
+    /*
+    auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
     {
         // keep track of the stages we already synced this resource write to
         // in order to avoid redundant syncyng
-        VkPipelineStageFlags2 alreadySyncedStages = 0;
+        VkPipelineStageFlags2 alreadySyncedToStages = 0;
 
-        uint32_t srcPassId = m_orderedPasses[i]->GetId();
-        for(uint32_t j = i + 1; j < m_orderedPasses.size(); ++j)
+        uint32_t srcPassId      = m_orderedPasses[srcIndex]->GetId();
+        bool srcReadOnly        = !HasWriteAccess(srcAccess);
+        VkImageLayout srcLayout = ConvertAccessToLayout(srcAccess);
+
+
+        for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
         {
-            auto it = resource->GetUsages().find(m_orderedPasses[j]->GetId());
+            auto it = resource->GetUsages().find(m_orderedPasses[dstIndex]->GetId());
             if(it == resource->GetUsages().end())
                 continue;
 
-            auto [stages, usage] = it->second;
-            if(stages & alreadySyncedStages)
+            auto [stages, usage]    = it->second;
+            uint32_t dstPassId      = m_orderedPasses[dstIndex]->GetId();
+            bool dstReadOnly        = !HasWriteAccess(usage);
+            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
+            VkImage img             = resource->GetImagePointer()->GetImage();
+
+            // if read to read and no layout transition then we don't need to sync
+            if(srcReadOnly && dstReadOnly && srcLayout == dstLayout)
                 continue;
 
-            uint32_t dstPassId = m_orderedPasses[j]->GetId();
+            if(stages & alreadySyncedToStages)
+                continue;
 
-            // if it's used in the next pass we should use a normal pipeline barrier because apparently
-            // using a VkEvent isn't as good for performance as a normal barrier if we set it then immediately wait for it
-            Image& image = m_transientImages[resource->GetPhysicalId()];
+            // find and delete any events from passes that are earlier in the order and remove the barrier corresponging to this resource from them because we no longer need it
+            // because current srcpass is using the same resource as that previous pass so the two must be synced with eachother, and this means that dstpass will still be synced with the previous pass by a synch chain through the current srcpass
+            for(uint32_t k = 0; k < srcindex; ++k)
+            {
+                auto it = m_events.find({m_orderedpasses[k]->getid(), dstpassid});
+                if(it != m_events.end())
+                {
+                    // r(prev)->r(src)->w(dst) and no layout transition between the rs then we remove r1->w (in case its a layout transition) but we need to add back the sync from r1->w because since r1 and r2 aren't synced there wouldn't be a sync chain syncing r1 with w so we add r1's stage and access flag to the r2->w sync
+                    // in addition, by doing this we basically regroup the syncing of a chain of reads (without layout transitions) into a single sync at the end of the chain
+                    auto prevusageit = resource->getusages().find(m_orderedpasses[k]->getid());
+                    if(prevusageit == resource->getusages().end())
+                        continue;
+
+                    vkaccessflags2 prevaccess = prevusageit->second.second;
+                    if(!haswriteaccess(prevaccess) && srcreadonly && !dstreadonly && (convertaccesstolayout(prevaccess) == srclayout))
+                    {
+                        vkimagememorybarrier2 barrier;
+                        if(it->second.getbarrier(img, barrier) && !haswriteaccess(barrier.srcaccessmask))
+                        {
+                            stages |= barrier.srcstagemask;
+                            usage |= barrier.srcaccessmask;
+                        }
+                    }
+                    it->second.removebarrier(resource->getimagepointer()->getimage());
+                }
+            }
+
+
             VkImageMemoryBarrier2 barrier{};
             barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
             barrier.srcStageMask        = srcStage;
             barrier.dstStageMask        = stages;
             barrier.srcAccessMask       = srcAccess;
             barrier.dstAccessMask       = usage;
-            barrier.oldLayout           = ConvertAccessToLayout(srcAccess);
-            barrier.newLayout           = ConvertAccessToLayout(usage);
+            barrier.oldLayout           = srcLayout;
+            barrier.newLayout           = dstLayout;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image               = image.GetImage();
+            barrier.image               = img;
 
-            if(IsDepthStencilFormat(image.GetFormat()))
-                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            if(IsDepthFormat(resource->GetImagePointer()->GetFormat()))
+            {
+                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                if(HasStencil(resource->GetImagePointer()->GetFormat()))
+                    barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
             else
                 barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
@@ -550,7 +696,10 @@ void RenderGraph::AddSynchronization()
             barrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
-            if(j == i + 1)
+
+
+            // if it's used in the next pass we should use a normal pipeline barrier because apparently using a VkEvent isn't as good for performance as a normal barrier if we set it then immediately wait for it
+            if(dstIndex == srcIndex + 1)
             {
                 m_imageBarriers[srcPassId].push_back(barrier);
             }
@@ -560,10 +709,177 @@ void RenderGraph::AddSynchronization()
                 auto& event = m_events[{srcPassId, dstPassId}];
                 event.AddBarrier(barrier);
             }
-            alreadySyncedStages |= stages;
+            alreadySyncedToStages |= stages;
         }
     };
-    auto SetupBufferSync = [&](uint32_t i, RenderingBufferResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+*/
+    auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+    {
+        // a resource can only be transitioned once after a pass, now matter how many times it is used in a different layout, so we transition it into the layout that is used first and we add the stage/access masks of further passes that use it in the same layout as what we transition it to up until it should be transitioned into a different layout, after that we don't sync
+        VkImageMemoryBarrier2 transitionBarrier{};
+        transitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+
+        uint32_t srcPassId            = m_orderedPasses[srcIndex]->GetId();
+        VkImageLayout srcLayout       = ConvertAccessToLayout(srcAccess);
+        bool srcReadOnly              = !HasWriteAccess(srcAccess);
+        bool first                    = true;
+        VkImageLayout nextLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+        int32_t transitionIndex       = -1;
+        VkImage img                   = resource->GetImagePointer()->GetImage();
+        VkImageAspectFlags aspectMask = 0;
+
+        if(IsDepthFormat(resource->GetImagePointer()->GetFormat()))
+        {
+            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            if(HasStencil(resource->GetImagePointer()->GetFormat()))
+                aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        else
+            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+
+        // find all read accesses that happened before srcpass because we need to add them to the transitionbarrier.srcStage/Accesses in case there is a transition right after srcpass
+        // need to do this because read to read aren't synced so there wouldn't be a sync chain through srcPass
+        if(srcReadOnly)
+        {
+            for(uint32_t k = 0; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+                if(!HasWriteAccess(usage) && srcReadOnly && (ConvertAccessToLayout(usage) == srcLayout))
+                {
+                    transitionBarrier.srcStageMask  |= stages;
+                    transitionBarrier.srcAccessMask |= usage;
+                }
+            }
+        }
+
+        for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
+        {
+            uint32_t dstPassId = m_orderedPasses[dstIndex]->GetId();
+            auto it            = resource->GetUsages().find(dstPassId);
+
+            if(it == resource->GetUsages().end())
+                continue;
+
+            auto [stages, usage]    = it->second;
+            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
+            bool dstReadOnly        = !HasWriteAccess(usage);
+
+            VkPipelineStageFlags2 batchedSrcStage = srcStage;
+            VkAccessFlags2 batchedSrcAccess       = srcAccess;
+
+            for(uint32_t k = 0; k < srcIndex; ++k)
+            {
+                auto it = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
+                if(it != m_events.end())
+                {
+                    // R(prev)->R(src)->X(dst) and no layout transition between the Rs then we remove R1->X but we need to add back the sync from R1->W because since R1 and R2 aren't synced there wouldn't be a sync chain syncing R1 with W so we add R1's stage and access flag to the R2->W sync
+                    // in addition, by doing this we basically regroup the syncing of a chain of reads (without layout transitions) into a single sync at the end of the chain
+                    auto prevUsageIt = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                    if(prevUsageIt == resource->GetUsages().end())
+                        continue;
+
+                    VkAccessFlags2 prevAccess = prevUsageIt->second.second;
+                    if(!HasWriteAccess(prevAccess) && srcReadOnly && (ConvertAccessToLayout(prevAccess) == srcLayout))
+                    {
+                        VkImageMemoryBarrier2 barrier;
+                        if(it->second.GetBarrier(img, barrier) && !HasWriteAccess(barrier.srcAccessMask))
+                        {
+                            batchedSrcStage  |= barrier.srcStageMask;
+                            batchedSrcAccess |= barrier.srcAccessMask;
+                        }
+                    }
+                    it->second.RemoveBarrier(resource->GetImagePointer()->GetImage());
+                }
+            }
+
+            if(first)
+            {
+                nextLayout = dstLayout;
+                if(srcLayout != dstLayout)
+                {
+                    transitionBarrier.srcStageMask        |= batchedSrcStage;
+                    transitionBarrier.srcAccessMask       |= batchedSrcAccess;
+                    transitionBarrier.dstStageMask         = stages;
+                    transitionBarrier.dstAccessMask        = usage;
+                    transitionBarrier.oldLayout            = srcLayout;
+                    transitionBarrier.newLayout            = dstLayout;
+                    transitionBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    transitionBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    transitionBarrier.image                = img;
+
+                    transitionBarrier.subresourceRange.aspectMask     = aspectMask;
+                    transitionBarrier.subresourceRange.baseMipLevel   = 0;
+                    transitionBarrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+                    transitionBarrier.subresourceRange.baseArrayLayer = 0;
+                    transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+
+                    transitionIndex = dstIndex;
+                }
+            }
+            if(nextLayout != dstLayout)
+                break;
+
+            if(transitionIndex != -1)
+            {
+                transitionBarrier.dstStageMask  |= stages;
+                transitionBarrier.dstAccessMask |= usage;
+            }
+            else
+            {
+                if(srcReadOnly && dstReadOnly)
+                    continue;
+
+                VkImageMemoryBarrier2 barrier{};
+                barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+                barrier.srcStageMask        = batchedSrcStage;
+                barrier.dstStageMask        = stages;
+                barrier.srcAccessMask       = batchedSrcAccess;
+                barrier.dstAccessMask       = usage;
+                barrier.oldLayout           = srcLayout;  // srcLayout should be equal to dstLayout
+                barrier.newLayout           = dstLayout;  // so no transition
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image               = img;
+
+                barrier.subresourceRange.aspectMask     = aspectMask;
+                barrier.subresourceRange.baseMipLevel   = 0;
+                barrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+                barrier.subresourceRange.baseArrayLayer = 0;
+                barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+
+                if(dstIndex == srcIndex + 1)
+                {
+                    m_imageBarriers[srcPassId].push_back(barrier);
+                }
+                else
+                {
+                    auto& event = m_events[{srcPassId, dstPassId}];
+                    event.AddBarrier(barrier);
+                }
+            }
+
+            first = false;
+        }
+        if(transitionIndex != -1)
+        {
+            if(srcIndex + 1 == transitionIndex)
+            {
+                m_imageBarriers[srcPassId].push_back(transitionBarrier);
+            }
+            else
+            {
+                auto& event = m_events[{srcPassId, m_orderedPasses[transitionIndex]->GetId()}];
+                event.AddBarrier(transitionBarrier);
+            }
+        }
+    };
+    auto SetupBufferSync
+        = [&](uint32_t i, RenderingBufferResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
     {
         // keep track of the stages we already synced this resource write to
         // in order to avoid redundant syncyng
@@ -576,14 +892,21 @@ void RenderGraph::AddSynchronization()
             if(it == resource->GetUsages().end())
                 continue;
 
+            uint32_t dstPassId = m_orderedPasses[j]->GetId();
+
+            // see comment in SetupImageSync for why we do this
+            for(uint32_t k = 0; k < j; ++k)
+            {
+                auto it = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
+                if(it != m_events.end())
+                    it->second.RemoveBarrier(resource->GetBufferPointer()->GetVkBuffer());
+            }
+
             auto [stages, usage] = it->second;
             if(stages & alreadySyncedStages)
                 continue;
 
-            uint32_t dstPassId = m_orderedPasses[j]->GetId();
 
-            // if it's used in the next pass we should use a normal pipeline barrier because apparently
-            // using a VkEvent isn't as good for performance as a normal barrier if we set it then immediately wait for it
             VkBufferMemoryBarrier2 barrier{};
             barrier.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
             barrier.srcStageMask        = srcStage;
@@ -592,10 +915,12 @@ void RenderGraph::AddSynchronization()
             barrier.dstAccessMask       = usage;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.buffer              = VK_NULL_HANDLE;  // m_transientBuffers[resource->GetPhysicalId()].GetVkBuffer();
+            barrier.buffer              = resource->GetBufferPointer()->GetVkBuffer();
             barrier.offset              = 0;
             barrier.size                = VK_WHOLE_SIZE;
 
+
+            // if it's used in the next pass we should use a normal pipeline barrier because apparently using a VkEvent isn't as good for performance as a normal barrier if we set it then immediately wait for it
             if(j == i + 1)
             {
                 m_bufferBarriers[srcPassId].push_back(barrier);
@@ -610,8 +935,8 @@ void RenderGraph::AddSynchronization()
         }
     };
 
-    m_imageBarriers.resize(m_orderedPasses.size());
-    m_bufferBarriers.resize(m_orderedPasses.size());
+    m_imageBarriers.resize(m_renderPasses.size());
+    m_bufferBarriers.resize(m_renderPasses.size());
 
     for(uint32_t i = 0; i < m_orderedPasses.size(); ++i)
     {
@@ -619,11 +944,22 @@ void RenderGraph::AddSynchronization()
         {
             SetupImageSync(i, resource, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
         }
+        for(auto* resource : m_orderedPasses[i]->GetColorInputs())
+        {
+            if(!resource)
+                continue;
+            SetupImageSync(i, resource, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
+        }
 
         auto* depthOutput = m_orderedPasses[i]->GetDepthOutput();
         if(depthOutput)
         {
             SetupImageSync(i, depthOutput, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+        }
+        auto* depthInput = m_orderedPasses[i]->GetDepthInput();
+        if(depthInput)
+        {
+            SetupImageSync(i, depthInput, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
         }
 
         // TODO: do resolve stuff
@@ -640,6 +976,30 @@ void RenderGraph::AddSynchronization()
 
             SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_SHADER_WRITE_BIT);
         }
+        for(auto* resource : m_orderedPasses[i]->GetStorageBufferInputs())
+        {
+            if(!resource)
+                continue;
+
+            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
+
+            SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_SHADER_READ_BIT);
+        }
+        for(auto* resource : m_orderedPasses[i]->GetUniformBufferInputs())
+        {
+            if(!resource)
+                continue;
+
+            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
+
+            SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_UNIFORM_READ_BIT);
+        }
+        for(auto* resource : m_orderedPasses[i]->GetTextureInputs())
+        {
+            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
+
+            SetupImageSync(i, resource, srcStage, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        }
     }
 
 
@@ -649,8 +1009,27 @@ void RenderGraph::AddSynchronization()
     for(auto& [passes, event] : m_events)
     {
         const auto& [srcPassId, dstPassId] = passes;
+        // remove the event if it doesn't have any barriers (this can be the case because we potentially remove barriers one by one in the SetupXSync functions)
+        if(event.Empty())
+        {
+            m_events.erase(passes);
+            continue;
+        }
+        event.Allocate();  // actually create the event now that we know that it will be used
         m_eventSignals[srcPassId].push_back(&event);
         m_eventWaits[dstPassId].push_back(&event);
+    }
+
+    auto* renderTargetResource = m_resources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]].get();
+    for(uint32_t i = m_orderedPasses.size() - 1; i >= 0; --i)
+    {
+        auto it = renderTargetResource->GetUsages().find(m_orderedPasses[i]->GetId());
+        if(it != renderTargetResource->GetUsages().end())
+        {
+            auto [stages, usage]      = it->second;
+            m_finalRenderTargetLayout = ConvertAccessToLayout(usage);
+            break;
+        }
     }
 }
 
@@ -673,7 +1052,9 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
     }
     */
 
-    auto& renderTarget = m_transientImages[m_ressources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]]->GetPhysicalId()];
+    auto& renderTarget = m_transientImages[m_resources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]]->GetPhysicalId()];
+
+
     // transfer swapchain image to color attachment layout
     {
         VkImageMemoryBarrier swapchainBarrier{};
@@ -699,7 +1080,7 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
         VkImageMemoryBarrier renderTargetBarrier{};
         renderTargetBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         renderTargetBarrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-        renderTargetBarrier.newLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        renderTargetBarrier.newLayout                       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
         renderTargetBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         renderTargetBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         renderTargetBarrier.image                           = renderTarget.GetImage();
@@ -711,11 +1092,38 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
         renderTargetBarrier.srcAccessMask                   = 0;
         renderTargetBarrier.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+        // TODO remove
+        VkImageMemoryBarrier tmpDepthBarrier{};
+        tmpDepthBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        tmpDepthBarrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        tmpDepthBarrier.newLayout                       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        tmpDepthBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        tmpDepthBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        tmpDepthBarrier.image                           = m_transientImages[m_resources[m_resourceIds["depthImage"]]->GetPhysicalId()].GetImage();
+        tmpDepthBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
+        tmpDepthBarrier.subresourceRange.baseMipLevel   = 0;
+        tmpDepthBarrier.subresourceRange.baseArrayLayer = 0;
+        tmpDepthBarrier.subresourceRange.layerCount     = 1;
+        tmpDepthBarrier.subresourceRange.levelCount     = 1;
+        tmpDepthBarrier.srcAccessMask                   = 0;
+        tmpDepthBarrier.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
         vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &renderTargetBarrier);
+        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
     }
 
     for(auto& pass : m_orderedPasses)
     {
+        std::vector<VkEvent> events;
+        std::vector<VkDependencyInfo> dependencies;
+        for(auto* event : m_eventWaits[pass->GetId()])
+        {
+            events.push_back(event->GetEvent());
+            dependencies.push_back(event->GetDependencyInfo());
+        }
+        if(!events.empty())
+            vkCmdWaitEvents2(cb.GetCommandBuffer(), events.size(), events.data(), dependencies.data());
+
         if(pass->GetType() == QueueTypeFlagBits::Compute)
         {
             pass->Execute(cb, frameIndex);
@@ -726,13 +1134,28 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
             pass->Execute(cb, frameIndex);
             vkCmdEndRendering(cb.GetCommandBuffer());
         }
+
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.dependencyFlags          = 0;
+        dependencyInfo.bufferMemoryBarrierCount = m_bufferBarriers[pass->GetId()].size();
+        dependencyInfo.pBufferMemoryBarriers    = m_bufferBarriers[pass->GetId()].data();
+        dependencyInfo.imageMemoryBarrierCount  = m_imageBarriers[pass->GetId()].size();
+        dependencyInfo.pImageMemoryBarriers     = m_imageBarriers[pass->GetId()].data();
+
+        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
+
+        for(auto* event : m_eventSignals[pass->GetId()])
+        {
+            event->Set(cb);
+        }
     }
 
     // Transfer the render target into transfer src optimal layout
     {
         VkImageMemoryBarrier renderTargetBarrier{};
         renderTargetBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        renderTargetBarrier.oldLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        renderTargetBarrier.oldLayout                       = m_finalRenderTargetLayout;
         renderTargetBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         renderTargetBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         renderTargetBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
@@ -791,6 +1214,63 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
 
 void RenderGraph::ToDOT(const std::string& filename)
 {
+    auto AddImageBarrierToTooltip = [&](std::string& tooltip, VkImageMemoryBarrier2 imgBarrier)
+    {
+        tooltip += "Image barrier:\\n";
+        tooltip += "   srcStage: ";
+        tooltip += string_VkPipelineStageFlags2(imgBarrier.srcStageMask);
+        tooltip += "\\n";
+        tooltip += "   srcAccess: ";
+        tooltip += string_VkAccessFlags2(imgBarrier.srcAccessMask);
+        tooltip += "\\n";
+        tooltip += "   dstStage: ";
+        tooltip += string_VkPipelineStageFlags2(imgBarrier.dstStageMask);
+        tooltip += "\\n";
+        tooltip += "   dstAccess: ";
+        tooltip += string_VkAccessFlags2(imgBarrier.dstAccessMask);
+        tooltip += "\\n";
+        tooltip += "   oldLayout: ";
+        tooltip += string_VkImageLayout(imgBarrier.oldLayout);
+        tooltip += "\\n";
+        tooltip += "   newLayout: ";
+        tooltip += string_VkImageLayout(imgBarrier.newLayout);
+        tooltip += "\\n";
+        tooltip += "   srcQueueFamily: ";
+        tooltip += std::to_string(imgBarrier.srcQueueFamilyIndex);
+        tooltip += "\\n";
+        tooltip += "   dstQueueFamily: ";
+        tooltip += std::to_string(imgBarrier.dstQueueFamilyIndex);
+        tooltip += "\\n";
+        tooltip += "   aspect: ";
+        tooltip += string_VkImageAspectFlags(imgBarrier.subresourceRange.aspectMask);
+        tooltip += "\\n";
+    };
+
+    auto AddBufferBarrierToTooltip
+        = [&](std::string& tooltip, VkBufferMemoryBarrier2 bufferBarrier)
+    {
+        tooltip += "Buffer barrier:\\n";
+        tooltip += "   srcStage: ";
+        tooltip += string_VkPipelineStageFlags2(bufferBarrier.srcStageMask);
+        tooltip += "\\n";
+        tooltip += "   srcAccess: ";
+        tooltip += string_VkAccessFlags2(bufferBarrier.srcAccessMask);
+        tooltip += "\\n";
+        tooltip += "   dstStage: ";
+        tooltip += string_VkPipelineStageFlags2(bufferBarrier.dstStageMask);
+        tooltip += "\\n";
+        tooltip += "   dstAccess: ";
+        tooltip += string_VkAccessFlags2(bufferBarrier.dstAccessMask);
+        tooltip += "\\n";
+        tooltip += "   srcQueueFamily: ";
+        tooltip += std::to_string(bufferBarrier.srcQueueFamilyIndex);
+        tooltip += "\\n";
+        tooltip += "   dstQueueFamily: ";
+        tooltip += std::to_string(bufferBarrier.dstQueueFamilyIndex);
+        tooltip += "\\n";
+    };
+
+
     std::ofstream file(filename);
     file << "digraph G {\n";
     for(uint32_t node = 0; node < m_graph.size(); ++node)
@@ -799,21 +1279,50 @@ void RenderGraph::ToDOT(const std::string& filename)
         for(const auto& edge : m_graph[node])
         {
             file << m_renderPasses[node]->GetName() << " -> " << m_renderPasses[edge]->GetName();
+            std::string syncMethod;
+            std::string tooltip;
             if(m_events.find({node, edge}) != m_events.end())
             {
-                file << " [label=\"Event\"];\n";
-            }
-            else if(!m_imageBarriers[node].empty())
-            {
-                file << " [label=\"ImageBarrier\"];\n";
-            }
-            else if(!m_bufferBarriers[node].empty())
-            {
-                file << " [label=\"BufferBarrier\"];\n";
+                syncMethod += "Event, ";
+                for(auto imgBarrier : m_events[{node, edge}].GetImageBarriers())
+                {
+                    AddImageBarrierToTooltip(tooltip, imgBarrier);
+                }
+                for(auto bufferBarrier : m_events[{node, edge}].GetBufferBarriers())
+                {
+                    AddBufferBarrierToTooltip(tooltip, bufferBarrier);
+                }
             }
             else
-                file << ";\n";
+            {
+                if(!m_imageBarriers[node].empty())
+                {
+                    syncMethod += "ImageBarrier, ";
+                    for(auto imgBarrier : m_imageBarriers[node])
+                    {
+                        AddImageBarrierToTooltip(tooltip, imgBarrier);
+                    }
+                }
+                if(!m_bufferBarriers[node].empty())
+                {
+                    syncMethod += "BufferBarrier, ";
+                    for(auto bufferBarrier : m_bufferBarriers[node])
+                    {
+                        AddBufferBarrierToTooltip(tooltip, bufferBarrier);
+                    }
+                }
+            }
+            if(!syncMethod.empty())
+            {
+                file << "[label=\"" << syncMethod << "\"][labeltooltip=\"" << tooltip << "\"]";
+            }
+            file << "\n";
         }
+    }
+    for(uint32_t i = 0; i < m_orderedPasses.size(); ++i)
+    {
+        auto* pass = m_orderedPasses[i];
+        file << pass->GetName() << "[label=\"" << i + 1 << ": " << pass->GetName() << "\"]\n";
     }
     file << "}";
     file.close();
