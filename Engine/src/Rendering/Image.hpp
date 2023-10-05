@@ -61,7 +61,7 @@ public:
     }
 
 	virtual ~Image();
-	void Free(bool destroyOnlyImageView = false);
+	void Free();
     void TransitionLayout(VkImageLayout newLayout);
     void GenerateMipmaps(VkImageLayout newLayout);
 
@@ -87,4 +87,5 @@ protected:
     VkImageLayout   m_layout;
     VkImageAspectFlags m_aspect;
 
+    bool m_onlyHandleImageView = false;
 };

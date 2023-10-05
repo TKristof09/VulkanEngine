@@ -3,6 +3,7 @@
 #include "VulkanContext.hpp"
 #include "Shader.hpp"
 #include "RenderPass.hpp"
+#include "vulkan/vulkan_core.h"
 
 const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 32;
 class Pipeline;
@@ -15,21 +16,24 @@ enum class PipelineType{
 struct PipelineCreateInfo
 {
 	PipelineType type;
-	
+
 	bool allowDerivatives = false;
 	Pipeline* parent = nullptr;
 
-	RenderPass* renderPass = nullptr;
-	uint32_t subpass = 0;
-
 
 	// for GRAPHICS
+    bool useColor         = true;
+    bool useDepth         = false;
+    bool useStencil       = false;
 	bool useColorBlend    = false;
 	bool useMultiSampling = false;
-	bool useDepth         = false;
-	bool useStencil       = false;
 	bool useTesselation   = false; // not supported yet
 	bool useDynamicState  = false; // not supported yet
+
+
+    std::vector<VkFormat> colorFormats;
+    VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
+    VkFormat stencilFormat = VK_FORMAT_S8_UINT; // TODO look into stencil stuff
 
 	VkShaderStageFlags stages = 0;
 	VkExtent2D viewportExtent = {};
@@ -40,7 +44,7 @@ struct PipelineCreateInfo
 	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
 
 	bool depthClampEnable = false;
-	
+
 	bool isGlobal = false;
 };
 
@@ -139,7 +143,7 @@ private:
 		VkPipelineStageFlags stages;
 
 		size_t size;
-		
+
 		uint32_t binding;
 		uint32_t set;
 		uint32_t count;
@@ -154,7 +158,7 @@ private:
 	};
 	struct PushConstantInfo
 	{
-		
+
 		VkShaderStageFlags stages;
 		uint32_t size;
 		uint32_t offset;

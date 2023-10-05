@@ -17,7 +17,8 @@ m_image(createInfo.image),
 m_imageView(VK_NULL_HANDLE),
 m_memory(VK_NULL_HANDLE),
 m_layout(VK_IMAGE_LAYOUT_UNDEFINED),
-m_aspect(createInfo.aspectFlags)
+m_aspect(createInfo.aspectFlags),
+m_onlyHandleImageView(createInfo.image != VK_NULL_HANDLE)
 {
 	if(width == 0 && height == 0)
 		return;
@@ -96,7 +97,7 @@ Image::~Image()
 	Free();
 }
 
-void Image::Free(bool destroyOnlyImageView)
+void Image::Free()
 {
 	if(m_image == VK_NULL_HANDLE || m_imageView == VK_NULL_HANDLE)
 		return;
@@ -104,7 +105,7 @@ void Image::Free(bool destroyOnlyImageView)
     vkDestroyImageView(VulkanContext::GetDevice(), m_imageView, nullptr);
     m_imageView = VK_NULL_HANDLE;
 
-	if(!destroyOnlyImageView)
+	if(!m_onlyHandleImageView)
 	{
 		vkDestroyImage(VulkanContext::GetDevice(), m_image, nullptr);
         m_image = VK_NULL_HANDLE;
