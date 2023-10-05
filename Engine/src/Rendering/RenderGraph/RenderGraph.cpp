@@ -864,7 +864,12 @@ void RenderGraph::AddSynchronization()
             }
 
             first = false;
+            // we can stop syncing to passes after the first write, because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
+            if(!dstReadOnly)
+                break;
         }
+
+
         if(transitionIndex != -1)
         {
             if(srcIndex + 1 == transitionIndex)
@@ -1041,7 +1046,7 @@ void RenderGraph::InitialisePasses()
     }
 }
 
-void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
+void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 {
     assert(m_isBuilt);
     // we don't allow reading from the swapchain image, I don't think it makes sense
@@ -1150,6 +1155,22 @@ void RenderGraph::Execute(CommandBuffer& cb, uint32_t frameIndex)
             event->Set(cb);
         }
     }
+
+    for(auto& passEvents : m_eventSignals)
+    {
+        for(auto* event : passEvents)
+        {
+            event->Reset(cb);
+        }
+    }
+    for(auto& passEvents : m_eventWaits)
+    {
+        for(auto* event : passEvents)
+        {
+            event->Reset(cb);
+        }
+    }
+
 
     // Transfer the render target into transfer src optimal layout
     {
