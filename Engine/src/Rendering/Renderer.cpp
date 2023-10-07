@@ -88,10 +88,12 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
     SetupDebugMessenger();
     CreateDevice();
     CreateSwapchain();
+    CreateVmaAllocator();
 
-    m_computePushConstants.viewportSize = {m_swapchainExtent.width, m_swapchainExtent.height};
-    m_computePushConstants.tileNums     = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);  // TODO Make this take into account TILE_SIZE from common.glsl
-    m_computePushConstants.lightNum     = 0;
+    m_computePushConstants.viewportSize
+        = {m_swapchainExtent.width, m_swapchainExtent.height};
+    m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);  // TODO Make this take into account TILE_SIZE from common.glsl
+    m_computePushConstants.lightNum = 0;
     m_changedLights.resize(m_swapchainImages.size());
 
     m_transformDescSets.resize(m_swapchainImages.size());
