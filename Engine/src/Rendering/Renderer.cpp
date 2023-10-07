@@ -12,6 +12,8 @@
 #include <array>
 #include <string>
 #include <vulkan/vulkan.h>
+#define VMA_IMPLEMENTATION
+#include <vma/vk_mem_alloc.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -153,7 +155,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 std::vector<Vertex> vertices;
                 for(glm::vec4& vert : boundingVertices)
                 {
-                    vert = inverseVP * vert;
+                    vert  = inverseVP * vert;
                     vert /= vert.w;
                     vertices.push_back({vert, {}, {}, {}});
                 }
@@ -204,7 +206,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 PROFILE_SCOPE("Prepass draw call loop");
                 for(auto* renderable : cm->GetComponents<Renderable>())
                 {
-                    auto *transform  = cm->GetComponent<Transform>(renderable->GetOwner());
+                    auto* transform = cm->GetComponent<Transform>(renderable->GetOwner());
                     glm::mat4 model = transform->GetTransform();
                     {
                         PROFILE_SCOPE("Bind buffers");
@@ -650,6 +652,16 @@ void Renderer::CreateDevice()
         vkCreateQueryPool(m_device, &queryCI, nullptr, &m_queryPools[i]);
     }
     m_timestampPeriod = VulkanContext::m_gpuProperties.limits.timestampPeriod;
+}
+
+void Renderer::CreateVmaAllocator()
+{
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice         = m_gpu;
+    allocatorInfo.device                 = m_device;
+    allocatorInfo.instance               = m_instance;
+    // allocatorInfo.flags                  = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaAllocator), "Failed to create vma allocator");
 }
 
 void Renderer::CreateSwapchain()
@@ -1334,7 +1346,7 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
         // clip space to world space
         for(glm::vec4& vert : boundingVertices)
         {
-            vert = invCamera * vert;
+            vert  = invCamera * vert;
             vert /= vert.w;
         }
 
@@ -2005,8 +2017,8 @@ int RateDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const std::vector<
     if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
         score += 1000;
 
-    score += deviceProperties.limits.maxImageDimension2D;
-    bool temp = FindQueueFamilies(device, surface).IsComplete();
+    score     += deviceProperties.limits.maxImageDimension2D;
+    bool temp  = FindQueueFamilies(device, surface).IsComplete();
     // example: if the application cannot function without a geometry shader
     if(!deviceFeatures.geometryShader || !temp || !requiredExtensions.empty() || !swapChainGood || !deviceFeatures.samplerAnisotropy)
     {

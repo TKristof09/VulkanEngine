@@ -23,14 +23,14 @@ void RenderGraph::SetupSwapchainImages(const std::vector<VkImage>& swapchainImag
     }
 }
 
-RenderPass2& RenderGraph::AddRenderPass(const std::string& name, QueueTypeFlagBits type)
+RenderPass& RenderGraph::AddRenderPass(const std::string& name, QueueTypeFlagBits type)
 {
     auto it = m_renderPassIds.find(name);
     if(it != m_renderPassIds.end())
         return *m_renderPasses[it->second];
 
     uint32_t id = m_renderPasses.size();
-    m_renderPasses.emplace_back(new RenderPass2(*this, id, type));
+    m_renderPasses.emplace_back(new RenderPass(*this, id, type));
     m_renderPasses.back()->SetName(name);
     m_renderPassIds[name] = id;
     return *m_renderPasses.back();
@@ -63,12 +63,12 @@ RenderingBufferResource& RenderGraph::GetBufferResource(const std::string& name)
     return static_cast<RenderingBufferResource&>(*m_resources.back());
 }
 
-void RenderGraph::RegisterResourceRead(const std::string& name, const RenderPass2& renderPass)
+void RenderGraph::RegisterResourceRead(const std::string& name, const RenderPass& renderPass)
 {
     m_resourceReads[name].push_back(renderPass.GetId());
 }
 
-void RenderGraph::RegisterResourceWrite(const std::string& name, const RenderPass2& renderPass)
+void RenderGraph::RegisterResourceWrite(const std::string& name, const RenderPass& renderPass)
 {
     m_resourceWrites[name].push_back(renderPass.GetId());
 }

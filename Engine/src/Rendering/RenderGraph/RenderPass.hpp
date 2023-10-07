@@ -28,10 +28,10 @@ struct AttachmentInfo
     bool clear                = false;
     VkClearValue clearValue   = {};
 };
-class RenderPass2
+class RenderPass
 {
 public:
-    RenderPass2(RenderGraph& graph, uint32_t id, QueueTypeFlagBits type)
+    RenderPass(RenderGraph& graph, uint32_t id, QueueTypeFlagBits type)
         : m_graph(graph), m_id(id), m_type(type) {}
 
 

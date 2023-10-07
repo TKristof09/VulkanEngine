@@ -24,177 +24,177 @@
 #include "ECS/ECS.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 
-#define SHADOWMAP_SIZE 2048
+#define SHADOWMAP_SIZE   2048
 #define MAX_SHADOW_DEPTH 2000
-#define NUM_CASCADES 4
+#define NUM_CASCADES     4
 
 class Renderer
 {
 public:
-	Renderer(std::shared_ptr<Window> window, Scene* scene);
-	~Renderer();
-	void Render(double dt);
+    Renderer(std::shared_ptr<Window> window, Scene* scene);
+    ~Renderer();
+    void Render(double dt);
 
-	Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
+    Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 
-	void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
+    void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
 
-	void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
-	void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
-	void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
-	void OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e);
-	void OnPointLightAdded(const ComponentAdded<PointLight>* e);
-	void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
+    void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
+    void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
+    void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
+    void OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e);
+    void OnPointLightAdded(const ComponentAdded<PointLight>* e);
+    void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
 
 private:
-	struct alignas(16) Light
-	{
-		int type;
-		float attenuation[3];
+    struct alignas(16) Light
+    {
+        int type;
+        float attenuation[3];
 
-		glm::vec3 color; // use vec3 to have the struct take up 128 bytes
-		float intensity;
+        glm::vec3 color;  // use vec3 to have the struct take up 128 bytes
+        float intensity;
 
-		glm::vec3 direction; // only for directional or spot
-		float cutoff; // only for spot
+        glm::vec3 direction;  // only for directional or spot
+        float cutoff;         // only for spot
 
-		glm::vec3 position;
-		float range; // only for spot and point
+        glm::vec3 position;
+        float range;  // only for spot and point
 
         glm::vec3 filler;
         uint32_t shadowSlot;
-        std::array<glm::mat4, NUM_CASCADES> lightSpaceMatrices; // potentially put the shadowslot in the matrix
-        std::array<glm::mat4, NUM_CASCADES> lightViewMatrices; // potentially put the shadowslot in the matrix
+        std::array<glm::mat4, NUM_CASCADES> lightSpaceMatrices;  // potentially put the shadowslot in the matrix
+        std::array<glm::mat4, NUM_CASCADES> lightViewMatrices;   // potentially put the shadowslot in the matrix
         std::array<glm::vec2, NUM_CASCADES> zPlanes;
+    };
+    struct TileLights  // TODO
+    {
+        glm::uint count;
+        glm::uint indices[1024];
+    };
+    struct ComputePushConstants
+    {
+        glm::ivec2 viewportSize;
+        glm::ivec2 tileNums;
+        int lightNum;
+        int debugMode;
+    };
+    struct CameraStruct
+    {
+        glm::mat4 vp;
+        glm::vec3 position;
+    };
 
-	};
-	struct TileLights // TODO
-	{
-		glm::uint count;
-		glm::uint indices[1024];
-	};
-	struct ComputePushConstants
-	{
-		glm::ivec2 viewportSize;
-		glm::ivec2 tileNums;
-		int lightNum;
-		int debugMode;
-	};
-	struct CameraStruct
-	{
-		glm::mat4 vp;
-		glm::vec3 position;
-	};
-
-	std::unique_ptr<Pipeline> m_compute;
-	std::vector<VkDescriptorSet> m_computeDesc;
-	std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
-	std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
+    std::unique_ptr<Pipeline> m_compute;
+    std::vector<VkDescriptorSet> m_computeDesc;
+    std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
+    std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
-	void UpdateComputeDescriptors();
-	VkSampler m_computeSampler;
-	ComputePushConstants m_computePushConstants;
-	std::unordered_map<ComponentID, Light> m_lightMap;
-	std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
-	void UpdateLights(uint32_t index);
+    void UpdateComputeDescriptors();
+    VkSampler m_computeSampler;
+    ComputePushConstants m_computePushConstants;
+    std::unordered_map<ComponentID, Light> m_lightMap;
+    std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
+    void UpdateLights(uint32_t index);
 
-	std::shared_ptr<Image> m_resolvedDepthImage;
-	std::shared_ptr<Image> m_lightCullDebugImage;
+    std::shared_ptr<Image> m_resolvedDepthImage;
+    std::shared_ptr<Image> m_lightCullDebugImage;
 
-    std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps; // non point lights, store NUM_CASCADES images for each light
-	std::vector<VkDescriptorSet> m_shadowDesc;
+    std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps;  // non point lights, store NUM_CASCADES images for each light
+    std::vector<VkDescriptorSet> m_shadowDesc;
     void UpdateShadowDescriptors();
     std::unique_ptr<Pipeline> m_shadowPipeline;
     VkSampler m_shadowSampler;
     VkSampler m_shadowSamplerPCF;
-    //std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
+    // std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
-	std::vector<VkDescriptorSet> m_tempDesc; // global desc set 0
+    std::vector<VkDescriptorSet> m_tempDesc;  // global desc set 0
 
-	std::unique_ptr<Pipeline> m_depthPipeline;
+    std::unique_ptr<Pipeline> m_depthPipeline;
 
-	friend class MaterialSystem;
+    friend class MaterialSystem;
 
-	// vulkan initialization stuff
-	void CreateDebugUI();
+    // vulkan initialization stuff
+    void CreateDebugUI();
 
-	void CreateInstance();
-	void CreateSurface();
-	void CreateDevice();
-	void CreateSwapchain();
-	void CreatePipeline();
-	void CreateCommandPool();
-	void CreateCommandBuffers();
-	void CreateSyncObjects();
+    void CreateInstance();
+    void CreateSurface();
+    void CreateDevice();
+    void CreateVmaAllocator();
+    void CreateSwapchain();
+    void CreatePipeline();
+    void CreateCommandPool();
+    void CreateCommandBuffers();
+    void CreateSyncObjects();
 
-	void RecreateSwapchain();
-	void CleanupSwapchain();
-
-
-	void CreateUniformBuffers();
-
-	void CreateDescriptorSetLayout();
-	void CreateDescriptorPool();
-	void CreateDescriptorSets();
-
-	void CreateColorResources();
-	void CreateDepthResources();
-
-	void SetupDebugMessenger();
-
-	ECSEngine* m_ecs;
-
-	std::shared_ptr<Window> m_window;
-
-	std::shared_ptr<DebugUI> m_debugUI;
-
-	std::vector<VkQueryPool> m_queryPools;
-	std::vector<uint64_t> m_queryResults;
-	uint64_t m_timestampPeriod;
+    void RecreateSwapchain();
+    void CleanupSwapchain();
 
 
-	VkInstance&				m_instance;
-	VkPhysicalDevice&		m_gpu;
-	VkDevice&				m_device;
+    void CreateUniformBuffers();
 
-	VkQueue&				m_graphicsQueue;
-	VkQueue					m_presentQueue;
-	VkQueue					m_computeQueue;
+    void CreateDescriptorSetLayout();
+    void CreateDescriptorPool();
+    void CreateDescriptorSets();
 
-	VkSurfaceKHR			m_surface;
+    void CreateColorResources();
+    void CreateDepthResources();
 
-	VkSwapchainKHR			m_swapchain;
-	std::vector<std::shared_ptr<Image>>	m_swapchainImages;
-	VkFormat				m_swapchainImageFormat;
-	VkExtent2D				m_swapchainExtent;
+    void SetupDebugMessenger();
+
+    ECSEngine* m_ecs;
+
+    std::shared_ptr<Window> m_window;
+
+    std::shared_ptr<DebugUI> m_debugUI;
+
+    std::vector<VkQueryPool> m_queryPools;
+    std::vector<uint64_t> m_queryResults;
+    uint64_t m_timestampPeriod;
 
 
-	std::multiset<Pipeline> m_pipelines;
-	std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
+    VkInstance& m_instance;
+    VkPhysicalDevice& m_gpu;
+    VkDevice& m_device;
 
-	std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators; //key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
+    VkQueue& m_graphicsQueue;
+    VkQueue m_presentQueue;
+    VkQueue m_computeQueue;
+
+    VkSurfaceKHR m_surface;
+
+    VkSwapchainKHR m_swapchain;
+    std::vector<std::shared_ptr<Image>> m_swapchainImages;
+    VkFormat m_swapchainImageFormat;
+    VkExtent2D m_swapchainExtent;
 
 
-	VkCommandPool&			m_commandPool;
-	std::vector<CommandBuffer> m_mainCommandBuffers;
+    std::multiset<Pipeline> m_pipelines;
+    std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
 
-	std::vector<VkSemaphore> m_imageAvailable;
-	std::vector<VkSemaphore> m_renderFinished;
-	std::vector<VkFence>     m_inFlightFences;
-	std::vector<VkFence>     m_imagesInFlight;
+    std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators;  // key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
-	VkDescriptorPool		m_descriptorPool;
-	std::vector<VkDescriptorSet> m_cameraDescSets;
-	std::vector<std::vector<VkDescriptorSet>> m_transformDescSets;
-	// key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
-	std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
 
-	std::shared_ptr<Image>   m_depthImage;
+    VkCommandPool& m_commandPool;
+    std::vector<CommandBuffer> m_mainCommandBuffers;
 
-	VkSampleCountFlagBits   m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	std::shared_ptr<Image>  m_colorImage; // for MSAA
+    std::vector<VkSemaphore> m_imageAvailable;
+    std::vector<VkSemaphore> m_renderFinished;
+    std::vector<VkFence> m_inFlightFences;
+    std::vector<VkFence> m_imagesInFlight;
 
-	size_t m_currentFrame = 0;
+    VkDescriptorPool m_descriptorPool;
+    std::vector<VkDescriptorSet> m_cameraDescSets;
+    std::vector<std::vector<VkDescriptorSet>> m_transformDescSets;
+    // key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
+    std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
+
+    std::shared_ptr<Image> m_depthImage;
+
+    VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    std::shared_ptr<Image> m_colorImage;  // for MSAA
+
+    size_t m_currentFrame = 0;
 
 
     std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
