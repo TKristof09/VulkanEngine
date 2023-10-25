@@ -47,7 +47,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 
         VmaAllocationCreateInfo allocInfo = {};
         allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
-        vmaCreateImage(VulkanContext::GetVmaAllocator(), &ci, &allocInfo, &m_image, &m_allocation, nullptr);
+        vmaCreateImage(VulkanContext::GetVmaImageAllocator(), &ci, &allocInfo, &m_image, &m_allocation, nullptr);
     }
 
     VkImageViewCreateInfo viewCreateInfo = {};
@@ -96,7 +96,7 @@ void Image::Free()
 
     if(!m_onlyHandleImageView)
     {
-        vmaDestroyImage(VulkanContext::GetVmaAllocator(), m_image, m_allocation);
+        vmaDestroyImage(VulkanContext::GetVmaImageAllocator(), m_image, m_allocation);
         m_image = VK_NULL_HANDLE;
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Rendering/Buffer.hpp"
 #include "Rendering/CommandBuffer.hpp"
 #include "vulkan/vulkan_core.h"
 #include <vulkan/vulkan.h>
@@ -28,11 +29,22 @@ struct AttachmentInfo
     bool clear                = false;
     VkClearValue clearValue   = {};
 };
+
+#define MAX_DRAW_COMMANDS 10000
+struct DrawCommand
+{
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int32_t vertexOffset;
+    uint32_t firstInstance;
+    //uint32_t objectID;
+};
 class RenderPass
 {
 public:
     RenderPass(RenderGraph& graph, uint32_t id, QueueTypeFlagBits type)
-        : m_graph(graph), m_id(id), m_type(type) {}
+        : m_graph(graph), m_id(id), m_type(type), m_renderingInfo({}) {}
 
 
     RenderingTextureResource& AddColorOutput(const std::string& name, AttachmentInfo attachmentInfo, const std::string& input = "");
@@ -40,6 +52,8 @@ public:
     RenderingTextureResource& AddDepthOutput(const std::string& name, AttachmentInfo attachmentInfo);
     RenderingTextureResource& AddResolveOutput(const std::string& name);
     RenderingTextureResource& AddDepthResolveOutput(const std::string& name);
+
+    RenderingBufferResource& AddDrawCommandBuffer(const std::string& name);
 
     RenderingBufferResource& AddVertexBufferInput(const std::string& name);
     RenderingBufferResource& AddIndexBufferInput(const std::string& name);
@@ -85,6 +99,8 @@ public:
     [[nodiscard]] const std::vector<RenderingTextureResource*>& GetResolveOutputs() const { return m_resolveOutputs; }
     [[nodiscard]] RenderingTextureResource* GetDepthResolveOutput() const { return m_depthResolveOutput; }
 
+    [[nodiscard]] const std::vector<RenderingBufferResource*>& GetDrawCommandBuffers() const { return m_drawCommandBuffers; }
+
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetVertexBufferInputs() const { return m_vertexBufferInputs; }
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetIndexBufferInputs() const { return m_indexBufferInputs; }
 
@@ -108,7 +124,7 @@ public:
 
 
 private:
-    RenderingBufferResource& AddBufferInput(const std::string& name, VkPipelineStageFlags2 stageFlags, VkBufferUsageFlags usageFlags);
+    RenderingBufferResource& AddBufferInput(const std::string& name, VkDeviceSize size, VkPipelineStageFlags2 stageFlags, VkBufferUsageFlags usageFlags);
 
     RenderGraph& m_graph;
     uint32_t m_id;
@@ -125,6 +141,9 @@ private:
     RenderingTextureResource* m_depthOutput = nullptr;
     std::vector<RenderingTextureResource*> m_resolveOutputs;
     RenderingTextureResource* m_depthResolveOutput = nullptr;
+
+    // use vector because a pass can use multiple graphics pipelines (aka shaders) so each can have their own draw commands
+    std::vector<RenderingBufferResource*> m_drawCommandBuffers;
 
     std::vector<RenderingBufferResource*> m_vertexBufferInputs;
     std::vector<RenderingBufferResource*> m_indexBufferInputs;

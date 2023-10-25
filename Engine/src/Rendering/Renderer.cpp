@@ -30,7 +30,7 @@
 
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/RenderGraph/RenderPass.hpp"
-#include "vulkan/vulkan_core.h"
+
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -69,13 +69,19 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
                                      VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData, void* /*pUserData*/);
 
 
-Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->ecs),
-                                                                   m_window(window),
-                                                                   m_instance(VulkanContext::m_instance),
-                                                                   m_gpu(VulkanContext::m_gpu),
-                                                                   m_device(VulkanContext::m_device),
-                                                                   m_graphicsQueue(VulkanContext::m_graphicsQueue),
-                                                                   m_commandPool(VulkanContext::m_commandPool)
+Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
+    : m_ecs(scene->ecs),
+      m_window(window),
+      m_instance(VulkanContext::m_instance),
+      m_gpu(VulkanContext::m_gpu),
+      m_device(VulkanContext::m_device),
+      m_graphicsQueue(VulkanContext::m_graphicsQueue),
+      m_commandPool(VulkanContext::m_commandPool),
+      m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 1e6),
+      m_indexBuffer(5e5, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 1e5),
+      m_transformBuffer(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false),
+      m_pushConstants({})
+
 {
     scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
     scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
@@ -90,13 +96,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
     CreateSwapchain();
     CreateVmaAllocator();
 
-    m_computePushConstants.viewportSize
-        = {m_swapchainExtent.width, m_swapchainExtent.height};
-    m_computePushConstants.tileNums = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);  // TODO Make this take into account TILE_SIZE from common.glsl
-    m_computePushConstants.lightNum = 0;
     m_changedLights.resize(m_swapchainImages.size());
 
-    m_transformDescSets.resize(m_swapchainImages.size());
 
     CreatePipeline();
     CreateCommandPool();
@@ -107,9 +108,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
     CreateDepthResources();
     CreateUniformBuffers();
     CreateDescriptorPool();
-    CreateDescriptorSets();
-    UpdateComputeDescriptors();
-    UpdateShadowDescriptors();
     CreateDebugUI();
     CreateCommandBuffers();
     CreateSyncObjects();
@@ -119,6 +117,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
     AddDebugUIWindow(m_rendererDebugWindow.get());
 
 
+    m_drawBuffer.Allocate(1000 * sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, true);  // TODO change to non mappable and use staging buffer
     m_frustrumEntity = m_ecs->entityManager->CreateEntity();
     // auto mesh = m_frustrumEntity->AddComponent<Mesh>();
     {
@@ -201,28 +200,15 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 glm::mat4 vp               = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
                 uint32_t vpOffset          = 0;
 
-                CameraStruct cs = {vp, cameraTransform->pos};
-                m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
-                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
                 PROFILE_SCOPE("Prepass draw call loop");
-                for(auto* renderable : cm->GetComponents<Renderable>())
-                {
-                    auto* transform = cm->GetComponent<Transform>(renderable->GetOwner());
-                    glm::mat4 model = transform->GetTransform();
-                    {
-                        PROFILE_SCOPE("Bind buffers");
-                        renderable->vertexBuffer.Bind(cb);
-                        renderable->indexBuffer.Bind(cb);
-                    }
-                    uint32_t offset;
-                    uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
+                m_pushConstants.viewProj           = vp;
+                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
 
-                    m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-
-                    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-                    vkCmdDrawIndexed(cb.GetCommandBuffer(), static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)), 1, 0, 0, 0);  // TODO: make the size calculation better (not hardcoded for uint32_t)
-                }
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+                m_vertexBuffer.Bind(cb);
+                m_indexBuffer.Bind(cb);
+                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
             });
 
         auto& lightingPass         = m_renderGraph.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
@@ -231,18 +217,18 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
         colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
-        lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
+        // lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
+        auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
         // TODO shadow maps
         lightingPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                ComponentManager* cm   = m_ecs->componentManager;
-                auto materialIterator  = cm->begin<Material>();
-                auto end               = cm->end<Material>();
-                EntityID currentEntity = materialIterator->GetOwner();
-                uint32_t offset        = 0;
+                ComponentManager* cm  = m_ecs->componentManager;
+                auto materialIterator = cm->begin<Material>();
+                auto end              = cm->end<Material>();
+                uint32_t offset       = 0;
 
-                for(auto& pipeline : m_pipelines)
+                for(const auto& pipeline : m_pipelines)
                 {
                     // if(pipeline.m_name == "depth") continue;
                     auto tempIt = materialIterator;  // to be able to restore the iterator to its previous place after global pipeline is finished
@@ -253,62 +239,27 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                     // vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 
                     vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
-                    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
-                    vkCmdPushConstants(cb.GetCommandBuffer(), pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
 
+                    m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+
+                    vkCmdPushConstants(cb.GetCommandBuffer(), pipeline.m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+
+                    m_vertexBuffer.Bind(cb);
+                    m_indexBuffer.Bind(cb);
 
                     PROFILE_SCOPE("Draw call loop");
-                    while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
-                    {
-                        Transform* transform   = cm->GetComponent<Transform>(currentEntity);
-                        Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
-                        if(renderable == nullptr)
-                            continue;
+                    vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
 
-                        // We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
-
-                        // transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
-                        // glm::mat4 model =  transform->GetTransform();
-
-                        renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                        renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-
-                        uint32_t offset;
-                        uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
-
-                        // m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-                        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-
-
-                        if(!pipeline.m_isGlobal)
-                        {
-                            m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
-
-                            glm::vec4 ubs[] = {
-                                {materialIterator->_textureSlot, 0, 0,    0},
-                                {                          0.5f, 0, 0, 1.0f},
-                            };
-
-                            m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
-                        }
-                        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
-                        vkCmdDrawIndexed(cb.GetCommandBuffer(), static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)), 1, 0, 0, 0);  // TODO: make the size calculation better (not hardcoded for uint32_t)
-
-
-                        materialIterator++;
-                        if(materialIterator != end)
-                            currentEntity = materialIterator->GetOwner();
-                    }
                     if(pipeline.m_isGlobal && tempIt != end)
                     {
                         materialIterator = tempIt;
-                        currentEntity    = materialIterator->GetOwner();
                     }
                 }
             });
         // auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
         //  TODO
 
+#if 0
         auto& lightCullPass       = m_renderGraph.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
         auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer", "", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, true);
         auto& depthTexture        = lightCullPass.AddTextureInput("depthImage");
@@ -342,7 +293,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
         lightCullPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                // TODO this barrier should be done automatically by the rendergraph
+                // TODO this barrier should be done automatically by the rendergraph, also probably wrong src masks
                 VkBufferMemoryBarrier2 barrierBefore = {};
                 barrierBefore.sType                  = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
                 barrierBefore.srcStageMask           = VK_PIPELINE_STAGE_2_HOST_BIT;
@@ -364,17 +315,16 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene) : m_ecs(scene->
                 vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
 
 
-                m_computePushConstants.debugMode = 1;
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
                 vkCmdDispatch(cb.GetCommandBuffer(), m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
             });
 
+#endif
 
         auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
         uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
         uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
                                     { m_debugUI->Draw(&cb); });
-
 
         m_renderGraph.Build();
     }
@@ -428,8 +378,6 @@ void Renderer::RecreateSwapchain()
     CreateColorResources();
     CreateDepthResources();
     CreateCommandBuffers();
-    UpdateComputeDescriptors();
-    UpdateShadowDescriptors();
 
 
     DebugUIInitInfo initInfo = {};
@@ -447,8 +395,8 @@ void Renderer::RecreateSwapchain()
     initInfo.allocator      = nullptr;
     m_debugUI->ReInit(initInfo);
 
-    m_computePushConstants.viewportSize = {m_swapchainExtent.width, m_swapchainExtent.height};
-    m_computePushConstants.tileNums     = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
+    // m_computePushConstants.viewportSize = {m_swapchainExtent.width, m_swapchainExtent.height};
+    // m_computePushConstants.tileNums     = glm::ceil(glm::vec2(m_computePushConstants.viewportSize) / 16.f);
 }
 
 void Renderer::CleanupSwapchain()
@@ -608,8 +556,14 @@ void Renderer::CreateDevice()
     VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.samplerAnisotropy        = VK_TRUE;
     deviceFeatures.sampleRateShading        = VK_TRUE;
+    deviceFeatures.shaderInt64              = VK_TRUE;
+    deviceFeatures.multiDrawIndirect        = VK_TRUE;
 
     // deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
+
+    VkPhysicalDeviceVulkan11Features device11Features = {};
+    device11Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    device11Features.shaderDrawParameters             = VK_TRUE;
 
     VkPhysicalDeviceVulkan12Features device12Features          = {};
     device12Features.sType                                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -619,6 +573,7 @@ void Renderer::CreateDevice()
     device12Features.runtimeDescriptorArray                    = VK_TRUE;
     device12Features.descriptorBindingPartiallyBound           = VK_TRUE;
     device12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+    device12Features.bufferDeviceAddress                       = VK_TRUE;
 
     VkPhysicalDeviceVulkan13Features device13Features = {};
     device13Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
@@ -635,7 +590,8 @@ void Renderer::CreateDevice()
     createInfo.pQueueCreateInfos       = queueCreateInfos.data();
     createInfo.queueCreateInfoCount    = static_cast<uint32_t>(queueCreateInfos.size());
 
-    createInfo.pNext       = &device12Features;
+    createInfo.pNext       = &device11Features;
+    device11Features.pNext = &device12Features;
     device12Features.pNext = &device13Features;
 
     VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
@@ -662,8 +618,9 @@ void Renderer::CreateVmaAllocator()
     allocatorInfo.physicalDevice         = m_gpu;
     allocatorInfo.device                 = m_device;
     allocatorInfo.instance               = m_instance;
-    // allocatorInfo.flags                  = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaAllocator), "Failed to create vma allocator");
+    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaImageAllocator), "Failed to create vma allocator");
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaBufferAllocator), "Failed to create vma allocator");
 }
 
 void Renderer::CreateSwapchain()
@@ -754,9 +711,9 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 void Renderer::CreatePipeline()
 {
     // Compute
-    PipelineCreateInfo compute = {};
-    compute.type               = PipelineType::COMPUTE;
-    m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
+    // PipelineCreateInfo compute = {};
+    // compute.type               = PipelineType::COMPUTE;
+    // m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
 
     {
         VkSamplerCreateInfo ci     = {};
@@ -804,7 +761,7 @@ void Renderer::CreatePipeline()
     // Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
     // m_pipelinesRegistry["depth"] = pipeline;
 
-    uint32_t totaltiles = glm::compMul(m_computePushConstants.tileNums);
+    uint32_t totaltiles = 0;  // glm::compMul(m_computePushConstants.tileNums);
 
     for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
     {
@@ -815,11 +772,11 @@ void Renderer::CreatePipeline()
         }
 
         // TODO
-        m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));                    // MAX_LIGHTS_PER_TILE
-        m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));  // MAX_LIGHTS_PER_TILE
+        // m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));                    // MAX_LIGHTS_PER_TILE
+        // m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));  // MAX_LIGHTS_PER_TILE
     }
-    std::cout << m_visibleLightsBuffers[0]->GetSize() << std::endl;
 
+    /*
     // Shadow prepass pipeline
     LOG_WARN("Creating shadow pipeline");
     PipelineCreateInfo shadowPipeline;
@@ -882,6 +839,7 @@ void Renderer::CreatePipeline()
 
         VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSamplerPCF), "Failed to create shadow texture sampler");
     }
+    */
 }
 
 
@@ -950,127 +908,16 @@ void Renderer::CreateDescriptorPool()
     VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
 }
 
-void Renderer::CreateDescriptorSets()
-{
-    VkDescriptorSetAllocateInfo allocInfo = {};
-    std::vector<VkDescriptorSetLayout> layouts(m_swapchainImages.size());
-
-    for(int i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        layouts[i] = m_depthPipeline->m_descSetLayouts[1];
-    }
-    allocInfo                    = {};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool     = m_descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
-    allocInfo.pSetLayouts        = layouts.data();
-    m_descriptorSets[m_depthPipeline->m_name + std::to_string(1)].resize(m_swapchainImages.size());
-    VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, m_descriptorSets[m_depthPipeline->m_name + std::to_string(1)].data()), "Failed to allocate descriptor sets");
-
-
-    std::vector<VkDescriptorSetLayout> cameraLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[0]);  // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
-
-    allocInfo                    = {};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool     = m_descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(cameraLayouts.size());
-    allocInfo.pSetLayouts        = cameraLayouts.data();
-
-    m_cameraDescSets.resize(m_swapchainImages.size());
-    VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_cameraDescSets.data()), "Failed to allocate global descriptor sets");
-
-
-    // TODO TEMP
-    std::vector<VkDescriptorSetLayout> depthLayouts(m_swapchainImages.size(), m_depthPipeline->m_descSetLayouts[1]);  // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
-
-    allocInfo                    = {};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool     = m_descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(depthLayouts.size());
-    allocInfo.pSetLayouts        = depthLayouts.data();
-
-    m_descriptorSets["depth1"].resize(m_swapchainImages.size());
-    VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, m_descriptorSets["depth1"].data()), "Failed to allocate global descriptor sets");
-
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        VkDescriptorBufferInfo bufferI = {};
-        bufferI.buffer                 = m_ubAllocators["depthFiller" + std::to_string(i)]->GetBuffer(0);
-        bufferI.offset                 = 0;
-        bufferI.range                  = m_ubAllocators["depthFiller" + std::to_string(i)]->GetObjSize();
-
-        VkWriteDescriptorSet writeDS = {};
-        writeDS.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS.dstSet               = m_descriptorSets["depth1"][i];
-        writeDS.dstBinding           = 0;
-        writeDS.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        writeDS.descriptorCount      = 1;
-        writeDS.pBufferInfo          = &bufferI;
-
-        vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
-
-
-        bufferI        = {};
-        bufferI.buffer = m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
-        bufferI.offset = 0;
-        bufferI.range  = m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
-
-        writeDS                 = {};
-        writeDS.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS.dstSet          = m_cameraDescSets[i];
-        writeDS.dstBinding      = 0;
-        writeDS.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        writeDS.descriptorCount = 1;
-        writeDS.pBufferInfo     = &bufferI;
-
-        vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
-    }
-
-
-    VkDescriptorSetAllocateInfo callocInfo = {};
-    std::vector<VkDescriptorSetLayout> clayouts;
-
-    if(m_computeDesc.size() != 0)
-        return;
-    for(int i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        for(int j = 0; j < m_compute->m_numDescSets; ++j)
-            clayouts.push_back(m_compute->m_descSetLayouts[j]);
-    }
-    callocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    callocInfo.descriptorPool     = m_descriptorPool;
-    callocInfo.descriptorSetCount = static_cast<uint32_t>(clayouts.size());
-    callocInfo.pSetLayouts        = clayouts.data();
-    m_computeDesc.resize(clayouts.size());
-    VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &callocInfo, m_computeDesc.data()), "Failed to allocate descriptor sets");
-
-
-    VkDescriptorSetAllocateInfo sallocInfo = {};
-    std::vector<VkDescriptorSetLayout> slayouts;
-
-    if(m_shadowDesc.size() != 0)
-        return;
-    for(int i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        slayouts.push_back(m_shadowPipeline->m_descSetLayouts[0]);
-    }
-    sallocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    sallocInfo.descriptorPool     = m_descriptorPool;
-    sallocInfo.descriptorSetCount = static_cast<uint32_t>(slayouts.size());
-    sallocInfo.pSetLayouts        = slayouts.data();
-    m_shadowDesc.resize(slayouts.size());
-    VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &sallocInfo, m_shadowDesc.data()), "Failed to allocate descriptor sets");
-}
-
 void Renderer::CreateUniformBuffers()
 {
+    /*
     for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
     {
         m_ubAllocators["transforms" + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(sizeof(glm::mat4), OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
         m_ubAllocators["camera" + std::to_string(i)]     = std::move(std::make_unique<BufferAllocator>(sizeof(CameraStruct), OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
 
         m_ubAllocators["camera" + std::to_string(i)]->Allocate();
-    }
+    }*/
 }
 
 void Renderer::CreateColorResources()
@@ -1087,23 +934,7 @@ void Renderer::CreateColorResources()
 
 void Renderer::CreateDepthResources()
 {
-    ImageCreateInfo ci;
-    ci.format      = VK_FORMAT_D32_SFLOAT;
-    ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-    ci.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    ci.layout      = VK_IMAGE_LAYOUT_UNDEFINED;
-    ci.msaaSamples = m_msaaSamples;
-    ci.useMips     = false;
-    if(m_msaaSamples == VK_SAMPLE_COUNT_1_BIT)
-        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    m_depthImage = std::make_shared<Image>(m_swapchainExtent, ci);
-
-    ci.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    ci.msaaSamples       = VK_SAMPLE_COUNT_1_BIT;
-    m_resolvedDepthImage = std::make_shared<Image>(m_swapchainExtent, ci);
-
-
-    ci                    = {};
+    ImageCreateInfo ci    = {};
     ci.format             = VK_FORMAT_B8G8R8A8_UNORM;
     ci.usage              = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     ci.aspectFlags        = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1112,95 +943,6 @@ void Renderer::CreateDepthResources()
     m_lightCullDebugImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
-void Renderer::UpdateComputeDescriptors()
-{
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        VkDescriptorBufferInfo cameraBI = {};
-        cameraBI.offset                 = 0;
-        cameraBI.range                  = m_ubAllocators["camera" + std::to_string(i)]->GetObjSize();
-        cameraBI.buffer                 = m_ubAllocators["camera" + std::to_string(i)]->GetBuffer(0);
-
-        VkDescriptorBufferInfo lightsBI = {};
-        lightsBI.offset                 = 0;
-        lightsBI.range                  = VK_WHOLE_SIZE;
-        lightsBI.buffer                 = m_lightsBuffers[i]->GetBuffer(0);
-
-        VkDescriptorBufferInfo visibleLightsBI = {};
-        visibleLightsBI.offset                 = 0;
-        visibleLightsBI.range                  = VK_WHOLE_SIZE;
-        visibleLightsBI.buffer                 = m_visibleLightsBuffers[0]->GetBuffer(0);
-
-        std::array<VkDescriptorBufferInfo, 2> bufferInfos = {lightsBI, visibleLightsBI};
-
-        VkDescriptorImageInfo depthImageInfo = {};
-        depthImageInfo.imageLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;  // TODO: depth_read_only_optimal
-        if(m_msaaSamples != VK_SAMPLE_COUNT_1_BIT)
-            depthImageInfo.imageView = m_resolvedDepthImage->GetImageView();
-        else
-            depthImageInfo.imageView = m_depthImage->GetImageView();
-        depthImageInfo.sampler = m_computeSampler;
-
-        VkDescriptorImageInfo debugImageInfo = {};
-        debugImageInfo.imageLayout           = VK_IMAGE_LAYOUT_GENERAL;
-        debugImageInfo.imageView             = m_lightCullDebugImage->GetImageView();
-        debugImageInfo.sampler               = VK_NULL_HANDLE;
-
-        std::array<VkWriteDescriptorSet, 3> writeDS({});
-        writeDS[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS[0].dstSet          = m_computeDesc[i];
-        writeDS[0].dstBinding      = 0;
-        writeDS[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        writeDS[0].descriptorCount = 1;
-        writeDS[0].pBufferInfo     = &cameraBI;
-
-        writeDS[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS[1].dstSet          = m_computeDesc[i];
-        writeDS[1].dstBinding      = 1;
-        writeDS[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writeDS[1].descriptorCount = bufferInfos.size();
-        writeDS[1].pBufferInfo     = bufferInfos.data();
-
-        /*
-        writeDS[2].sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS[2].dstSet			= m_computeDesc[i];
-        writeDS[2].dstBinding		= 3;
-        writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writeDS[2].descriptorCount	= 1;
-        writeDS[2].pImageInfo		= &depthImageInfo;
-*/
-        writeDS[2].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS[2].dstSet          = m_computeDesc[i];
-        writeDS[2].dstBinding      = 4;
-        writeDS[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        writeDS[2].descriptorCount = 1;
-        writeDS[2].pImageInfo      = &debugImageInfo;
-        vkUpdateDescriptorSets(m_device, writeDS.size(), writeDS.data(), 0, nullptr);
-    }
-}
-void Renderer::UpdateShadowDescriptors()
-{
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        // descriptor containing the light buffer which has the light space matrices
-        VkDescriptorBufferInfo lightsBI = {};
-        lightsBI.offset                 = 0;
-        lightsBI.range                  = VK_WHOLE_SIZE;
-        lightsBI.buffer                 = m_lightsBuffers[i]->GetBuffer(0);
-
-
-        VkWriteDescriptorSet writeDS = {};
-
-        writeDS.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writeDS.dstSet          = m_shadowDesc[i];
-        writeDS.dstBinding      = 1;
-        writeDS.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writeDS.descriptorCount = 1;
-        writeDS.pBufferInfo     = &lightsBI;
-
-        vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
-    }
-}
 
 void Renderer::UpdateLights(uint32_t index)
 {
@@ -1397,10 +1139,33 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
     }
     return {resVP, resV, zPlanes};
 }
+
+void Renderer::RefreshDrawCommands()
+{
+    ComponentManager* cm = m_ecs->componentManager;
+    std::vector<DrawCommand> drawCommands;
+    for(auto* renderable : cm->GetComponents<Renderable>())
+    {
+        DrawCommand dc{};
+        dc.indexCount    = renderable->indexCount;
+        dc.instanceCount = 1;
+        dc.firstIndex    = renderable->indexOffset;
+        dc.vertexOffset  = static_cast<int32_t>(renderable->vertexOffset);
+        dc.firstInstance = 0;
+        // dc.objectID      = renderable->objectID;
+
+        drawCommands.push_back(dc);
+    }
+    m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
+    m_numDrawCommands = drawCommands.size();
+}
+
 void Renderer::Render(double dt)
 {
     vkDeviceWaitIdle(m_device);
-
+    CommandBuffer cb;
+    cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    cb.SubmitIdle();
     PROFILE_FUNCTION();
     uint32_t imageIndex;
     VkResult result;
@@ -1429,11 +1194,33 @@ void Renderer::Render(double dt)
         VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
 
-        UpdateLights(imageIndex);
+        // UpdateLights(imageIndex);
 
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
+        ComponentManager* cm       = m_ecs->componentManager;
+        Camera camera              = *(*(cm->begin<Camera>()));
+        Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
+        glm::mat4 proj             = camera.GetProjection();
+
+        glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+
+        CameraStruct cs = {vp, cameraTransform->pos};
+        // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
+        vkDeviceWaitIdle(m_device);
+        for(auto* transform : cm->GetComponents<Transform>())
+        {
+            if(cm->HasComponent<Renderable>(transform->GetOwner()))
+            {
+                glm::mat4 model = transform->GetTransform();
+
+                m_transformBuffer.UploadData(transform->ub_id, &model);
+            }
+        }
+        vkDeviceWaitIdle(m_device);
+        if(m_needDrawBufferReupload)
+            RefreshDrawCommands();
     }
-    vkDeviceWaitIdle(m_device);
+
     /*
         ComponentManager* cm = m_ecs->componentManager;
 
@@ -1706,13 +1493,14 @@ void Renderer::Render(double dt)
         presentInfo.pSwapchains    = &m_swapchain;
         presentInfo.pImageIndices  = &imageIndex;
         result                     = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+        VK_CHECK(result, "Failed to present the swapchain image");
     }
     std::array<uint64_t, 4> queryResults;
     {
         PROFILE_SCOPE("Query results");
         // VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
     }
-    if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
+    if(result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
     {
         m_window->SetResized(false);
         RecreateSwapchain();
@@ -1729,17 +1517,56 @@ void Renderer::Render(double dt)
 
 void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 {
+    // TODO don't keep the vertex and index vectors after sending them to gpu
     Mesh* mesh               = e->component;
     VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
+    Renderable* comp         = m_ecs->componentManager->AddComponent<Renderable>(e->entity);
+
 
     // create the vertex and index buffers on the gpu
+    bool didVBResize    = false;
+    uint64_t vertexSlot = m_vertexBuffer.Allocate(mesh->vertices.size(), didVBResize, (void*)&comp);
+    m_vertexBuffer.UploadData(vertexSlot, mesh->vertices.data());
+
+    comp->vertexOffset = vertexSlot;
+    comp->vertexCount  = mesh->vertices.size();
+
+    bool didIBResize   = false;
+    uint64_t indexSlot = m_indexBuffer.Allocate(mesh->indices.size(), didIBResize, &comp);
+    m_indexBuffer.UploadData(indexSlot, mesh->indices.data());
+
+    comp->indexOffset = indexSlot;
+    comp->indexCount  = mesh->indices.size();
+
+    if(didVBResize)
+    {
+        for(const auto& [slot, info] : m_vertexBuffer.GetAllocationInfos())
+        {
+            auto* renderable         = (Renderable*)info.pUserData;
+            renderable->vertexOffset = slot;
+        }
+    }
+
+    if(didIBResize)
+    {
+        for(const auto& [slot, info] : m_indexBuffer.GetAllocationInfos())
+        {
+            auto* renderable        = (Renderable*)info.pUserData;
+            renderable->indexOffset = slot;
+        }
+    }
+
+    if(didVBResize || didIBResize)
+    {
+        // RecreateDrawBuffers();
+    }
+    /*
     Buffer stagingVertexBuffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     stagingVertexBuffer.Fill((void*)mesh->vertices.data(), vBufferSize);
 
     VkDeviceSize iBufferSize = sizeof(mesh->indices[0]) * mesh->indices.size();
     Buffer stagingIndexBuffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
-
 
     Renderable* comp   = m_ecs->componentManager->AddComponent<Renderable>(e->entity);
     comp->vertexBuffer = Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -1751,47 +1578,19 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
 
     stagingVertexBuffer.Free();
     stagingIndexBuffer.Free();
+    */
 
-    uint32_t slot;
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+    uint32_t slot = 0;
+    for(uint32_t i = 0; i < 1; ++i)
     {
-        slot                                                               = m_ubAllocators["transforms" + std::to_string(i)]->Allocate();
+        bool didResize                                                     = false;
+        slot                                                               = m_transformBuffer.Allocate(1, didResize);
         m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
-
-
-        uint32_t offset;
-        uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(i)]->GetBufferIndexAndOffset(slot, offset);
-        if(bufferIndex >= m_transformDescSets[i].size())
-        {
-            VkDescriptorSetLayout transformLayouts = {m_depthPipeline->m_descSetLayouts[2]};  // TODO 0 is the global for now, maybe make it so that each pipeline doesnt store a copy of this layout
-
-            m_transformDescSets[i].push_back(VK_NULL_HANDLE);
-
-            VkDescriptorSetAllocateInfo allocInfo = {};
-            allocInfo.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            allocInfo.descriptorPool              = m_descriptorPool;
-            allocInfo.descriptorSetCount          = 1;
-            allocInfo.pSetLayouts                 = &transformLayouts;
-
-            VK_CHECK(vkAllocateDescriptorSets(m_device, &allocInfo, &m_transformDescSets[i][bufferIndex]), "Failed to allocate global descriptor sets");
-
-
-            VkDescriptorBufferInfo bufferI = {};
-            bufferI.buffer                 = m_ubAllocators["transforms" + std::to_string(i)]->GetBuffer(slot);
-            bufferI.offset                 = 0;
-            bufferI.range                  = sizeof(glm::mat4);
-
-            VkWriteDescriptorSet writeDS = {};
-            writeDS.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDS.dstSet               = m_transformDescSets[i][bufferIndex];
-            writeDS.dstBinding           = 0;
-            writeDS.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-            writeDS.descriptorCount      = 1;
-            writeDS.pBufferInfo          = &bufferI;
-
-            vkUpdateDescriptorSets(m_device, 1, &writeDS, 0, nullptr);
-        }
     }
+
+    comp->objectID = slot;
+
+    m_needDrawBufferReupload = true;
 }
 
 void Renderer::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
@@ -1837,7 +1636,6 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
         dict[slot] = light;
     }
 
-    m_computePushConstants.lightNum++;
 
     ImageCreateInfo ci;
     ci.format      = VK_FORMAT_D32_SFLOAT;
@@ -1874,35 +1672,6 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
         debugImage->SetName(std::string("Cascade #") + std::to_string(i));
         m_rendererDebugWindow->AddElement(debugImage);
     }
-    std::vector<VkWriteDescriptorSet> writeDSVector;
-    for(int i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        {
-            VkWriteDescriptorSet writeDS = {};
-            writeDS.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDS.dstSet               = m_tempDesc[i];
-            writeDS.dstBinding           = 3;
-            writeDS.descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDS.descriptorCount      = imageInfos.size();
-            writeDS.dstArrayElement      = slot * NUM_CASCADES;
-            writeDS.pImageInfo           = imageInfos.data();
-
-            writeDSVector.push_back(writeDS);
-        }
-        {
-            VkWriteDescriptorSet writeDS = {};
-            writeDS.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDS.dstSet               = m_tempDesc[i];
-            writeDS.dstBinding           = 4;
-            writeDS.descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDS.descriptorCount      = imageInfosPCF.size();
-            writeDS.dstArrayElement      = slot * NUM_CASCADES;
-            writeDS.pImageInfo           = imageInfosPCF.data();
-
-            writeDSVector.push_back(writeDS);
-        }
-    }
-    vkUpdateDescriptorSets(m_device, writeDSVector.size(), writeDSVector.data(), 0, nullptr);
 }
 
 void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
@@ -1920,7 +1689,6 @@ void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
     {
         dict[slot] = light;
     }
-    m_computePushConstants.lightNum++;
 }
 
 void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
@@ -1939,7 +1707,6 @@ void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
         {
             dict[slot] = light;
         }
-    m_computePushConstants.lightNum++;
 }
 
 
@@ -2240,7 +2007,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     {
         LOG_TRACE(message.str());
     }
-    else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT && messageidName.find("DEBUG-PRINTF") != std::string::npos)
+    else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
     {
         LOG_INFO(message.str());
     }

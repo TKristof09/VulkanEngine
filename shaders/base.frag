@@ -1,4 +1,4 @@
-#version 450
+#version 460
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_GOOGLE_include_directive : require
 
@@ -18,4 +18,5 @@ layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 void main() {
     //outColor = material.color;
     outColor = texture(albedo[nonuniformEXT(uint(textureIndex.x))], fragTexCoord);
+
 }

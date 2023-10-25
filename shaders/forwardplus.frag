@@ -1,7 +1,9 @@
-#version 450
-#extension GL_EXT_nonuniform_qualifier : require
+#version 460
 #extension GL_GOOGLE_include_directive : require
+
+#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_debug_printf : enable
+#include "bindings.glsl"
 #include "common.glsl"
 
 layout(location = 0) in mat3 TBN;
@@ -12,6 +14,22 @@ layout(location = 5) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
+/*
+struct ShaderData
+{
+    ivec2 viewportSize;
+    ivec2 tileNums;
+    int lightNum;
+    int debugMode;
+    uint64_t lightBuffer;
+    uint64_t visibleLightsBuffer;
+
+    uint64_t shqdowMapIds;
+    uint32_t shadowMapCount;
+};
+*/
+
+/*
 layout(set = 1, binding = 0) uniform Material {
     vec4 textureIndex;
     vec4 color;
@@ -24,6 +42,7 @@ layout(push_constant) uniform PC
     ivec2 tileNums;
     int lightNum;
     int debugMode;
+
     //vec4 cascadeSplits; // TODO change from vec4
 };
 
@@ -43,7 +62,8 @@ layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapsPCF[MAX_LIGHTS_PE
 layout(binding = 1, set = 1) uniform sampler2D albedo[32];
 //layout(binding = 2, set = 1) uniform sampler2D specular[32];
 layout(binding = 2, set = 1) uniform sampler2D normal[32];
-
+*/
+#if 0
 float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
 {
     int numBlockers = 0;
@@ -112,9 +132,10 @@ float CalculateShadow(Light light)
 
     return PCF(projectedCoords, shadowMapsPCF[nonuniformEXT(slot)], 0.001);
 }
+#endif
 
 vec3 GetNormalFromMap(){
-    vec3 n = texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
+    vec3 n = vec3(0,0,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
     n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
     n = normalize(TBN * n);
     return n;
@@ -133,7 +154,7 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
     // specular
     vec3 viewDir = normalize(cameraPos - worldPos);
     vec3 reflectDir = reflect(-direction, norm);
-    float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), material.specularExponent);
+    float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), 1);//material.specularExponent);
     vec3 specularV = specularFactor * light.color /* texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;
 
     return diffuse + 0*specularV;
@@ -151,6 +172,7 @@ vec3 CalculatePointLight(Light light)
     if(distanceToLight > light.range)
         return vec3(0,0,0);
     lightDir = normalize(lightDir);
+    lightDir.xyz;
 
     float attenuation = 1 / (light.attenuation.quadratic * distanceToLight * distanceToLight +
             light.attenuation.linear * distanceToLight +
@@ -167,7 +189,7 @@ vec3 CalculateSpotLight(Light light)
 }
 
 void main() {
-
+/*
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
     int tileIndex = tileID.y * tileNums.x + tileID.x;
 
@@ -191,7 +213,12 @@ void main() {
                 illuminance += CalculateSpotLight(lights[lightIndex]);
                 break;
         }
-    }
-
-    outColor = vec4(illuminance * texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb, 1.0);
+    }*/
+    vec3 illuminance = vec3(0.2); // ambient
+    //            illuminance += CalculateDirectionalLight(lights[0]);
+    outColor = vec4(illuminance /** texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb*/, 1.0);
+    if(cameraPos.x == 0)
+        outColor = vec4(1,0,0,1);
+    else if(cameraPos.x == 1)
+        outColor = vec4(0,1,0,1);
 }

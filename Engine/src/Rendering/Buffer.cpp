@@ -1,8 +1,7 @@
 #include "Buffer.hpp"
-#include "vma/vk_mem_alloc.h"
 #include <iostream>
 #include <algorithm>
-#include <vadefs.h>
+#include "vulkan/vk_enum_string_helper.h"
 
 Buffer::Buffer() : m_size(0) {}
 
@@ -20,11 +19,22 @@ void Buffer::Free()
 {
     if(m_buffer != VK_NULL_HANDLE)
     {
-        vmaDestroyBuffer(VulkanContext::GetVmaAllocator(), m_buffer, m_allocation);
+        vmaDestroyBuffer(VulkanContext::GetVmaBufferAllocator(), m_buffer, m_allocation);
         m_buffer = VK_NULL_HANDLE;
     }
 }
+uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
 
+    for(uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+    {
+        if(typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+            return i;
+    }
+    throw std::runtime_error("Failed to find suitable memory type");
+}
 void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, bool mappable)
 {
     m_size = size;
@@ -48,7 +58,40 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, bool mappable
     if(mappable)
         allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;  // TODO: how to chose between sequential and random access
 
-    VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
+    if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+    {
+        /*
+        VK_CHECK(vkCreateBuffer(VulkanContext::GetDevice(), &createInfo, nullptr, &m_buffer), "Failed to create buffer");
+
+        // find memory for buffer
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(VulkanContext::GetDevice(), m_buffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize       = memRequirements.size;
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        if(mappable)
+            properties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+        allocInfo.memoryTypeIndex      = FindMemoryType(VulkanContext::GetPhysicalDevice(), memRequirements.memoryTypeBits, properties);
+
+        VkMemoryAllocateFlagsInfo flagInfo = {};
+        flagInfo.sType                     = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+        flagInfo.flags                     = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        allocInfo.pNext                    = &flagInfo;
+        VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate buffer memory");
+
+        VK_CHECK(vkBindBufferMemory(VulkanContext::GetDevice(), m_buffer, m_memory, 0), "Failed to bind buffer memory");
+        */
+        VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
+        return;
+    }
+
+    VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
+    VkMemoryPropertyFlags memPropFlags;
+    vmaGetAllocationMemoryProperties(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memPropFlags);
+    LOG_INFO("Memory type: {}", string_VkMemoryPropertyFlags(memPropFlags));
 }
 
 void Buffer::Copy(Buffer* dst, VkDeviceSize size)
@@ -92,7 +135,7 @@ void Buffer::CopyToImage(VkImage image, uint32_t width, uint32_t height)
 void Buffer::Fill(void* data, uint64_t size, uint64_t offset)
 {
     void* memory = nullptr;
-    VK_CHECK(vmaMapMemory(VulkanContext::GetVmaAllocator(), m_allocation, &memory), "Failed to map memory");
+    VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
 
     memcpy((void*)((uintptr_t)memory + offset), data, (size_t)size);
 
@@ -100,13 +143,13 @@ void Buffer::Fill(void* data, uint64_t size, uint64_t offset)
     if(!m_isHostCoherent)
         VK_CHECK(vmaFlushAllocation(VulkanContext::GetVmaAllocator(), m_allocation, offset, size), "Failed to flush memory");
 */
-    vmaUnmapMemory(VulkanContext::GetVmaAllocator(), m_allocation);
+    vmaUnmapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation);
 }
 
-void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t> offsets)
+void Buffer::Fill(std::vector<void*> datas, uint64_t size, const std::vector<uint64_t>& offsets)
 {
     void* memory = nullptr;
-    VK_CHECK(vmaMapMemory(VulkanContext::GetVmaAllocator(), m_allocation, &memory), "Failed to map memory");
+    VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
 
     uint32_t i = 0;
     for(auto offset : offsets)
@@ -139,7 +182,7 @@ void Buffer::Fill(std::vector<void*> datas, uint64_t size, std::vector<uint64_t>
         vkFlushMappedMemoryRanges(VulkanContext::GetDevice(), ranges.size(), ranges.data());
     }
     */
-    vmaUnmapMemory(VulkanContext::GetVmaAllocator(), m_allocation);
+    vmaUnmapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation);
 }
 
 void Buffer::Bind(const CommandBuffer& commandBuffer)
@@ -161,5 +204,141 @@ void Buffer::Bind(const CommandBuffer& commandBuffer)
     default:
         std::cout << "Bufffer type not handled" << std::endl;
         break;
+    }
+}
+
+
+uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, bool& didResize, void* pUserData)
+{
+    if(m_buffer.GetVkBuffer() == VK_NULL_HANDLE)
+    {
+        Initialize();
+    }
+    VmaVirtualAllocationCreateInfo allocInfo = {};
+    VmaVirtualAllocation allocation          = nullptr;
+    uint64_t offset                          = 0;
+    VkResult res                             = VK_ERROR_OUT_OF_POOL_MEMORY;
+
+    allocInfo.size = numObjects * m_elementSize;
+    // allocInfo.alignment = m_elementSize;
+
+    // find usable allocation slot
+    res = vmaVirtualAllocate(m_block, &allocInfo, &allocation, &offset);
+    // couldn't fine a usable allocation slot, resize buffer
+    if(res != VK_SUCCESS)
+    {
+        Resize();
+        VK_CHECK(vmaVirtualAllocate(m_tempBlock, &allocInfo, &allocation, &offset), "Failed to allocate virtual memory after new block creation");
+        didResize    = true;
+        m_needDelete = true;
+    }
+
+    if(pUserData)
+        vmaSetVirtualAllocationUserData(m_block, allocation, pUserData);
+
+    uint64_t slot       = offset / m_elementSize;
+    m_allocations[slot] = allocation;
+    return slot;
+}
+
+void DynamicBufferAllocator::UploadData(uint64_t slot, void* data)
+{
+    auto it = m_allocations.find(slot);
+    if(it == m_allocations.end())
+    {
+        LOG_ERROR("Dynamic buffer: no allocation with this offset");
+        return;
+    }
+
+    VmaVirtualAllocationInfo allocInfo = {};
+    vmaGetVirtualAllocationInfo(m_block, it->second, &allocInfo);
+
+    Buffer* dst = m_needDelete ? &m_tempBuffer : &m_buffer;
+    if(m_mappable)
+    {
+        dst->Fill(data, allocInfo.size, allocInfo.offset);
+    }
+    else
+    {
+        m_stagingBuffer.Fill(data, allocInfo.size, 0);
+        VkBufferCopy copyRegion = {};
+        copyRegion.srcOffset    = 0;
+        copyRegion.dstOffset    = allocInfo.offset;
+        copyRegion.size         = allocInfo.size;
+
+        CommandBuffer cb;
+        vkDeviceWaitIdle(VulkanContext::GetDevice());
+        cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), 1, &copyRegion);
+
+        cb.Submit(VulkanContext::GetGraphicsQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
+        vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
+    }
+}
+
+void DynamicBufferAllocator::Free(uint64_t slot)
+{
+    auto it = m_allocations.find(slot);
+    if(it == m_allocations.end())
+    {
+        LOG_ERROR("Dynamic buffer: no allocation with this offset");
+        return;
+    }
+
+    vmaVirtualFree(m_block, it->second);
+    m_allocations.erase(it);
+}
+
+void DynamicBufferAllocator::Resize()
+{
+    m_currentSize *= 2;
+    m_tempBuffer.Allocate(m_currentSize, m_usage, m_mappable);
+
+    VmaVirtualBlockCreateInfo blockCreateInfo = {};
+    blockCreateInfo.size                      = m_currentSize;
+
+    VmaVirtualBlock block = nullptr;
+    VK_CHECK(vmaCreateVirtualBlock(&blockCreateInfo, &block), "Failed to create virtual block");
+
+    std::vector<VkBufferCopy> copyRegions;
+    copyRegions.reserve(m_allocations.size());
+
+    // do it 1 by 1 instead of copying the whole buffer in order to reduce fragmentation in case the old buffer had things freed from it which left it fragmented
+    for(auto [slot, allocation] : m_allocations)
+    {
+        VmaVirtualAllocationInfo allocInfo = {};
+        vmaGetVirtualAllocationInfo(m_block, allocation, &allocInfo);
+
+        VmaVirtualAllocationCreateInfo newAllocInfo = {};
+        VmaVirtualAllocation newAllocation          = nullptr;
+
+        uint64_t offset = 0;
+
+        newAllocInfo.size      = allocInfo.size;
+        newAllocInfo.alignment = m_elementSize;
+
+        // find slot in new buffer
+        VK_CHECK(vmaVirtualAllocate(m_block, &newAllocInfo, &newAllocation, &offset), "Failed to allocate virtual memory after new block creation");
+
+
+        copyRegions.push_back({allocInfo.offset, offset, allocInfo.size});
+    }
+
+    CommandBuffer cb;
+    cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    // don't need to sync because we only read from the old buffer
+    vkCmdCopyBuffer(cb.GetCommandBuffer(), m_buffer.GetVkBuffer(), m_tempBuffer.GetVkBuffer(), copyRegions.size(), copyRegions.data());
+
+    cb.Submit(VulkanContext::GetGraphicsQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
+    vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
+}
+
+void DynamicBufferAllocator::DeleteOldIfNeeded()
+{
+    if(m_needDelete)
+    {
+        m_buffer.Free();
+        m_buffer     = std::move(m_tempBuffer);
+        m_needDelete = false;
     }
 }

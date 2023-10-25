@@ -119,7 +119,7 @@ void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineS
         VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
     }
 
-    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit command buffer");
+    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit command buffer" + std::to_string((uint64_t)m_commandBuffer));
 }
 
 void CommandBuffer::Submit(VkQueue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence)

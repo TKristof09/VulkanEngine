@@ -10,6 +10,8 @@
 
 #define NUM_CASCADES 4
 
+
+
 struct Attenuation
 {
 	// quadratic*x^2+linear*x+constant

@@ -1,6 +1,5 @@
 // TODO https://themaister.net/blog/2020/01/
-#version 450
-
+#version 460
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_debug_printf : require
 #include "common.glsl"

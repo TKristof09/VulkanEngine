@@ -85,30 +85,34 @@ private:
         glm::vec3 position;
     };
 
+    struct PushConstants
+    {
+        glm::mat4 viewProj;
+        uint64_t shaderDataPtr;
+        uint64_t transformBufferPtr;
+        uint64_t objectIdMapPtr;
+        uint64_t materialDataPtr;
+    };
+
+    PushConstants m_pushConstants;
+
     std::unique_ptr<Pipeline> m_compute;
-    std::vector<VkDescriptorSet> m_computeDesc;
     std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
     std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
-    void UpdateComputeDescriptors();
-    VkSampler m_computeSampler;
-    ComputePushConstants m_computePushConstants;
+    VkSampler m_computeSampler;  // TODO
     std::unordered_map<ComponentID, Light> m_lightMap;
     std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
     void UpdateLights(uint32_t index);
 
-    std::shared_ptr<Image> m_resolvedDepthImage;
     std::shared_ptr<Image> m_lightCullDebugImage;
 
     std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps;  // non point lights, store NUM_CASCADES images for each light
-    std::vector<VkDescriptorSet> m_shadowDesc;
-    void UpdateShadowDescriptors();
     std::unique_ptr<Pipeline> m_shadowPipeline;
     VkSampler m_shadowSampler;
     VkSampler m_shadowSamplerPCF;
     // std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
-    std::vector<VkDescriptorSet> m_tempDesc;  // global desc set 0
 
     std::unique_ptr<Pipeline> m_depthPipeline;
 
@@ -131,14 +135,17 @@ private:
     void CleanupSwapchain();
 
 
+    void CreateDrawBuffers();
+
     void CreateUniformBuffers();
 
     void CreateDescriptorSetLayout();
     void CreateDescriptorPool();
-    void CreateDescriptorSets();
 
     void CreateColorResources();
     void CreateDepthResources();
+
+    void RefreshDrawCommands();
 
     void SetupDebugMessenger();
 
@@ -184,10 +191,6 @@ private:
     std::vector<VkFence> m_imagesInFlight;
 
     VkDescriptorPool m_descriptorPool;
-    std::vector<VkDescriptorSet> m_cameraDescSets;
-    std::vector<std::vector<VkDescriptorSet>> m_transformDescSets;
-    // key: pipelineName + setNumber -> set 0, 2 = global(this set is stored in the above variables); set 1 = material;
-    std::unordered_map<std::string, std::vector<VkDescriptorSet>> m_descriptorSets;
 
     std::shared_ptr<Image> m_depthImage;
 
@@ -200,6 +203,15 @@ private:
     std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
 
     RenderGraph m_renderGraph;
+
+    DynamicBufferAllocator m_vertexBuffer;
+    DynamicBufferAllocator m_indexBuffer;
+
+    // TODO temp
+    Buffer m_drawBuffer;
+    uint32_t m_numDrawCommands;
+    bool m_needDrawBufferReupload = false;
+    DynamicBufferAllocator m_transformBuffer;
 
     // TODO remove
     Entity* m_frustrumEntity;

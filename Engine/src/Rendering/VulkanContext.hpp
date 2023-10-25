@@ -15,11 +15,12 @@ struct VulkanContext
     static VkFormat GetDepthFormat() { return m_depthFormat; }
     static VkFormat GetStencilFormat() { return m_stencilFormat; }
     static VkExtent2D GetSwapchainExtent() { return m_swapchainExtent; }
-    static VmaAllocator GetVmaAllocator() { return m_vmaAllocator; }
+    static VmaAllocator GetVmaImageAllocator() { return m_vmaImageAllocator; }
+    static VmaAllocator GetVmaBufferAllocator() { return m_vmaBufferAllocator; }
 
     static void Cleanup()
     {
-        vmaDestroyAllocator(m_vmaAllocator);
+        vmaDestroyAllocator(m_vmaImageAllocator);
         vkDestroyDevice(m_device, nullptr);
 
 #ifdef VDEBUG
@@ -59,5 +60,11 @@ private:
     inline static VkFormat m_stencilFormat        = VK_FORMAT_UNDEFINED;
     inline static VkExtent2D m_swapchainExtent    = {};
 
-    inline static VmaAllocator m_vmaAllocator = VK_NULL_HANDLE;
+    // The reason why we need 2 allocators is that with the buffer device address feature enabled on a VMA allocator
+    // renderdoc crashes with a VK_DEVICE_LOST error when trying to capture a frame.
+    // I managed to narrow it down to the fact that the crash happens when images are also created with the VMA allocator that has the feature enabled
+    // This is a workaround for that.
+    // So we use one allocator for images (without the buffer device address feature) and a separate one for buffers (with the buffer device address feature)
+    inline static VmaAllocator m_vmaImageAllocator  = VK_NULL_HANDLE;
+    inline static VmaAllocator m_vmaBufferAllocator = VK_NULL_HANDLE;
 };

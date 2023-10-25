@@ -5,8 +5,9 @@
 #include "TextureManager.hpp"
 #include "vulkan/vulkan_core.h"
 
-MaterialSystem::MaterialSystem(Scene* scene, Renderer* renderer) : m_renderer(renderer),
-                                                                   m_ecs(scene->ecs)
+MaterialSystem::MaterialSystem(Scene* scene, Renderer* renderer)
+    : m_renderer(renderer),
+      m_ecs(scene->ecs)
 {
     scene->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentAdded);
     scene->eventHandler->Subscribe(this, &MaterialSystem::OnMaterialComponentRemoved);
@@ -32,7 +33,7 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
         PipelineCreateInfo ci;
         ci.type             = PipelineType::GRAPHICS;
         ci.allowDerivatives = true;
-        ci.depthCompareOp   = VK_COMPARE_OP_GREATER_OR_EQUAL;  // maybe it should even be EQUAL since we only need to render the fragments that are in the depth image
+        ci.depthCompareOp   = VK_COMPARE_OP_GREATER_OR_EQUAL;
         ci.depthWriteEnable = false;
         ci.useDepth         = true;
         ci.stages           = (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -46,13 +47,31 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
     else
     {
         it->second += 1;
-        pipeline = m_renderer->m_pipelinesRegistry[comp->shaderName];
+        pipeline    = m_renderer->m_pipelinesRegistry[comp->shaderName];
     }
 
 
-    m_ecs->componentManager->Sort<Material>([&](Material* lhs, Material* rhs)
-                                            { return *m_renderer->m_pipelinesRegistry[lhs->shaderName] < *m_renderer->m_pipelinesRegistry[rhs->shaderName]; });
+    // add material info to pipeline's material buffer
+    auto materialIt = m_materialDatas.try_emplace(comp->shaderName, 50, sizeof(Material), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 0, true);
+    bool didResize  = false;
+    uint64_t slot   = materialIt.first->second.Allocate(1, didResize, nullptr);
+    comp->_ubSlot   = slot;  // TODO
 
+    // add transform ptr + material info ptr to the pipeline's object data buffer
+    // set object id in the material component for the renderer to be able to access it in the draw command creation
+
+    m_ecs->componentManager->Sort<Material>(
+        [&](Material* lhs, Material* rhs)
+        {
+            if(lhs->shaderName == rhs->shaderName)
+            {
+                return lhs->_ubSlot < rhs->_ubSlot;
+            }
+            else
+            {
+                return *m_renderer->m_pipelinesRegistry[lhs->shaderName] < *m_renderer->m_pipelinesRegistry[rhs->shaderName];
+            }
+        });
     AllocateDescriptorSets(pipeline, e->component);
 }
 
@@ -81,6 +100,7 @@ void MaterialSystem::OnMaterialComponentRemoved(const ComponentRemoved<Material>
 
 void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
 {
+    /*
     uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
     bool needToAllocate = m_registry[pipeline->m_name] % OBJECTS_PER_DESCRIPTOR_CHUNK == 1 || m_registry[pipeline->m_name] == 1;
@@ -260,11 +280,13 @@ void MaterialSystem::AllocateDescriptorSets(Pipeline* pipeline, Material* comp)
             vkUpdateDescriptorSets(VulkanContext::GetDevice(), 1, &writeDS, 0, nullptr);
         }
     }
+*/
 }
 
 
 void MaterialSystem::UpdateMaterial(Material* mat)
 {
+    /*
     Pipeline* pipeline          = m_renderer->m_pipelinesRegistry[mat->shaderName];
     uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
@@ -301,4 +323,5 @@ void MaterialSystem::UpdateMaterial(Material* mat)
             vkUpdateDescriptorSets(VulkanContext::GetDevice(), 1, &writeDS, 0, nullptr);  // TODO this may need better synchro in the future, but for now update_unused_whil_pending is enough
         }
     }
+    */
 }

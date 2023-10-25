@@ -311,6 +311,11 @@ void RenderGraph::CreatePhysicalResources()
             AddOrUpdateImageInfo(depthResolveOutput);
         }
 
+        for(auto* input : pass->GetDrawCommandBuffers())
+        {
+            AddOrUpdateBufferInfo(input);
+        }
+
         // Index and vertex buffers are always external resources so they are not created in the render graph
 
         for(auto* input : pass->GetUniformBufferInputs())
@@ -551,7 +556,7 @@ void RenderGraph::CheckPhysicalResources()
                 auto* texture = static_cast<RenderingTextureResource*>(resource.get());
                 if(!texture->GetImagePointer())
                 {
-                    LOG_ERROR("Texture resource %s has no image assigned", texture->GetName());
+                    LOG_ERROR("Texture resource {0} has no image assigned", texture->GetName());
                     ok = false;
                 }
             }
@@ -561,7 +566,7 @@ void RenderGraph::CheckPhysicalResources()
                 auto* buffer = static_cast<RenderingBufferResource*>(resource.get());
                 if(!buffer->GetBufferPointer())
                 {
-                    LOG_ERROR("Buffer resource %s has no buffer assigned", buffer->GetName());
+                    LOG_ERROR("Buffer resource {0} has no buffer assigned", buffer->GetName());
                     ok = false;
                 }
             }
@@ -1096,7 +1101,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         renderTargetBarrier.subresourceRange.levelCount     = 1;
         renderTargetBarrier.srcAccessMask                   = 0;
         renderTargetBarrier.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
+        
         // TODO remove
         VkImageMemoryBarrier tmpDepthBarrier{};
         tmpDepthBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
