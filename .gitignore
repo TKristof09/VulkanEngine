@@ -36,3 +36,4 @@ Engine.log
 DebugTools
 results.json
 graph.dot
+.rgignore
