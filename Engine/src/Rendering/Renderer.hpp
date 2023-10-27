@@ -98,7 +98,7 @@ private:
 
     std::unique_ptr<Pipeline> m_compute;
     std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
-    std::vector<std::unique_ptr<BufferAllocator>> m_visibleLightsBuffers;
+    std::vector<std::unique_ptr<Buffer>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
     VkSampler m_computeSampler;  // TODO
     std::unordered_map<ComponentID, Light> m_lightMap;
@@ -146,6 +146,8 @@ private:
     void CreateDepthResources();
 
     void RefreshDrawCommands();
+
+    void RefreshShaderDataOffsets();
 
     void SetupDebugMessenger();
 
@@ -206,6 +208,10 @@ private:
 
     DynamicBufferAllocator m_vertexBuffer;
     DynamicBufferAllocator m_indexBuffer;
+
+    DynamicBufferAllocator m_shaderDataBuffer;
+    std::array<std::unordered_map<std::string, uint64_t>, NUM_FRAMES_IN_FLIGHT> m_shaderDataOffsets;  // shader name -> offset in the shader data buffer
+
 
     // TODO temp
     Buffer m_drawBuffer;

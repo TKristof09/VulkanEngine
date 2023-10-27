@@ -59,6 +59,14 @@ public:
     void Bind(const CommandBuffer& commandBuffer);
     [[nodiscard]] const VkBuffer& GetVkBuffer() const { return m_buffer; }
     [[nodiscard]] VkDeviceSize GetSize() const { return m_size; }
+    [[nodiscard]] uint64_t GetDeviceAddress() const
+    {
+        VkBufferDeviceAddressInfo info = {};
+        info.sType                     = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        info.buffer                    = m_buffer;
+
+        return vkGetBufferDeviceAddress(VulkanContext::GetDevice(), &info);
+    }
 
 protected:
     Type m_type;
@@ -71,6 +79,7 @@ protected:
     VmaAllocation m_allocation;
 };
 
+// TODO add callbacks for when the buffer is resized
 class DynamicBufferAllocator
 {
 public:

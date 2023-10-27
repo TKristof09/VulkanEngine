@@ -202,7 +202,7 @@ void Buffer::Bind(const CommandBuffer& commandBuffer)
             break;
         }
     default:
-        std::cout << "Bufffer type not handled" << std::endl;
+        LOG_ERROR("Bufffer type not handled");
         break;
     }
 }

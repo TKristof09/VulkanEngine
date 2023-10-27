@@ -21,14 +21,15 @@ struct DrawCommand
 layout(buffer_reference) buffer DrawCmdBuffer {
     DrawCommand v[];
 };
-layout(buffer_reference) buffer ShaderData {
+/*layout(buffer_reference) buffer ShaderData {
     DrawIdToObjectId data;
     DrawCmdBuffer drawCmdPtr;
     uint drawCmdCount;
-};
+};*/
 
 void main()
 {
+    /*
     ShaderData shaderData = ShaderData(shaderDataPtr);
     DrawCmdBuffer drawCmds = DrawCmdBuffer(shaderData.drawCmdPtr);
     DrawIdToObjectId drawIdToObjectId = DrawIdToObjectId(shaderData.data);
@@ -36,5 +37,6 @@ void main()
     for (uint i = 0; i < shaderData.drawCmdCount; ++i) {
         drawIdToObjectId.v[i] = drawCmds.v[i].objectID;
     }
+    */
 
 }

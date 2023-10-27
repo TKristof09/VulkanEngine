@@ -14,20 +14,16 @@ layout(location = 5) in vec3 cameraPos;
 
 layout(location = 0) out vec4 outColor;
 
-/*
-struct ShaderData
-{
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
     ivec2 viewportSize;
     ivec2 tileNums;
-    int lightNum;
     int debugMode;
     uint64_t lightBuffer;
     uint64_t visibleLightsBuffer;
 
-    uint64_t shqdowMapIds;
+    uint64_t shadowMapIds;
     uint32_t shadowMapCount;
 };
-*/
 
 /*
 layout(set = 1, binding = 0) uniform Material {
@@ -189,6 +185,7 @@ vec3 CalculateSpotLight(Light light)
 }
 
 void main() {
+
 /*
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
     int tileIndex = tileID.y * tileNums.x + tileID.x;

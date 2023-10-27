@@ -1301,7 +1301,6 @@ void RenderGraph::ToDOT(const std::string& filename)
     file << "digraph G {\n";
     for(uint32_t node = 0; node < m_graph.size(); ++node)
     {
-        std::cout << m_renderPasses[node]->GetName() << std::endl;
         for(const auto& edge : m_graph[node])
         {
             file << m_renderPasses[node]->GetName() << " -> " << m_renderPasses[edge]->GetName();

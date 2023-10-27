@@ -80,6 +80,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 1e6),
       m_indexBuffer(5e5, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 1e5),
       m_transformBuffer(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false),
+      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, false),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
       m_pushConstants({})
 
 {
@@ -210,16 +211,49 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 m_indexBuffer.Bind(cb);
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
             });
+    }
+    {
+        struct ShaderData
+        {
+            glm::ivec2 viewportSize;
+            glm::ivec2 tileNums;
+            int debugMode;
+            uint64_t lightBuffer;
+            uint64_t visibleLightsBuffer;
 
+            uint64_t shadowMapIds;
+            uint32_t shadowMapCount;
+        };
         auto& lightingPass         = m_renderGraph.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
         AttachmentInfo colorInfo   = {};
         colorInfo.clear            = true;
         colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
-        // lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
+        auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
+        visibleLightsBuffer.SetBufferPointer(m_visibleLightsBuffers[0].get());
         auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
         // TODO shadow maps
+        lightingPass.SetInitialiseCallback(
+            [&](RenderGraph& rg)
+            {
+                ShaderData data          = {};
+                data.viewportSize        = glm::vec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums            = glm::vec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
+                {
+                    // data.lightBuffer = m_lightsBuffers[i].GetDeviceAddress();
+                    //  data.shadowMapIds
+                    //  data.shadowMapCount
+                    data.debugMode  = i;
+                    bool tmp        = false;
+                    uint64_t offset = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    m_shaderDataBuffer.UploadData(offset, &data);
+                    // store the offset somewhere
+                    m_shaderDataOffsets[i]["forwardplus"] = offset;
+                }
+            });
         lightingPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
@@ -228,34 +262,23 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 auto end              = cm->end<Material>();
                 uint32_t offset       = 0;
 
-                for(const auto& pipeline : m_pipelines)
-                {
-                    // if(pipeline.m_name == "depth") continue;
-                    auto tempIt = materialIterator;  // to be able to restore the iterator to its previous place after global pipeline is finished
-                    if(pipeline.m_isGlobal)
-                        materialIterator = cm->begin<Material>();
+                auto* pipeline = m_pipelinesRegistry["forwardplus"];
+                // vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
 
+                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->m_pipeline);
 
-                    // vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
+                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["forwardplus"]);
 
-                    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
+                vkCmdPushConstants(cb.GetCommandBuffer(), pipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &m_pushConstants);
 
-                    m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_vertexBuffer.Bind(cb);
+                m_indexBuffer.Bind(cb);
 
-                    vkCmdPushConstants(cb.GetCommandBuffer(), pipeline.m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &m_pushConstants);
-
-                    m_vertexBuffer.Bind(cb);
-                    m_indexBuffer.Bind(cb);
-
-                    PROFILE_SCOPE("Draw call loop");
-                    vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
-
-                    if(pipeline.m_isGlobal && tempIt != end)
-                    {
-                        materialIterator = tempIt;
-                    }
-                }
+                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
             });
+    }
+    {
         // auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
         //  TODO
 
@@ -318,14 +341,14 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
                 vkCmdDispatch(cb.GetCommandBuffer(), m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
             });
-
+    }
 #endif
-
-        auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
-        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
-        uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
-                                    { m_debugUI->Draw(&cb); });
-
+        {
+            auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
+            uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
+            uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
+                                        { m_debugUI->Draw(&cb); });
+        }
         m_renderGraph.Build();
     }
 }
@@ -618,6 +641,7 @@ void Renderer::CreateVmaAllocator()
     allocatorInfo.physicalDevice         = m_gpu;
     allocatorInfo.device                 = m_device;
     allocatorInfo.instance               = m_instance;
+    allocatorInfo.vulkanApiVersion       = VK_API_VERSION_1_3;
     VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaImageAllocator), "Failed to create vma allocator");
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     VK_CHECK(vmaCreateAllocator(&allocatorInfo, &VulkanContext::m_vmaBufferAllocator), "Failed to create vma allocator");
@@ -698,12 +722,15 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
     auto it                   = m_pipelines.emplace(name, createInfo, priority);
     Pipeline* pipeline        = const_cast<Pipeline*>(&(*it));
     m_pipelinesRegistry[name] = pipeline;
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+
+    bool didResize = false;
+    // uint64_t offset = m_shaderDataBuffer.Allocate(pipeline->m_shaderDataSize, didResize, pipeline);
+
+    // m_shaderDataOffsets[pipeline->m_name] = offset;
+
+    if(didResize)
     {
-        for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
-        {
-            m_ubAllocators[pipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
-        }
+        RefreshShaderDataOffsets();
     }
 
     return pipeline;
@@ -755,13 +782,10 @@ void Renderer::CreatePipeline()
 
     depthPipeline.isGlobal = true;
 
+    // m_depthPipeline = AddPipeline("depth", depthPipeline, 0);
     m_depthPipeline = std::make_unique<Pipeline>("depth", depthPipeline, 0);
-    // auto depthIter = m_pipelines.emplace("depth", depthPipeline, 0);
 
-    // Pipeline* pipeline = const_cast<Pipeline*>(&(*depthIter));
-    // m_pipelinesRegistry["depth"] = pipeline;
-
-    uint32_t totaltiles = 0;  // glm::compMul(m_computePushConstants.tileNums);
+    uint32_t totaltiles = ceil(m_swapchainExtent.width / 16.f) * ceil(m_swapchainExtent.height / 16.f);
 
     for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
     {
@@ -773,10 +797,10 @@ void Renderer::CreatePipeline()
 
         // TODO
         // m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));                    // MAX_LIGHTS_PER_TILE
-        // m_visibleLightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(TileLights), totaltiles, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));  // MAX_LIGHTS_PER_TILE
+        m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));  // MAX_LIGHTS_PER_TILE
     }
 
-    /*
+
     // Shadow prepass pipeline
     LOG_WARN("Creating shadow pipeline");
     PipelineCreateInfo shadowPipeline;
@@ -839,7 +863,6 @@ void Renderer::CreatePipeline()
 
         VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSamplerPCF), "Failed to create shadow texture sampler");
     }
-    */
 }
 
 
@@ -1158,6 +1181,10 @@ void Renderer::RefreshDrawCommands()
     }
     m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
     m_numDrawCommands = drawCommands.size();
+}
+
+void Renderer::RefreshShaderDataOffsets()
+{
 }
 
 void Renderer::Render(double dt)
@@ -1957,6 +1984,9 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
 
     message << "\t"
             << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
+
+    message << "\t"
+            << "messageType     = <" << string_VkDebugUtilsMessageTypeFlagsEXT(messageTypes) << ">\n";
 
     if(pCallbackData->pMessage)
         message << "\t"
