@@ -92,7 +92,7 @@ void MaterialSystem::OnMaterialComponentRemoved(const ComponentRemoved<Material>
         {
             if(bufferInfo.set != materialDescriptorSetIndex)
                 continue;
-            m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
+            //m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
         }
     }
     m_freeTextureSlots[shaderName].push(comp->_textureSlot);

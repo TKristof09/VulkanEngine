@@ -88,6 +88,8 @@ private:
     struct PushConstants
     {
         glm::mat4 viewProj;
+        glm::vec3 cameraPos;
+        int32_t debugMode;
         uint64_t shaderDataPtr;
         uint64_t transformBufferPtr;
         uint64_t objectIdMapPtr;
@@ -97,7 +99,7 @@ private:
     PushConstants m_pushConstants;
 
     std::unique_ptr<Pipeline> m_compute;
-    std::vector<std::unique_ptr<BufferAllocator>> m_lightsBuffers;
+    std::vector<std::unique_ptr<DynamicBufferAllocator>> m_lightsBuffers;
     std::vector<std::unique_ptr<Buffer>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
     VkSampler m_computeSampler;  // TODO
@@ -181,7 +183,7 @@ private:
     std::multiset<Pipeline> m_pipelines;
     std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
 
-    std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators;  // key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
+    // std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators;  // key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
 
     VkCommandPool& m_commandPool;

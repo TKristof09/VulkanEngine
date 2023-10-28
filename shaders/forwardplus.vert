@@ -11,7 +11,6 @@ layout(location = 3) in vec3 inTangent;
 layout(location = 0) out mat3 TBN;
 layout(location = 3) out vec2 fragTexCoord;
 layout(location = 4) out vec3 worldPos;
-layout(location = 5) out vec3 cameraPos;
 
 
 void main() {
@@ -28,7 +27,6 @@ void main() {
     vec4 tempWorldPos = (model * vec4(inPosition, 1.0));
     fragTexCoord = inTexCoord;
     worldPos = tempWorldPos.xyz;
-    cameraPos = vec3(gl_DrawID);//cameraPosition;
 
     gl_Position = viewProj * model * vec4(inPosition, 1.0); // can't just use the tempWorldPos because we loose precision or something and depth tests start to fail
 }

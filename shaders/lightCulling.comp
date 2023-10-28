@@ -3,36 +3,31 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_debug_printf : require
 #include "common.glsl"
+#include "bindings.glsl"
 
 layout(local_size_x=TILE_SIZE, local_size_y=TILE_SIZE, local_size_z=1) in;
 
-layout(set = 0, binding = 0) uniform Camera
-{
-	mat4 vp;
-	vec3 cameraPosition;
-};
-layout(push_constant) uniform PC
-{
-	ivec2 viewportSize;
-	ivec2 tileNums;
-	int lightNum;
-	int debugMode;
-};
 
-// we use these buffers later in the frag shader, and they only change once per frame, so they can go with the camera in set 0
-layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
-{
-	Light lights[];
+
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer LightBuffer {
+    Light data[];
 };
-
-layout(set = 0, binding = 2) writeonly buffer VisibleLightsBuffer
-{
-	TileLights visibleLights[];
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
+    TileLights data[];
 };
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
+    ivec2 viewportSize;
+    ivec2 tileNums;
+    LightBuffer lightBuffer;
+    VisibleLightsBuffer visibleLightsBuffer;
 
-layout(set = 0, binding = 3) uniform sampler2D depthTexture;
+    int lightNum;
+    int depthTextureId;
+    int debugTextureId;
+};
+//layout(set = 0, binding = 3) uniform sampler2D depthTexture;
 
-layout(set = 0, binding = 4, rgba8) uniform writeonly image2D debugTexture;
+//layout(set = 0, binding = 4, rgba8) uniform writeonly image2D debugTexture;
 
 
 struct ViewFrustum
@@ -52,9 +47,9 @@ shared uint lightCountForTile;
 
 ViewFrustum BuildFrustum(ivec2 tileID)
 {
-	mat4 inverseVP = inverse(vp);
+	mat4 inverseVP = inverse(viewProj);
 
-	vec2 ndcSizePerTile = 2.0 * vec2(TILE_SIZE, -TILE_SIZE) / viewportSize;
+	vec2 ndcSizePerTile = 2.0 * vec2(TILE_SIZE, -TILE_SIZE) / shaderDataPtr.viewportSize;
 
 	// TODO maybe have a problem with the top left of vulkan ndc since we are using negative viewport
 	vec2 ndcPoints[4];  // corners of tile in ndc
@@ -88,7 +83,7 @@ ViewFrustum BuildFrustum(ivec2 tileID)
 	for (int i = 0; i < 4; i++)
 	{
 		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
-		normal = cross(frustum.points[i] - cameraPosition, frustum.points[i + 1] - cameraPosition);
+		normal = cross(frustum.points[i] - cameraPos, frustum.points[i + 1] - cameraPos);
 		normal = normalize(normal);
 		frustum.planes[i] = vec4(normal, - dot(normal, frustum.points[i]));
 	}
@@ -170,7 +165,7 @@ void main()
 
 
 	ivec2 tileID = ivec2(gl_WorkGroupID.xy);
-	uint tileIndex = tileID.y * tileNums.x + tileID.x;
+	uint tileIndex = tileID.y * shaderDataPtr.tileNums.x + tileID.x;
 
 
 	if(gl_LocalInvocationIndex == 0)
@@ -182,9 +177,9 @@ void main()
 		{
 			for(int y = 0; y < TILE_SIZE; ++y)
 			{
-				vec2 sampleLoc = (vec2(TILE_SIZE, TILE_SIZE) * tileID + vec2(x,y))/ viewportSize;
+				vec2 sampleLoc = (vec2(TILE_SIZE, TILE_SIZE) * tileID + vec2(x,y))/ shaderDataPtr.viewportSize;
 
-				float depth = texture(depthTexture, sampleLoc).x;
+				float depth = 1;//texture(depthTexture, sampleLoc).x;
 
 
 				minDepth = min(minDepth, depth); // this causes crash if we use msaa
@@ -208,7 +203,7 @@ void main()
 	barrier();
 	if(maxDepth == 0.0 && minDepth == 0.0)
 		return;
-	for(uint i = gl_LocalInvocationIndex; i < lightNum && lightCountForTile < MAX_LIGHTS_PER_TILE; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y)
+	for(uint i = gl_LocalInvocationIndex; i < shaderDataPtr.lightNum && lightCountForTile < MAX_LIGHTS_PER_TILE; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y)
 	{
 
 //		bool accept = InFrustum(lights[i]);
@@ -221,14 +216,14 @@ void main()
 //
 //		if(accept)
 //			visibleLights[tileIndex].indices[index] = i;
-		bool accepted = InFrustum(lights[i]);
+		bool accepted = InFrustum(shaderDataPtr.lightBuffer.data[i]);
 		if(accepted)
 		{
 			uint slot = atomicAdd(lightCountForTile, 1);
 			if(slot >= MAX_LIGHTS_PER_TILE)
 				break;
 
-			visibleLights[tileIndex].indices[slot] = i;
+			shaderDataPtr.visibleLightsBuffer.data[tileIndex].indices[slot] = i;
 		}
 
 
@@ -240,7 +235,7 @@ void main()
 	{
 		//debugPrintfEXT("Rejected: %i", rejected);
 		uint lightCount = min(lightCountForTile, MAX_LIGHTS_PER_TILE);
-		visibleLights[tileIndex].count = lightCount;
+		shaderDataPtr.visibleLightsBuffer.data[tileIndex].count = lightCount;
 		if(debugMode == 1)
 		{
 			for(int x = 0; x < TILE_SIZE; ++x)
@@ -248,7 +243,7 @@ void main()
 				for(int y = 0; y < TILE_SIZE; ++y)
 				{
 
-					imageStore(debugTexture, ivec2(TILE_SIZE, TILE_SIZE) * tileID + ivec2(x, y), vec4(float(lightCount) / MAX_LIGHTS_PER_TILE, float(int(lightCount == MAX_LIGHTS_PER_TILE)), float(int(lightCount > 0)), 1.0));
+					//imageStore(debugTexture, ivec2(TILE_SIZE, TILE_SIZE) * tileID + ivec2(x, y), vec4(float(lightCount) / MAX_LIGHTS_PER_TILE, float(int(lightCount == MAX_LIGHTS_PER_TILE)), float(int(lightCount > 0)), 1.0));
 				}
 			}
 		}

@@ -9,17 +9,20 @@
 layout(location = 0) in mat3 TBN;
 layout(location = 3) in vec2 fragTexCoord;
 layout(location = 4) in vec3 worldPos;
-layout(location = 5) in vec3 cameraPos;
 
 
 layout(location = 0) out vec4 outColor;
-
+layout(buffer_reference, buffer_reference_align=4) readonly buffer LightBuffer {
+    Light data[];
+};
+layout(buffer_reference, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
+    TileLights data[];
+};
 layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
     ivec2 viewportSize;
     ivec2 tileNums;
-    int debugMode;
-    uint64_t lightBuffer;
-    uint64_t visibleLightsBuffer;
+    LightBuffer lightBuffer;
+    VisibleLightsBuffer visibleLightsBuffer;
 
     uint64_t shadowMapIds;
     uint32_t shadowMapCount;
@@ -131,7 +134,7 @@ float CalculateShadow(Light light)
 #endif
 
 vec3 GetNormalFromMap(){
-    vec3 n = vec3(0,0,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
+    vec3 n = vec3(0.5,0.5,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
     n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
     n = normalize(TBN * n);
     return n;
@@ -186,36 +189,30 @@ vec3 CalculateSpotLight(Light light)
 
 void main() {
 
-/*
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
-    int tileIndex = tileID.y * tileNums.x + tileID.x;
+    int tileIndex = tileID.y * shaderDataPtr.tileNums.x + tileID.x;
 
-    uint tileLightNum = visibleLights[tileIndex].count;
+    uint tileLightNum = shaderDataPtr.visibleLightsBuffer.data[tileIndex].count;
 
     vec3 illuminance = vec3(0.2); // ambient
 
     for(int i = 0; i < tileLightNum; ++i)
     {
-        uint lightIndex = visibleLights[tileIndex].indices[i];
+        uint lightIndex = shaderDataPtr.visibleLightsBuffer.data[tileIndex].indices[i];
 
-        switch(lights[lightIndex].type)
+        Light light = shaderDataPtr.lightBuffer.data[lightIndex];
+        switch(light.type)
         {
             case DIRECTIONAL_LIGHT:
-                illuminance += CalculateDirectionalLight(lights[lightIndex]);
+                illuminance += CalculateDirectionalLight(light);
                 break;
             case POINT_LIGHT:
-                illuminance += CalculatePointLight(lights[lightIndex]);
+                illuminance += CalculatePointLight(light);
                 break;
             case SPOT_LIGHT:
-                illuminance += CalculateSpotLight(lights[lightIndex]);
+                illuminance += CalculateSpotLight(light);
                 break;
         }
-    }*/
-    vec3 illuminance = vec3(0.2); // ambient
-    //            illuminance += CalculateDirectionalLight(lights[0]);
+    }
     outColor = vec4(illuminance /** texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb*/, 1.0);
-    if(cameraPos.x == 0)
-        outColor = vec4(1,0,0,1);
-    else if(cameraPos.x == 1)
-        outColor = vec4(0,1,0,1);
 }

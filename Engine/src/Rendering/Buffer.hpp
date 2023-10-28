@@ -55,7 +55,7 @@ public:
     void Fill(void* data, uint64_t size, uint64_t offset = 0);
 
     // offsets must be sorted in ascending order
-    void Fill(std::vector<void*> datas, uint64_t size, const std::vector<uint64_t>& offsets);
+    void Fill(const std::vector<void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets);
     void Bind(const CommandBuffer& commandBuffer);
     [[nodiscard]] const VkBuffer& GetVkBuffer() const { return m_buffer; }
     [[nodiscard]] VkDeviceSize GetSize() const { return m_size; }
@@ -95,6 +95,7 @@ public:
 
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
     void UploadData(uint64_t slot, void* data);
+    void UploadData(const std::vector<uint64_t>& slots, const std::vector<void*>& datas);
 
     void Free(uint64_t slot);
 
@@ -102,8 +103,13 @@ public:
 
     void Bind(CommandBuffer& cb) { m_buffer.Bind(cb); }
 
-    [[nodiscard]] uint64_t GetDeviceAddress(uint64_t slot) const
+    [[nodiscard]] uint64_t GetDeviceAddress(uint64_t slot)
     {
+        // TODO make initialisation not messy
+        if(m_buffer.GetVkBuffer() == VK_NULL_HANDLE)
+        {
+            Initialize();
+        }
         VkBufferDeviceAddressInfo info = {};
         info.sType                     = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         info.buffer                    = m_buffer.GetVkBuffer();

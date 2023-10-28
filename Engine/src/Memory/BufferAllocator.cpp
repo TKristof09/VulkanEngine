@@ -1,4 +1,5 @@
 #include "Memory/BufferAllocator.hpp"
+/*
 
 
 BufferAllocator::BufferAllocator(uint32_t objSize, uint32_t objPerChunk, VkBufferUsageFlags flags)
@@ -113,3 +114,4 @@ void BufferAllocator::Free(uint32_t slot)
 {
     m_freeSlots.push(slot);
 }
+*/

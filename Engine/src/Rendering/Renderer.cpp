@@ -217,7 +217,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         {
             glm::ivec2 viewportSize;
             glm::ivec2 tileNums;
-            int debugMode;
             uint64_t lightBuffer;
             uint64_t visibleLightsBuffer;
 
@@ -238,17 +237,16 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             [&](RenderGraph& rg)
             {
                 ShaderData data          = {};
-                data.viewportSize        = glm::vec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums            = glm::vec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
-                    // data.lightBuffer = m_lightsBuffers[i].GetDeviceAddress();
+                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
                     //  data.shadowMapIds
                     //  data.shadowMapCount
-                    data.debugMode  = i;
-                    bool tmp        = false;
-                    uint64_t offset = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    bool tmp         = false;
+                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
                     m_shaderDataBuffer.UploadData(offset, &data);
                     // store the offset somewhere
                     m_shaderDataOffsets[i]["forwardplus"] = offset;
@@ -282,40 +280,47 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         // auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
         //  TODO
 
-#if 0
+    }
+
+    {
+        struct ShaderData
+        {
+            glm::ivec2 viewportSize;
+            glm::ivec2 tileNums;
+            uint64_t lightBuffer;
+            uint64_t visibleLightsBuffer;
+
+            int lightNum;
+            int depthTextureId;
+            int debugTextureId;
+        };
         auto& lightCullPass       = m_renderGraph.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
         auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer", "", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, true);
         auto& depthTexture        = lightCullPass.AddTextureInput("depthImage");
         lightCullPass.SetInitialiseCallback(
-            [&](RenderGraph& graph)
+            [&](RenderGraph& rg)
             {
-                for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
+                ShaderData data          = {};
+                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                data.lightNum            = 1;  // m_lightMap.size();
+                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
-                    VkDescriptorImageInfo depthImageInfo        = {};
-                    depthImageInfo.imageLayout                  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;  // TODO: depth_read_only_optimal
-                    depthImageInfo.imageView                    = graph.GetPhysicalImage(depthTexture).GetImageView();
-                    depthImageInfo.sampler                      = m_computeSampler;
-                    std::array<VkWriteDescriptorSet, 1> writeDS = {};
-
-                    writeDS[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeDS[0].dstSet          = m_computeDesc[i];
-                    writeDS[0].dstBinding      = 3;
-                    writeDS[0].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    writeDS[0].descriptorCount = 1;
-                    writeDS[0].pImageInfo      = &depthImageInfo;
-                    /*writeDS[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeDS[2].dstSet			= m_computeDesc[i];
-                    writeDS[2].dstBinding		= 4;
-                    writeDS[2].descriptorType	= VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                    writeDS[2].descriptorCount	= 1;
-                    writeDS[2].pImageInfo		= &debugImageInfo;*/
-                    vkUpdateDescriptorSets(VulkanContext::GetDevice(), writeDS.size(), writeDS.data(), 0, nullptr);
+                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    //  data.shadowMapIds
+                    //  data.shadowMapCount
+                    bool tmp         = false;
+                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    m_shaderDataBuffer.UploadData(offset, &data);
+                    // store the offset somewhere
+                    m_shaderDataOffsets[i]["lightCull"] = offset;
                 }
-                visibleLightsBuffer.SetBufferPointer(m_visibleLightsBuffers[0]->GetBufferPointer(0));
             });
         lightCullPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
+                /*
                 // TODO this barrier should be done automatically by the rendergraph, also probably wrong src masks
                 VkBufferMemoryBarrier2 barrierBefore = {};
                 barrierBefore.sType                  = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
@@ -332,25 +337,28 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 dependencyInfo.pBufferMemoryBarriers    = &barrierBefore;
 
                 vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
+                */
 
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
-                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
+
+                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["lightCull"]);
 
 
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
-                vkCmdDispatch(cb.GetCommandBuffer(), m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
+                auto viewportSize = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                auto tileNums     = glm::ivec2(ceil(viewportSize.x / 16.0f), ceil(viewportSize.y / 16.0f));
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+                vkCmdDispatch(cb.GetCommandBuffer(), tileNums.x, tileNums.y, 1);
             });
     }
-#endif
-        {
-            auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
-            uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
-            uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
-                                        { m_debugUI->Draw(&cb); });
-        }
-        m_renderGraph.Build();
+    {
+        auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
+        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
+        uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
+                                    { m_debugUI->Draw(&cb); });
     }
+    m_renderGraph.Build();
 }
 
 Renderer::~Renderer()
@@ -738,9 +746,9 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 void Renderer::CreatePipeline()
 {
     // Compute
-    // PipelineCreateInfo compute = {};
-    // compute.type               = PipelineType::COMPUTE;
-    // m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
+    PipelineCreateInfo compute = {};
+    compute.type               = PipelineType::COMPUTE;
+    m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
 
     {
         VkSamplerCreateInfo ci     = {};
@@ -791,12 +799,14 @@ void Renderer::CreatePipeline()
     {
         for(auto& [name, bufferInfo] : m_depthPipeline->m_uniformBuffers)
         {
+            /*
             if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
                 m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
+            */
         }
 
         // TODO
-        // m_lightsBuffers.emplace_back(std::make_unique<BufferAllocator>(sizeof(Light), 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));                    // MAX_LIGHTS_PER_TILE
+        m_lightsBuffers.emplace_back(std::make_unique<DynamicBufferAllocator>(100, sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 20));  // MAX_LIGHTS_PER_TILE
         m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));  // MAX_LIGHTS_PER_TILE
     }
 
@@ -1077,10 +1087,11 @@ void Renderer::UpdateLights(uint32_t index)
     for(auto& [slot, newLight] : m_changedLights[index])
     {
         slotsAndDatas.push_back({slot, newLight});
+        m_lightsBuffers[index]->UploadData(slot, newLight);  // TODO batch the upload together
     }
     m_changedLights[index].clear();
 
-    m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
+    // m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
 }
 
 std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
@@ -1221,7 +1232,7 @@ void Renderer::Render(double dt)
         VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
 
-        // UpdateLights(imageIndex);
+        UpdateLights(imageIndex);
 
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
         ComponentManager* cm       = m_ecs->componentManager;
@@ -1624,11 +1635,13 @@ void Renderer::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
 {
     m_ecs->componentManager->RemoveComponent<Renderable>(e->entity);
 
+    /*
     for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
     {
         uint32_t id = m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id;
         m_ubAllocators["transforms" + std::to_string(i)]->Free(id);
     }
+    */
 }
 
 void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
@@ -1650,8 +1663,9 @@ void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e)
 {
     uint32_t slot = 0;
+    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate();  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     e->component->_slot = slot;
 
@@ -1704,8 +1718,10 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
 void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
 {
     uint32_t slot = 0;
+    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate();  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+
 
     e->component->_slot = slot;
 
@@ -1721,8 +1737,9 @@ void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
 void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
 {
     uint32_t slot = 0;
+    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate();  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     e->component->_slot = slot;
 
