@@ -52,14 +52,27 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
 
 
     // add material info to pipeline's material buffer
-    auto materialIt = m_materialDatas.try_emplace(comp->shaderName, 50, sizeof(Material), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 0, true);
+    auto materialIt = m_materialDatas.try_emplace(comp->shaderName, 500, sizeof(ShaderMaterial), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 50);
     bool didResize  = false;
     uint64_t slot   = materialIt.first->second.Allocate(1, didResize, nullptr);
     comp->_ubSlot   = slot;  // TODO
 
-    // add transform ptr + material info ptr to the pipeline's object data buffer
-    // set object id in the material component for the renderer to be able to access it in the draw command creation
+    ShaderMaterial mat{};
+    Texture& albedo = TextureManager::GetTexture(comp->textures["albedo"]);
+    m_renderer->AddTexture(&albedo);
+    mat.albedoTexture = albedo.GetSlot();
 
+    Texture& normal = TextureManager::GetTexture(comp->textures["normal"]);
+    m_renderer->AddTexture(&normal);
+    mat.normalTexture = normal.GetSlot();
+
+    materialIt.first->second.UploadData(slot, &mat);
+
+    // add transform ptr + material info ptr to the pipeline's object data buffer
+    if(pipeline->m_materialBufferPtr == 0)
+        pipeline->m_materialBufferPtr = materialIt.first->second.GetDeviceAddress(0);
+    // set object id in the material component for the renderer to be able to access it in the draw command creation
+    /*
     m_ecs->componentManager->Sort<Material>(
         [&](Material* lhs, Material* rhs)
         {
@@ -71,7 +84,7 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
             {
                 return *m_renderer->m_pipelinesRegistry[lhs->shaderName] < *m_renderer->m_pipelinesRegistry[rhs->shaderName];
             }
-        });
+        });*/
     AllocateDescriptorSets(pipeline, e->component);
 }
 
@@ -92,7 +105,7 @@ void MaterialSystem::OnMaterialComponentRemoved(const ComponentRemoved<Material>
         {
             if(bufferInfo.set != materialDescriptorSetIndex)
                 continue;
-            //m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
+            // m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
         }
     }
     m_freeTextureSlots[shaderName].push(comp->_textureSlot);

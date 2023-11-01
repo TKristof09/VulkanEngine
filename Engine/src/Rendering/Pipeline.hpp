@@ -2,10 +2,8 @@
 
 #include "VulkanContext.hpp"
 #include "Shader.hpp"
-#include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan.h"
 
-const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 32;
-class Pipeline;
 
 enum class PipelineType
 {
@@ -13,6 +11,7 @@ enum class PipelineType
     COMPUTE
 };
 
+class Pipeline;
 struct PipelineCreateInfo
 {
     PipelineType type;
@@ -71,10 +70,7 @@ public:
           m_shaders(std::move(other.m_shaders)),
           m_pipeline(other.m_pipeline),
           m_layout(other.m_layout),
-          m_descSetLayouts(std::move(other.m_descSetLayouts)),
-          m_numDescSets(other.m_numDescSets),
-          m_descSets(std::move(other.m_descSets)),
-          m_pushConstants(std::move(other.m_pushConstants)),
+          m_materialBufferPtr(other.m_materialBufferPtr),
           m_uniformBuffers(std::move(other.m_uniformBuffers)),
           m_textures(std::move(other.m_textures)),
           m_storageImages(std::move(other.m_storageImages)),
@@ -89,24 +85,23 @@ public:
     {
         if(this == &other)
             return *this;
-        m_priority       = other.m_priority;
-        m_isGlobal       = other.m_isGlobal;
-        m_name           = std::move(other.m_name);
-        m_shaders        = std::move(other.m_shaders);
-        m_pipeline       = other.m_pipeline;
-        m_layout         = other.m_layout;
-        m_descSetLayouts = std::move(other.m_descSetLayouts);
-        m_numDescSets    = other.m_numDescSets;
-        m_descSets       = std::move(other.m_descSets);
-        m_pushConstants  = std::move(other.m_pushConstants);
-        m_uniformBuffers = std::move(other.m_uniformBuffers);
-        m_textures       = std::move(other.m_textures);
-        m_storageImages  = std::move(other.m_storageImages);
-        m_storageBuffers = std::move(other.m_storageBuffers);
+        m_priority          = other.m_priority;
+        m_isGlobal          = other.m_isGlobal;
+        m_name              = std::move(other.m_name);
+        m_shaders           = std::move(other.m_shaders);
+        m_pipeline          = other.m_pipeline;
+        m_layout            = other.m_layout;
+        m_materialBufferPtr = other.m_materialBufferPtr;
+        m_uniformBuffers    = std::move(other.m_uniformBuffers);
+        m_textures          = std::move(other.m_textures);
+        m_storageImages     = std::move(other.m_storageImages);
+        m_storageBuffers    = std::move(other.m_storageBuffers);
 
         other.m_pipeline = VK_NULL_HANDLE;
         return *this;
     }
+
+    [[nodiscard]] uint64_t GetMaterialBufferPtr() const { return m_materialBufferPtr; }
 
 private:
     friend class Renderer;
@@ -114,12 +109,9 @@ private:
     friend class DescriptorSetAllocator;
     friend class Shader;
 
-    void CreateDescriptorSetLayout();
-    void CreateGraphicsPipeline(PipelineCreateInfo createInfo);
-    void CreateComputePipeline(PipelineCreateInfo createInfo);
-    void AllocateDescriptors();
+    void CreateGraphicsPipeline(const PipelineCreateInfo& createInfo);
+    void CreateComputePipeline(const PipelineCreateInfo& createInfo);
 
-    void MergeDuplicateBindings();
 
     uint16_t m_priority;
     bool m_isGlobal;
@@ -127,10 +119,9 @@ private:
     std::vector<Shader> m_shaders;
     VkPipeline m_pipeline;
     VkPipelineLayout m_layout;
-    std::array<VkDescriptorSetLayout, 4> m_descSetLayouts;
-    uint8_t m_numDescSets;  // TODO in the future this will not be needed as every shader will be required to use 4 sets
 
-    std::unordered_map<std::string, VkDescriptorSet> m_descSets;
+    uint64_t m_materialBufferPtr = 0;
+
 
     struct BufferInfo
     {
@@ -150,13 +141,6 @@ private:
         uint32_t set;
         uint32_t count;
     };
-    struct PushConstantInfo
-    {
-        VkShaderStageFlags stages;
-        uint32_t size;
-        uint32_t offset;
-    };
-    std::unordered_map<std::string, PushConstantInfo> m_pushConstants;
     std::unordered_map<std::string, BufferInfo> m_uniformBuffers;
     std::unordered_map<std::string, TextureInfo> m_textures;
     std::unordered_map<std::string, TextureInfo> m_storageImages;

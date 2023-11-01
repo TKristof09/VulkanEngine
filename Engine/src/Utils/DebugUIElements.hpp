@@ -12,6 +12,7 @@
 #include "Utils/Color.hpp"
 #include "Rendering/Image.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "Rendering/VulkanContext.hpp"
 
 class DebugUI;
 
@@ -19,8 +20,8 @@ class DebugUIElement
 {
 public:
     virtual ~DebugUIElement() = default;
-    virtual void Update() = 0;
-    virtual void Deselect(bool recursive = false) {};
+    virtual void Update()     = 0;
+    virtual void Deselect(bool recursive = false){};
 
     std::string GetName() const
     {
@@ -39,22 +40,21 @@ public:
     {
         m_userPtr = (void*)data;
     }
+
 protected:
     std::string m_name;
     void* m_userPtr = nullptr;
-	bool m_hasTag;
+    bool m_hasTag;
 };
 
 class Text : public DebugUIElement
 {
 public:
-    Text(std::string& text) :
-        m_text(text)
+    Text(std::string& text) : m_text(text)
     {
         m_name = text;
     }
-    Text(const std::string& text) :
-        m_text(m_name)
+    Text(const std::string& text) : m_text(m_name)
     {
         m_name = text;
     }
@@ -66,6 +66,7 @@ public:
 
         ImGui::PopID();
     }
+
 private:
     std::string& m_text;
 };
@@ -73,9 +74,9 @@ private:
 class TextEdit : public DebugUIElement
 {
 public:
-    TextEdit(std::string* text):
-        m_text(text)
-    {}
+    TextEdit(std::string* text) : m_text(text)
+    {
+    }
 
     void Update() override
     {
@@ -102,23 +103,22 @@ private:
 class DragFloat : public DebugUIElement
 {
 public:
-    DragFloat(float* value, const std::string& name = "", float min = 0, float max = 0) :
-        m_min(min),
-        m_max(max),
-        m_value(value)
+    DragFloat(float* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
+                                                                                          m_max(max),
+                                                                                          m_value(value)
     {
-    	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
 
-    	if(m_hasTag)
+        if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::DragFloat(m_name.c_str(), m_value, 1, m_min, m_max);
@@ -130,6 +130,7 @@ public:
     {
         return m_value;
     }
+
 private:
     float m_min, m_max;
     float* m_value;
@@ -138,23 +139,22 @@ private:
 class DragVector2 : public DebugUIElement
 {
 public:
-    DragVector2(glm::vec2* value, const std::string& name = "", float min = 0, float max = 0) :
-        m_min(min),
-        m_max(max),
-        m_value(value)
+    DragVector2(glm::vec2* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
+                                                                                                m_max(max),
+                                                                                                m_value(value)
     {
-    	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
 
-    	if(m_hasTag)
+        if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::DragFloat2("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
@@ -166,6 +166,7 @@ public:
     {
         return m_value;
     }
+
 private:
     float m_min, m_max;
     glm::vec2* m_value;
@@ -174,23 +175,22 @@ private:
 class DragVector3 : public DebugUIElement
 {
 public:
-    DragVector3(glm::vec3* value, const std::string& name = "", float min = 0, float max = 0) :
-        m_min(min),
-        m_max(max),
-        m_value(value)
+    DragVector3(glm::vec3* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
+                                                                                                m_max(max),
+                                                                                                m_value(value)
     {
-    	m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
 
-    	if(m_hasTag)
+        if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::DragFloat3("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
@@ -202,6 +202,7 @@ public:
     {
         return m_value;
     }
+
 private:
     float m_min, m_max;
     glm::vec3* m_value;
@@ -210,24 +211,22 @@ private:
 class DragVector4 : public DebugUIElement
 {
 public:
-    DragVector4(glm::vec4* value, const std::string& name = "", float min = 0, float max = 0) :
-        m_min(min),
-        m_max(max),
-        m_value(value)
+    DragVector4(glm::vec4* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
+                                                                                                m_max(max),
+                                                                                                m_value(value)
     {
-    	m_hasTag = name != "";
-    	m_name = name != "" ? name : std::to_string((uint64_t)this);
-
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
         ImGui::PushID(this);
 
-    	if(m_hasTag)
+        if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
@@ -239,6 +238,7 @@ public:
     {
         return m_value;
     }
+
 private:
     float m_min, m_max;
     glm::vec4* m_value;
@@ -247,24 +247,22 @@ private:
 class DragQuaternion : public DebugUIElement
 {
 public:
-    DragQuaternion(glm::quat* value, const std::string& name = "", float min = 0, float max = 0) :
-        m_min(min),
-        m_max(max),
-        m_value(value)
+    DragQuaternion(glm::quat* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
+                                                                                                   m_max(max),
+                                                                                                   m_value(value)
     {
-		m_hasTag = name != "";
-        m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     };
 
     void Update() override
     {
-
         ImGui::PushID(this);
 
         if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::DragFloat4("##", reinterpret_cast<float*>(m_value), 1, m_min, m_max);
@@ -276,6 +274,7 @@ public:
     {
         return m_value;
     }
+
 private:
     float m_min, m_max;
     glm::quat* m_value;
@@ -284,56 +283,53 @@ private:
 class DragEulerAngles : public DebugUIElement
 {
 public:
-	DragEulerAngles(glm::quat* value, const std::string& name=""):
-		m_value(value),
-		m_euler(glm::degrees(glm::eulerAngles(*value))),
-		m_cachedValue(*value)
-	{
-		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((uint64_t)this);
-	}
-
-	void Update() override
+    DragEulerAngles(glm::quat* value, const std::string& name = "") : m_value(value),
+                                                                      m_euler(glm::degrees(glm::eulerAngles(*value))),
+                                                                      m_cachedValue(*value)
     {
-		if(*m_value != m_cachedValue)
-		{
-			m_euler = glm::degrees(glm::eulerAngles(*m_value));
-			m_cachedValue = *m_value;
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
+    }
+
+    void Update() override
+    {
+        if(*m_value != m_cachedValue)
+        {
+            m_euler       = glm::degrees(glm::eulerAngles(*m_value));
+            m_cachedValue = *m_value;
         }
         ImGui::PushID(this);
 
         if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
         bool valueChanged = ImGui::DragFloat3("##", reinterpret_cast<float*>(&m_euler), 1, -360, 360);
 
         ImGui::PopID();
 
-		if(valueChanged)
-		{
-			*m_value = glm::quat(glm::radians(m_euler));
-			m_cachedValue = *m_value;
-		}
-
+        if(valueChanged)
+        {
+            *m_value      = glm::quat(glm::radians(m_euler));
+            m_cachedValue = *m_value;
+        }
     }
 
 
 private:
-	glm::quat* m_value;
-	glm::vec3 m_euler;
-	glm::quat m_cachedValue;
+    glm::quat* m_value;
+    glm::vec3 m_euler;
+    glm::quat m_cachedValue;
 };
 
 class ColorEdit3 : public DebugUIElement
 {
 public:
-    ColorEdit3(Color* value, const std::string& name = ""):
-        m_value(value)
+    ColorEdit3(Color* value, const std::string& name = "") : m_value(value)
     {
-		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
@@ -341,8 +337,8 @@ public:
 
         if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::ColorEdit3(m_name.c_str(), &m_value->r);
@@ -353,6 +349,7 @@ public:
     {
         return m_value;
     }
+
 private:
     Color* m_value;
 };
@@ -360,21 +357,19 @@ private:
 class ColorEdit4 : public DebugUIElement
 {
 public:
-    ColorEdit4(Color* value, const std::string& name = ""):
-        m_value(value)
+    ColorEdit4(Color* value, const std::string& name = "") : m_value(value)
     {
-		m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_hasTag = name != "";
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
-
         ImGui::PushID(this);
 
         if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::ColorEdit4(m_name.c_str(), &m_value->r);
@@ -386,6 +381,7 @@ public:
     {
         return m_value;
     }
+
 private:
     Color* m_value;
 };
@@ -393,11 +389,10 @@ private:
 class CheckBox : public DebugUIElement
 {
 public:
-    CheckBox(bool* value, const std::string& name = ""):
-        m_value(value)
+    CheckBox(bool* value, const std::string& name = "") : m_value(value)
     {
         m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     }
     void Update() override
     {
@@ -405,8 +400,8 @@ public:
 
         if(m_hasTag)
         {
-	        ImGui::Text(m_name.c_str());
-        	ImGui::SameLine();
+            ImGui::Text(m_name.c_str());
+            ImGui::SameLine();
         }
 
         ImGui::Checkbox(m_name.c_str(), m_value);
@@ -427,17 +422,15 @@ private:
 class Button : public DebugUIElement
 {
 public:
-    Button(const std::string& name = "", bool* value = nullptr):
-        m_value(value),
-        m_callback(nullptr)
+    Button(const std::string& name = "", bool* value = nullptr) : m_value(value),
+                                                                  m_callback(nullptr)
     {
         m_hasTag = name != "";
-		m_name = name != "" ? name : std::to_string((uint64_t)this);
+        m_name   = name != "" ? name : std::to_string((uint64_t)this);
     }
 
     void Update() override
     {
-
         ImGui::PushID(this);
         bool val = false;
         if(m_value)
@@ -445,7 +438,7 @@ public:
         else
             val = ImGui::Button(m_name.c_str());
 
-        if ((m_value && *m_value) || val)
+        if((m_value && *m_value) || val)
         {
             if(m_callback)
                 m_callback(this);
@@ -468,65 +461,59 @@ public:
 private:
     bool* m_value;
     std::function<void(Button*)> m_callback;
-
-
 };
 
 class FileSelector : public DebugUIElement
 {
 public:
-	FileSelector(std::string* path):
-		m_path(path),
-		m_callback(nullptr)
-	{
-		m_name = std::to_string((uint64_t)this);
-	}
-	void Update() override
+    FileSelector(std::string* path) : m_path(path),
+                                      m_callback(nullptr)
     {
-
+        m_name = std::to_string((uint64_t)this);
+    }
+    void Update() override
+    {
         ImGui::PushID(this);
 
-		std::string fileName = m_path->substr(m_path->find_last_of("/") + 1);
-		ImGui::Text(fileName.c_str());
+        std::string fileName = m_path->substr(m_path->find_last_of("/") + 1);
+        ImGui::Text(fileName.c_str());
 
-		ImGui::SameLine();
+        ImGui::SameLine();
 
         if(ImGui::Button("..."))
         {
             *m_path = FileDialog::OpenFile(nullptr);
-        	if(m_callback && *m_path != "")
-				m_callback(this);
+            if(m_callback && *m_path != "")
+                m_callback(this);
         }
 
 
         ImGui::PopID();
     }
 
-   void RegisterCallback(std::function<void(FileSelector*)> callback)
-   {
+    void RegisterCallback(std::function<void(FileSelector*)> callback)
+    {
         m_callback = callback;
-   }
-	std::string GetPath() const { return *m_path; }
+    }
+    std::string GetPath() const { return *m_path; }
 
 private:
-	std::string* m_path;
-	std::function<void(FileSelector*)> m_callback;
+    std::string* m_path;
+    std::function<void(FileSelector*)> m_callback;
 };
 
 class TreeNode : public DebugUIElement
 {
 public:
-    TreeNode(std::string& text, bool* value = nullptr) :
-        m_value(value),
-        m_callback(nullptr),
-        m_text(text)
+    TreeNode(std::string& text, bool* value = nullptr) : m_value(value),
+                                                         m_callback(nullptr),
+                                                         m_text(text)
     {
         m_name = m_text;
     }
-    TreeNode(const std::string& text, bool* value = nullptr) :
-        m_value(value),
-        m_callback(nullptr),
-        m_text(m_name)
+    TreeNode(const std::string& text, bool* value = nullptr) : m_value(value),
+                                                               m_callback(nullptr),
+                                                               m_text(m_name)
     {
         m_name = text;
     }
@@ -534,7 +521,6 @@ public:
 
     void Update() override
     {
-
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
         if(m_isSelected)
             flags |= ImGuiTreeNodeFlags_Selected;
@@ -560,7 +546,7 @@ public:
 
         if(isOpened)
         {
-            for (auto element : m_elements)
+            for(auto element : m_elements)
             {
                 element->Update();
             }
@@ -582,7 +568,6 @@ public:
                 element->Deselect(true);
             }
         }
-
     }
 
     void AddElement(std::shared_ptr<DebugUIElement> element)
@@ -617,7 +602,6 @@ private:
     std::function<void(TreeNode*)> m_callback;
 
     bool m_isSelected = false;
-
 };
 
 class Separator : public DebugUIElement
@@ -636,8 +620,7 @@ public:
 class Table : public DebugUIElement
 {
 public:
-    Table(const std::string& name = ""):
-        m_maxColumn(0)
+    Table(const std::string& name = "") : m_maxColumn(0)
     {
         m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
@@ -670,7 +653,7 @@ public:
 
     void AddElement(std::shared_ptr<DebugUIElement> element, uint32_t row, uint32_t column)
     {
-        auto it = m_elements.find({ row, column });
+        auto it = m_elements.find({row, column});
         if(it != m_elements.end())
             LOG_WARN("Table {0} already containts an element at {1}, {2}. It will be overwritten", m_name, row, column);
 
@@ -678,99 +661,84 @@ public:
 
         m_maxColumn = column > m_maxColumn ? column : m_maxColumn;
     }
+
 private:
     std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<DebugUIElement>> m_elements;
     uint32_t m_maxColumn;
-
 };
 
 class UIImage : public DebugUIElement
 {
 public:
-    UIImage(Image* image):
-        m_image(image)
+    UIImage(Image* image) : m_image(image)
     {
-        if(s_sampler == VK_NULL_HANDLE)
-        {
-            VkSamplerCreateInfo info = {};
-            info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            info.magFilter = VK_FILTER_LINEAR;
-            info.minFilter = VK_FILTER_LINEAR;
-            info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            info.minLod = 1;
-            info.maxLod = 1;
-            info.maxAnisotropy = 1.0f;
-            VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &info, nullptr, &s_sampler), "Failed to create debug ui image sampler");
-        }
-        m_desc = ImGui_ImplVulkan_AddTexture(s_sampler, m_image->GetImageView(), m_image->GetLayout());
+        m_desc = ImGui_ImplVulkan_AddTexture(VulkanContext::GetTextureSampler(), m_image->GetImageView(), m_image->GetLayout());
     }
     void Update() override
     {
         ImGui::PushID(this);
-        uint32_t width = m_image->GetWidth();
+        uint32_t width  = m_image->GetWidth();
         uint32_t height = m_image->GetHeight();
-        float aspect = width / (float)height;
+        float aspect    = width / (float)height;
         if(width > (uint32_t)ImGui::GetWindowWidth())
         {
-            width = (uint32_t)ImGui::GetWindowWidth();;
+            width = (uint32_t)ImGui::GetWindowWidth();
+            ;
             height = width / aspect;
         }
         if(height > (uint32_t)ImGui::GetWindowHeight())
         {
-            height = (uint32_t)ImGui::GetWindowHeight();;
+            height = (uint32_t)ImGui::GetWindowHeight();
+            ;
             width = height * aspect;
         }
         ImGui::Image(m_desc, ImVec2(width, height));
         ImGui::PopID();
     }
+
 private:
     Image* m_image;
-    static VkSampler s_sampler;
     VkDescriptorSet m_desc;
 };
 
 class DebugUIWindow
 {
 public:
-    DebugUIWindow(const std::string& name = "Debug", bool opened = true) :
-		m_debugUI(nullptr),
-		m_index(0),
-		m_name(name),
-		m_opened(opened) {}
+    DebugUIWindow(const std::string& name = "Debug", bool opened = true) : m_debugUI(nullptr),
+                                                                           m_index(0),
+                                                                           m_name(name),
+                                                                           m_opened(opened) {}
 
     ~DebugUIWindow();
 
     void AddElement(std::shared_ptr<DebugUIElement> element, uint32_t column = 1)
     {
-        while (m_columnHeights.size() < column)
+        while(m_columnHeights.size() < column)
         {
             m_columnHeights.push_back(0);
         }
         auto it = m_registry.find(element->GetName());
-        if (it != m_registry.end())
+        if(it != m_registry.end())
         {
             LOG_ERROR("DebugUIWindow: {0} already contains an element named: {1}", m_name, element->GetName());
             return;
         }
 
-        std::pair<uint32_t, uint32_t> coords = { m_columnHeights[column - 1]++, column };
+        std::pair<uint32_t, uint32_t> coords = {m_columnHeights[column - 1]++, column};
 
-        m_elements[coords] = element;
+        m_elements[coords]             = element;
         m_registry[element->GetName()] = coords;
     }
 
     std::shared_ptr<DebugUIElement> GetElement(const std::string& name, uint32_t column = 1)
     {
-        if (m_columnHeights.size() < column)
+        if(m_columnHeights.size() < column)
         {
             LOG_ERROR("GetElement called on debugUIWindow: {0} with param column: {1}, but the window has {2} columns in total", m_name, column, m_columnHeights.size());
             return nullptr;
         }
         auto it = m_registry.find(name);
-        if (it != m_registry.end())
+        if(it != m_registry.end())
         {
             return m_elements[m_registry[name]];
         }
@@ -785,7 +753,7 @@ public:
             LOG_ERROR("RemoveElement called on debugUIWindow: {0} with param column: {1}, but the window has {2} columns in total", m_name, column, m_columnHeights.size());
         }
         auto it = m_registry.find(name);
-        if (it != m_registry.end())
+        if(it != m_registry.end())
         {
             m_elements.erase(it->second);
             m_registry.erase(it);

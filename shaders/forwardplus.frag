@@ -9,6 +9,7 @@
 layout(location = 0) in mat3 TBN;
 layout(location = 3) in vec2 fragTexCoord;
 layout(location = 4) in vec3 worldPos;
+layout(location = 5) in flat int ID;
 
 
 layout(location = 0) out vec4 outColor;
@@ -28,40 +29,12 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
     uint32_t shadowMapCount;
 };
 
-/*
-layout(set = 1, binding = 0) uniform Material {
-    vec4 textureIndex;
-    vec4 color;
-    float specularExponent;
-} material;
-
-layout(push_constant) uniform PC
+layout(buffer_reference, buffer_reference_align=4) readonly buffer MaterialData
 {
-    ivec2 viewportSize;
-    ivec2 tileNums;
-    int lightNum;
-    int debugMode;
-
-    //vec4 cascadeSplits; // TODO change from vec4
+    uint albedoIndex;
+    uint normalIndex;
 };
 
-// we use these buffers later in the frag shader, and they only change once per frame, so they can go with the camera in set 0
-layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
-{
-    Light lights[];
-};
-
-layout(set = 0, binding = 2) readonly buffer VisibleLightsBuffer
-{
-    TileLights visibleLights[];
-};
-layout(set = 0, binding = 3) uniform sampler2D shadowMaps[MAX_LIGHTS_PER_TILE * NUM_CASCADES];
-layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapsPCF[MAX_LIGHTS_PER_TILE * NUM_CASCADES];
-
-layout(binding = 1, set = 1) uniform sampler2D albedo[32];
-//layout(binding = 2, set = 1) uniform sampler2D specular[32];
-layout(binding = 2, set = 1) uniform sampler2D normal[32];
-*/
 #if 0
 float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
 {
@@ -214,5 +187,5 @@ void main() {
                 break;
         }
     }
-    outColor = vec4(illuminance /** texture(albedo[uint(material.textureIndex.x)], fragTexCoord).rgb*/, 1.0);
+    outColor = vec4(illuminance * texture(textures[uint(materialsPtr[ID].albedoIndex)], fragTexCoord).rgb, 1.0);
 }

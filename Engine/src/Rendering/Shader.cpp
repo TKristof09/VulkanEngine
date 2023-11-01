@@ -75,20 +75,7 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
 
 		LOG_TRACE(resource.name);
 		LOG_TRACE("   Size: {0}", size);
-		LOG_TRACE("   Offset: {0}", offset);
-
-		auto it = pipeline->m_pushConstants.find(resource.name);
-		if(it != pipeline->m_pushConstants.end())
-		{
-			it->second.stages |= m_stage;
-		}
-		else
-		{
-			pipeline->m_pushConstants[resource.name].stages = m_stage;
-			pipeline->m_pushConstants[resource.name].size = size;
-			pipeline->m_pushConstants[resource.name].offset = offset;
-		}
-		
+		LOG_TRACE("   Offset: {0}", offset);		
 	}
 
 	LOG_TRACE("-----UNIFORM BUFFERS-----");
@@ -164,8 +151,6 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
 			arraySize = 1;
 		}
 
-		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
-			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", name, OBJECTS_PER_DESCRIPTOR_CHUNK);
 
 		LOG_TRACE(name);
 		LOG_TRACE("   Set: {0}", set);
@@ -259,9 +244,6 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
 			LOG_WARN("{0} has a count of 0 setting it to 1, this is most likely because the array uses variable indexing", name);
 			arraySize = 1;
 		}
-
-		if(arraySize != OBJECTS_PER_DESCRIPTOR_CHUNK)
-			LOG_WARN("{0}'s count is different than OBJECTS_PER_DESCRIPTOR_CHUNK({1})", name, OBJECTS_PER_DESCRIPTOR_CHUNK);
 
 		LOG_TRACE(name);
 		LOG_TRACE("   Set: {0}", set);

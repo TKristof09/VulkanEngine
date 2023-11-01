@@ -3,6 +3,7 @@
 #include "Rendering/VulkanContext.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <optional>
 #include <set>
@@ -32,7 +33,7 @@
 #include "Rendering/RenderGraph/RenderPass.hpp"
 
 
-const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
+const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 
 struct QueueFamilyIndices
@@ -41,7 +42,7 @@ struct QueueFamilyIndices
     std::optional<uint32_t> presentationFamily;
     std::optional<uint32_t> computeFamily;
 
-    bool IsComplete()
+    [[nodiscard]] bool IsComplete() const
     {
         return graphicsFamily.has_value() && presentationFamily.has_value() && computeFamily.has_value();
     }
@@ -77,11 +78,12 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_device(VulkanContext::m_device),
       m_graphicsQueue(VulkanContext::m_graphicsQueue),
       m_commandPool(VulkanContext::m_commandPool),
-      m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 1e6),
-      m_indexBuffer(5e5, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 1e5),
+      m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5),
+      m_indexBuffer(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6),
       m_transformBuffer(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false),
       m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, false),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
-      m_pushConstants({})
+      m_pushConstants({}),
+      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS)
 
 {
     scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
@@ -90,6 +92,10 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     scene->eventHandler->Subscribe(this, &Renderer::OnDirectionalLightAdded);
     scene->eventHandler->Subscribe(this, &Renderer::OnPointLightAdded);
     scene->eventHandler->Subscribe(this, &Renderer::OnSpotLightAdded);
+
+
+    // fill in the free texture slots
+    std::iota(m_freeTextureSlots.begin(), m_freeTextureSlots.end(), 0);
 
     CreateInstance();
     SetupDebugMessenger();
@@ -100,7 +106,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     m_changedLights.resize(m_swapchainImages.size());
 
 
-    CreatePipeline();
     CreateCommandPool();
 
     TextureManager::LoadTexture("./textures/error.jpg");
@@ -108,7 +113,14 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     CreateColorResources();
     CreateDepthResources();
     CreateUniformBuffers();
+
+    CreateSampler();
+
     CreateDescriptorPool();
+    CreateDescriptorSet();
+    CreatePushConstants();
+
+    CreatePipeline();
     CreateDebugUI();
     CreateCommandBuffers();
     CreateSyncObjects();
@@ -206,7 +218,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 m_pushConstants.viewProj           = vp;
                 m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
 
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
                 m_vertexBuffer.Bind(cb);
                 m_indexBuffer.Bind(cb);
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
@@ -267,8 +279,12 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
                 m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
                 m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["forwardplus"]);
+                m_pushConstants.materialDataPtr    = pipeline->GetMaterialBufferPtr();
 
-                vkCmdPushConstants(cb.GetCommandBuffer(), pipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+                vkCmdPushConstants(cb.GetCommandBuffer(), pipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+
+                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->m_layout, 0, 1, &descSet, 0, nullptr);
 
                 m_vertexBuffer.Bind(cb);
                 m_indexBuffer.Bind(cb);
@@ -348,7 +364,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
                 auto viewportSize = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
                 auto tileNums     = glm::ivec2(ceil(viewportSize.x / 16.0f), ceil(viewportSize.y / 16.0f));
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &m_pushConstants);
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
                 vkCmdDispatch(cb.GetCommandBuffer(), tileNums.x, tileNums.y, 1);
             });
     }
@@ -383,9 +399,8 @@ Renderer::~Renderer()
     vkDestroySampler(m_device, m_shadowSampler, nullptr);
     vkDestroySampler(m_device, m_shadowSamplerPCF, nullptr);
 
-    vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
-    vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+    vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
 
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 }
@@ -596,15 +611,17 @@ void Renderer::CreateDevice()
     device11Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     device11Features.shaderDrawParameters             = VK_TRUE;
 
-    VkPhysicalDeviceVulkan12Features device12Features          = {};
-    device12Features.sType                                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    VkPhysicalDeviceVulkan12Features device12Features             = {};
+    device12Features.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     // these are for dynamic descriptor indexing
-    deviceFeatures.shaderSampledImageArrayDynamicIndexing      = VK_TRUE;
-    device12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-    device12Features.runtimeDescriptorArray                    = VK_TRUE;
-    device12Features.descriptorBindingPartiallyBound           = VK_TRUE;
-    device12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-    device12Features.bufferDeviceAddress                       = VK_TRUE;
+    deviceFeatures.shaderSampledImageArrayDynamicIndexing         = VK_TRUE;
+    device12Features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+    device12Features.runtimeDescriptorArray                       = VK_TRUE;
+    device12Features.descriptorBindingPartiallyBound              = VK_TRUE;
+    device12Features.descriptorBindingUpdateUnusedWhilePending    = VK_TRUE;
+    device12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    device12Features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+    device12Features.bufferDeviceAddress                          = VK_TRUE;
 
     VkPhysicalDeviceVulkan13Features device13Features = {};
     device13Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
@@ -920,25 +937,67 @@ void Renderer::CreateSyncObjects()
 
 void Renderer::CreateDescriptorPool()
 {
-    std::array<VkDescriptorPoolSize, 5> poolSizes = {};
-    poolSizes[0].type                             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount                  = static_cast<uint32_t>(m_swapchainImages.size());
-    poolSizes[1].type                             = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount                  = 20000;  // +1 for imgui
-    poolSizes[2].type                             = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    poolSizes[2].descriptorCount                  = 100;  // static_cast<uint32_t>(m_swapchainImages.size());;
-    poolSizes[3].type                             = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[3].descriptorCount                  = 100;  // static_cast<uint32_t>(m_swapchainImages.size());;
-    poolSizes[4].type                             = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[4].descriptorCount                  = 100;  // static_cast<uint32_t>(m_swapchainImages.size());;
+    std::array<VkDescriptorPoolSize, 2> poolSizes = {};
+    poolSizes[0].type                             = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[0].descriptorCount                  = NUM_TEXTURE_DESCRIPTORS + 100;  // +100 for imgui
+    poolSizes[1].type                             = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    poolSizes[1].descriptorCount                  = NUM_TEXTURE_DESCRIPTORS;
 
 
     VkDescriptorPoolCreateInfo createInfo = {};
     createInfo.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     createInfo.poolSizeCount              = static_cast<uint32_t>(poolSizes.size());
     createInfo.pPoolSizes                 = poolSizes.data();
-    createInfo.maxSets                    = 5000;
+    createInfo.maxSets                    = 100;  // we only use 1 but imgui also allocates 1 for each of our DebugUIImage elements
+    createInfo.flags                      = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     VK_CHECK(vkCreateDescriptorPool(m_device, &createInfo, nullptr, &m_descriptorPool), "Failed to create descriptor pool");
+}
+
+void Renderer::CreateDescriptorSet()
+{
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    bindings[0].binding         = 0;
+    bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[0].descriptorCount = NUM_TEXTURE_DESCRIPTORS;
+    bindings[0].stageFlags      = VK_SHADER_STAGE_ALL;
+    bindings[1].binding         = 1;
+    bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[1].descriptorCount = NUM_TEXTURE_DESCRIPTORS;
+    bindings[1].stageFlags      = VK_SHADER_STAGE_ALL;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {};
+    std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+    flags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+
+    flags.pBindingFlags = bindingFlags.data();
+    flags.bindingCount  = bindingFlags.size();
+
+    VkDescriptorSetLayoutCreateInfo createInfo = {};
+    createInfo.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    createInfo.bindingCount                    = static_cast<uint32_t>(bindings.size());
+    createInfo.pBindings                       = bindings.data();
+    createInfo.flags                           = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+
+    createInfo.pNext = &flags;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(VulkanContext::GetDevice(), &createInfo, nullptr, &VulkanContext::m_globalDescSetLayout), "Failed to create descriptor set layout");
+
+
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool              = m_descriptorPool;
+    allocInfo.descriptorSetCount          = 1;
+    VkDescriptorSetLayout layout          = VulkanContext::m_globalDescSetLayout;
+    allocInfo.pSetLayouts                 = &layout;
+
+    VK_CHECK(vkAllocateDescriptorSets(VulkanContext::GetDevice(), &allocInfo, &VulkanContext::m_globalDescSet), "Failed to allocate descriptor set for textures");
+}
+
+void Renderer::CreatePushConstants()
+{
+    VulkanContext::m_globalPushConstantRange.stageFlags = VK_SHADER_STAGE_ALL;
+    VulkanContext::m_globalPushConstantRange.offset     = 0;
+    VulkanContext::m_globalPushConstantRange.size       = sizeof(PushConstants);
 }
 
 void Renderer::CreateUniformBuffers()
@@ -976,6 +1035,135 @@ void Renderer::CreateDepthResources()
     m_lightCullDebugImage = std::make_shared<Image>(m_swapchainExtent, ci);
 }
 
+void Renderer::CreateSampler()
+{
+    VkSamplerCreateInfo createInfo     = {};
+    createInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.magFilter               = VK_FILTER_LINEAR;
+    createInfo.minFilter               = VK_FILTER_LINEAR;
+    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    createInfo.anisotropyEnable        = VK_TRUE;
+    createInfo.maxAnisotropy           = 16.f;
+    createInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    createInfo.unnormalizedCoordinates = VK_FALSE;
+    createInfo.compareEnable           = VK_FALSE;
+    createInfo.compareOp               = VK_COMPARE_OP_ALWAYS;
+    createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    createInfo.mipLodBias              = 0.0f;
+    createInfo.minLod                  = 0.0f;
+    createInfo.maxLod                  = VK_LOD_CLAMP_NONE;
+
+    VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_textureSampler), "Failed to create sampler");
+}
+
+void Renderer::RefreshDrawCommands()
+{
+    ComponentManager* cm = m_ecs->componentManager;
+    std::vector<DrawCommand> drawCommands;
+    for(auto* material : cm->GetComponents<Material>())
+    {
+        auto* renderable = cm->GetComponent<Renderable>(material->GetOwner());
+        DrawCommand dc{};
+        dc.indexCount    = renderable->indexCount;
+        dc.instanceCount = 1;
+        dc.firstIndex    = renderable->indexOffset;
+        dc.vertexOffset  = static_cast<int32_t>(renderable->vertexOffset);
+        dc.firstInstance = 0;
+        // dc.objectID      = renderable->objectID;
+
+        drawCommands.push_back(dc);
+    }
+    m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
+    m_numDrawCommands = drawCommands.size();
+}
+
+void Renderer::RefreshShaderDataOffsets()
+{
+}
+
+void Renderer::AddTexture(Image* texture)
+{
+    if(m_freeTextureSlots.empty())
+    {
+        LOG_ERROR("No free texture slots");
+        return;
+    }
+    int32_t slot = m_freeTextureSlots.front();
+    m_freeTextureSlots.pop_front();
+
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = texture->GetLayout();
+    imageInfo.imageView   = texture->GetImageView();
+    imageInfo.sampler     = VulkanContext::m_textureSampler;
+
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
+    descriptorWrite.dstArrayElement = slot;
+    if(texture->GetUsage() & VK_IMAGE_USAGE_STORAGE_BIT)
+    {
+        descriptorWrite.dstBinding     = 1;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    }
+    else if(texture->GetUsage() & VK_IMAGE_USAGE_SAMPLED_BIT)
+    {
+        descriptorWrite.dstBinding     = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    }
+    else
+        LOG_ERROR("Texture usage not supported for descriptor");
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo      = &imageInfo;
+
+    // TODO batch these together (like at the end of the frame or something)
+    vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+
+    texture->SetSlot(slot);
+}
+
+void Renderer::RemoveTexture(Image* texture)
+{
+    // find the sorted position and insert there
+    int32_t slot = texture->GetSlot();
+    if(slot == -1)
+    {
+        LOG_ERROR("Texture hasn't been added to the renderer, can't remove it");
+        return;
+    }
+    auto it = std::lower_bound(m_freeTextureSlots.begin(), m_freeTextureSlots.end(), slot);
+    m_freeTextureSlots.insert(it, slot);
+
+    Texture& errorTexture = TextureManager::GetTexture("./textures/error.jpg");
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = errorTexture.GetLayout();
+    imageInfo.imageView   = errorTexture.GetImageView();
+    imageInfo.sampler     = VulkanContext::m_textureSampler;
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
+    descriptorWrite.dstArrayElement = 1;
+    if(texture->GetUsage() & VK_IMAGE_USAGE_STORAGE_BIT)
+    {
+        descriptorWrite.dstBinding     = 1;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    }
+    else if(texture->GetUsage() & VK_IMAGE_USAGE_SAMPLED_BIT)
+    {
+        descriptorWrite.dstBinding     = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    }
+    else
+        LOG_ERROR("Texture usage not supported for descriptor");
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo      = &imageInfo;
+
+    // TODO batch these together (like at the end of the frame or something)
+    vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+}
 
 void Renderer::UpdateLights(uint32_t index)
 {
@@ -1174,29 +1362,6 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
     return {resVP, resV, zPlanes};
 }
 
-void Renderer::RefreshDrawCommands()
-{
-    ComponentManager* cm = m_ecs->componentManager;
-    std::vector<DrawCommand> drawCommands;
-    for(auto* renderable : cm->GetComponents<Renderable>())
-    {
-        DrawCommand dc{};
-        dc.indexCount    = renderable->indexCount;
-        dc.instanceCount = 1;
-        dc.firstIndex    = renderable->indexOffset;
-        dc.vertexOffset  = static_cast<int32_t>(renderable->vertexOffset);
-        dc.firstInstance = 0;
-        // dc.objectID      = renderable->objectID;
-
-        drawCommands.push_back(dc);
-    }
-    m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
-    m_numDrawCommands = drawCommands.size();
-}
-
-void Renderer::RefreshShaderDataOffsets()
-{
-}
 
 void Renderer::Render(double dt)
 {
@@ -1242,7 +1407,6 @@ void Renderer::Render(double dt)
 
         glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
 
-        CameraStruct cs = {vp, cameraTransform->pos};
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
         vkDeviceWaitIdle(m_device);
         for(auto* transform : cm->GetComponents<Transform>())
@@ -1255,7 +1419,7 @@ void Renderer::Render(double dt)
             }
         }
         vkDeviceWaitIdle(m_device);
-        if(m_needDrawBufferReupload)
+        if(true)
             RefreshDrawCommands();
     }
 
@@ -2039,7 +2203,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
             message << "\t\t"
                     << "Object " << i << "\n";
             message << "\t\t\t"
-                    << "objectType   = " << pCallbackData->pObjects[i].objectType << "\n";
+                    << "objectType   = " << string_VkObjectType(pCallbackData->pObjects[i].objectType) << "\n";
             message << "\t\t\t"
                     << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
             if(pCallbackData->pObjects[i].pObjectName)

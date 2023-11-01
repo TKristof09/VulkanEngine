@@ -10,16 +10,12 @@
 
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Utils/DebugUIElements.hpp"
-#include "VulkanContext.hpp"
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "Utils/DebugUI.hpp"
-#include "Texture.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Material.hpp"
-#include "Shader.hpp"
-#include "Memory/BufferAllocator.hpp"
 #include "Pipeline.hpp"
 #include "ECS/ECS.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
@@ -46,6 +42,9 @@ public:
     void OnPointLightAdded(const ComponentAdded<PointLight>* e);
     void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
 
+    void AddTexture(Image* texture);
+    void RemoveTexture(Image* texture);
+
 private:
     struct alignas(16) Light
     {
@@ -71,18 +70,6 @@ private:
     {
         glm::uint count;
         glm::uint indices[1024];
-    };
-    struct ComputePushConstants
-    {
-        glm::ivec2 viewportSize;
-        glm::ivec2 tileNums;
-        int lightNum;
-        int debugMode;
-    };
-    struct CameraStruct
-    {
-        glm::mat4 vp;
-        glm::vec3 position;
     };
 
     struct PushConstants
@@ -141,11 +128,14 @@ private:
 
     void CreateUniformBuffers();
 
-    void CreateDescriptorSetLayout();
     void CreateDescriptorPool();
+    void CreateDescriptorSet();
+    static void CreatePushConstants();
 
     void CreateColorResources();
     void CreateDepthResources();
+
+    void CreateSampler();
 
     void RefreshDrawCommands();
 
@@ -214,6 +204,7 @@ private:
     DynamicBufferAllocator m_shaderDataBuffer;
     std::array<std::unordered_map<std::string, uint64_t>, NUM_FRAMES_IN_FLIGHT> m_shaderDataOffsets;  // shader name -> offset in the shader data buffer
 
+    std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
 
     // TODO temp
     Buffer m_drawBuffer;

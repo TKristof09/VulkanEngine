@@ -9,27 +9,6 @@ layout(location = 2) in vec3 inNormal;
 layout(location = 3) in vec3 inTangent;
 
 
-layout(binding = 0, set = 0) uniform ViewProjMatrix {
-    mat4 viewProj;
-    vec3 cameraPosition;
-};
-layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
-{
-	Light lights[];
-};
-layout(binding = 0, set = 1) uniform Filler {
-    vec4 filler;
-};
-layout(binding = 0, set = 2) uniform  ModelMatrix {
-    mat4 model;
-};
-
-layout( push_constant ) uniform PC
-{
-	int slot;
-    int cascadeIndex;
-};
-
 void main() {
-    gl_Position = lights[slot].lightSpaceMatrices[cascadeIndex] * model * vec4(inPosition, 1.0);
+    //gl_Position = lights[slot].lightSpaceMatrices[cascadeIndex] * model * vec4(inPosition, 1.0);
 }

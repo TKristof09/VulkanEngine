@@ -13,7 +13,6 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
                                                                             m_format(createInfo.format),
                                                                             m_image(createInfo.image),
                                                                             m_imageView(VK_NULL_HANDLE),
-                                                                            m_memory(VK_NULL_HANDLE),
                                                                             m_layout(VK_IMAGE_LAYOUT_UNDEFINED),
                                                                             m_aspect(createInfo.aspectFlags),
                                                                             m_onlyHandleImageView(createInfo.image != VK_NULL_HANDLE)
@@ -39,7 +38,8 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         ci.format            = createInfo.format;
         ci.tiling            = createInfo.tiling;
         ci.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-        ci.usage             = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : createInfo.usage;  // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+        m_usage              = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : createInfo.usage;  // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+        ci.usage             = m_usage;
         ci.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         ci.samples           = createInfo.msaaSamples;  // msaa
         ci.flags             = 0;

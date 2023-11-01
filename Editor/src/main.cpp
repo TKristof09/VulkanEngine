@@ -39,7 +39,7 @@ int main()
 	t->pos = { 0.0f, 60.0f, -10.0f };
     //t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(0,1,0));
 
-    Entity* e2 = AssimpImporter::LoadFile("models/simple_test_smooth.fbx", ecs);
+    Entity* e2 = AssimpImporter::LoadFile("models/sponza.fbx", ecs);
     //e2->GetComponent<Transform>()->scale = {0.01f, 0.01f, 0.01f};
 
 	Entity* dlight = ecs->entityManager->CreateEntity();

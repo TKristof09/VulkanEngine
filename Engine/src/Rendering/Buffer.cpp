@@ -58,36 +58,6 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, bool mappable
     if(mappable)
         allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;  // TODO: how to chose between sequential and random access
 
-    if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
-    {
-        /*
-        VK_CHECK(vkCreateBuffer(VulkanContext::GetDevice(), &createInfo, nullptr, &m_buffer), "Failed to create buffer");
-
-        // find memory for buffer
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(VulkanContext::GetDevice(), m_buffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo = {};
-        allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize       = memRequirements.size;
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        if(mappable)
-            properties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-
-        allocInfo.memoryTypeIndex      = FindMemoryType(VulkanContext::GetPhysicalDevice(), memRequirements.memoryTypeBits, properties);
-
-        VkMemoryAllocateFlagsInfo flagInfo = {};
-        flagInfo.sType                     = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        flagInfo.flags                     = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-        allocInfo.pNext                    = &flagInfo;
-        VK_CHECK(vkAllocateMemory(VulkanContext::GetDevice(), &allocInfo, nullptr, &m_memory), "Failed to allocate buffer memory");
-
-        VK_CHECK(vkBindBufferMemory(VulkanContext::GetDevice(), m_buffer, m_memory, 0), "Failed to bind buffer memory");
-        */
-        VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
-        return;
-    }
-
     VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
     VkMemoryPropertyFlags memPropFlags;
     vmaGetAllocationMemoryProperties(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memPropFlags);
@@ -228,7 +198,7 @@ uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, bool& didResize, 
     if(res != VK_SUCCESS)
     {
         Resize();
-        VK_CHECK(vmaVirtualAllocate(m_tempBlock, &allocInfo, &allocation, &offset), "Failed to allocate virtual memory after new block creation");
+        VK_CHECK(vmaVirtualAllocate(m_block, &allocInfo, &allocation, &offset), "Failed to allocate virtual memory after new block creation");
         didResize    = true;
         m_needDelete = true;
     }
@@ -336,7 +306,7 @@ void DynamicBufferAllocator::Free(uint64_t slot)
 void DynamicBufferAllocator::Resize()
 {
     m_currentSize *= 2;
-    m_tempBuffer.Allocate(m_currentSize, m_usage, m_mappable);
+    m_tempBuffer.Allocate(m_currentSize, m_usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, m_mappable);
 
     VmaVirtualBlockCreateInfo blockCreateInfo = {};
     blockCreateInfo.size                      = m_currentSize;
@@ -362,12 +332,12 @@ void DynamicBufferAllocator::Resize()
         newAllocInfo.alignment = m_elementSize;
 
         // find slot in new buffer
-        VK_CHECK(vmaVirtualAllocate(m_block, &newAllocInfo, &newAllocation, &offset), "Failed to allocate virtual memory after new block creation");
+        VK_CHECK(vmaVirtualAllocate(block, &newAllocInfo, &newAllocation, &offset), "Failed to allocate virtual memory after new block creation");
 
 
         copyRegions.push_back({allocInfo.offset, offset, allocInfo.size});
     }
-
+    m_block = block;
     CommandBuffer cb;
     cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     // don't need to sync because we only read from the old buffer

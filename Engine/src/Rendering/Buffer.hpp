@@ -23,7 +23,6 @@ public:
     Buffer(Buffer&& other) noexcept
         : m_type(other.m_type),
           m_buffer(other.m_buffer),
-          m_memory(other.m_memory),
           m_size(other.m_size),
           m_nonCoherentAtomeSize(other.m_nonCoherentAtomeSize),
           m_allocation(other.m_allocation)
@@ -39,7 +38,6 @@ public:
             return *this;
         m_type                 = other.m_type;
         m_buffer               = other.m_buffer;
-        m_memory               = other.m_memory;
         m_size                 = other.m_size;
         m_nonCoherentAtomeSize = other.m_nonCoherentAtomeSize;
         m_allocation           = other.m_allocation;
@@ -70,8 +68,7 @@ public:
 
 protected:
     Type m_type;
-    VkBuffer m_buffer       = VK_NULL_HANDLE;
-    VkDeviceMemory m_memory = VK_NULL_HANDLE;
+    VkBuffer m_buffer = VK_NULL_HANDLE;
     uint64_t m_size;
 
     uint64_t m_nonCoherentAtomeSize;
@@ -91,6 +88,14 @@ public:
           m_mappable(mappable),
           m_usage(usage)
     {
+    }
+
+    ~DynamicBufferAllocator()
+    {
+        if(m_fence != VK_NULL_HANDLE)
+        {
+            vkDestroyFence(VulkanContext::GetDevice(), m_fence, nullptr);
+        }
     }
 
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
@@ -137,7 +142,7 @@ private:
             m_stagingBuffer.Allocate(m_stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true);
             m_usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         }
-        m_buffer.Allocate(m_currentSize, m_usage, m_mappable);
+        m_buffer.Allocate(m_currentSize, m_usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, m_mappable);
         VmaVirtualBlockCreateInfo blockCreateInfo = {};
         blockCreateInfo.size                      = m_currentSize;
 

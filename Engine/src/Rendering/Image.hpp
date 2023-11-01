@@ -34,11 +34,12 @@ public:
           m_image(other.m_image),
           m_imageView(other.m_imageView),
           m_format(other.m_format),
-          m_memory(other.m_memory),
           m_layout(other.m_layout),
           m_aspect(other.m_aspect),
+          m_usage(other.m_usage),
           m_onlyHandleImageView(other.m_onlyHandleImageView),
-          m_allocation(other.m_allocation)
+          m_allocation(other.m_allocation),
+          m_slot(other.m_slot)
     {
         other.m_image     = VK_NULL_HANDLE;
         other.m_imageView = VK_NULL_HANDLE;
@@ -56,11 +57,12 @@ public:
         m_image               = other.m_image;
         m_imageView           = other.m_imageView;
         m_format              = other.m_format;
-        m_memory              = other.m_memory;
         m_layout              = other.m_layout;
         m_aspect              = other.m_aspect;
+        m_usage               = other.m_usage;
         m_onlyHandleImageView = other.m_onlyHandleImageView;
         m_allocation          = other.m_allocation;
+        m_slot                = other.m_slot;
 
         other.m_image     = VK_NULL_HANDLE;
         other.m_imageView = VK_NULL_HANDLE;
@@ -76,9 +78,14 @@ public:
     const VkImageLayout GetLayout() const { return m_layout; }
     const VkImage GetImage() const { return m_image; }
     const VkFormat GetFormat() const { return m_format; }
+    const VkImageUsageFlags GetUsage() const { return m_usage; }
+
     const uint32_t GetMipLevels() const { return m_mipLevels; }
     const uint32_t GetWidth() const { return m_width; }
     const uint32_t GetHeight() const { return m_height; }
+
+    void SetSlot(int32_t slot) { m_slot = slot; }
+    const int32_t GetSlot() const { return m_slot; }
 
 protected:
     uint32_t m_mipLevels;
@@ -88,9 +95,11 @@ protected:
     VkImage m_image;
     VkImageView m_imageView;
     VkFormat m_format;
-    VkDeviceMemory m_memory;
     VkImageLayout m_layout;
     VkImageAspectFlags m_aspect;
+    VkImageUsageFlags m_usage;
+
+    int32_t m_slot = -1;
 
     bool m_onlyHandleImageView = false;
 

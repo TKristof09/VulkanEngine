@@ -11,9 +11,11 @@ layout(location = 3) in vec3 inTangent;
 layout(location = 0) out mat3 TBN;
 layout(location = 3) out vec2 fragTexCoord;
 layout(location = 4) out vec3 worldPos;
+layout(location = 5) out flat int ID;
 
 
 void main() {
+    ID = int(gl_DrawID);
     mat4 model = transformsPtr.m[gl_DrawID];
 
     vec3 T = normalize(vec3(model * vec4(inTangent, 0.0)));

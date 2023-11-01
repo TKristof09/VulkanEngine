@@ -3,8 +3,10 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
-struct VulkanContext
+static const uint32_t NUM_TEXTURE_DESCRIPTORS = 65535;
+class VulkanContext
 {
+public:
     static VkInstance GetInstance() { return m_instance; }
     static VkDevice GetDevice() { return m_device; }
     static VkPhysicalDevice GetPhysicalDevice() { return m_gpu; }
@@ -15,12 +17,26 @@ struct VulkanContext
     static VkFormat GetDepthFormat() { return m_depthFormat; }
     static VkFormat GetStencilFormat() { return m_stencilFormat; }
     static VkExtent2D GetSwapchainExtent() { return m_swapchainExtent; }
+
+    static VkDescriptorSetLayout GetGlobalDescSetLayout() { return m_globalDescSetLayout; }
+    static VkDescriptorSet GetGlobalDescSet() { return m_globalDescSet; }
+    static VkPushConstantRange GetGlobalPushConstantRange() { return m_globalPushConstantRange; }
+
+    static VkSampler GetTextureSampler() { return m_textureSampler; }
+
     static VmaAllocator GetVmaImageAllocator() { return m_vmaImageAllocator; }
     static VmaAllocator GetVmaBufferAllocator() { return m_vmaBufferAllocator; }
+
 
     static void Cleanup()
     {
         vmaDestroyAllocator(m_vmaImageAllocator);
+        vmaDestroyAllocator(m_vmaBufferAllocator);
+
+        vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+        vkDestroyDescriptorSetLayout(m_device, m_globalDescSetLayout, nullptr);
+        vkDestroySampler(m_device, m_textureSampler, nullptr);
+
         vkDestroyDevice(m_device, nullptr);
 
 #ifdef VDEBUG
@@ -59,6 +75,12 @@ private:
     inline static VkFormat m_depthFormat          = VK_FORMAT_D32_SFLOAT;
     inline static VkFormat m_stencilFormat        = VK_FORMAT_UNDEFINED;
     inline static VkExtent2D m_swapchainExtent    = {};
+
+    inline static VkDescriptorSetLayout m_globalDescSetLayout   = VK_NULL_HANDLE;
+    inline static VkDescriptorSet m_globalDescSet               = VK_NULL_HANDLE;
+    inline static VkPushConstantRange m_globalPushConstantRange = {};
+
+    inline static VkSampler m_textureSampler = VK_NULL_HANDLE;
 
     // The reason why we need 2 allocators is that with the buffer device address feature enabled on a VMA allocator
     // renderdoc crashes with a VK_DEVICE_LOST error when trying to capture a frame.

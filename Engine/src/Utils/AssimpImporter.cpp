@@ -68,11 +68,9 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
 
 void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* entity)
 {
-
     std::vector<Vertex> vertices;
     vertices.resize(mesh->mNumVertices);
     std::vector<uint32_t> indices;
-    LOG_INFO("indices size: {}", indices.size());
     for(unsigned int i = 0; i < mesh->mNumVertices; i++)
     {
         Vertex vertex{};
@@ -111,18 +109,18 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
     if(aiMat->GetTexture(aiTextureType_DIFFUSE, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();
-        texturePath             = "./models/" + texturePath;
+        /* texturePath        = "./models/" + texturePath;
         auto it                 = texturePath.find('\\');
-        texturePath.replace(it, 1, "/", 1);
+        texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
         mat2->textures["albedo"] = texturePath;
     }
     if(aiMat->GetTexture(aiTextureType_NORMALS, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();
-        texturePath             = "./models/" + texturePath;
+        /* texturePath        = "./models/" + texturePath;
         auto it                 = texturePath.find("\\");
-        texturePath.replace(it, 1, "/", 1);
+        texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
         mat2->textures["normal"] = texturePath;
     }
