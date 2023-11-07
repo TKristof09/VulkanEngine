@@ -6,7 +6,7 @@
 #define SPOT_LIGHT 2
 
 #define BLOCKER_SAMPLES 64
-#define PCF_SAMPLES 1
+#define PCF_SAMPLES 64
 
 #define NUM_CASCADES 4
 

@@ -42,7 +42,7 @@ public:
     void OnPointLightAdded(const ComponentAdded<PointLight>* e);
     void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
 
-    void AddTexture(Image* texture);
+    void AddTexture(Image* texture, bool isShadow = false);
     void RemoveTexture(Image* texture);
 
 private:

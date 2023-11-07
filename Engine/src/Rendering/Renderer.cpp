@@ -1160,14 +1160,34 @@ void Renderer::CreateSampler()
     createInfo.maxAnisotropy           = 16.f;
     createInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     createInfo.unnormalizedCoordinates = VK_FALSE;
-    createInfo.compareEnable           = VK_TRUE;
-    createInfo.compareOp               = VK_COMPARE_OP_GREATER;
+    createInfo.compareEnable           = VK_FALSE;
+    createInfo.compareOp               = VK_COMPARE_OP_NEVER;
     createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     createInfo.mipLodBias              = 0.0f;
     createInfo.minLod                  = 0.0f;
     createInfo.maxLod                  = VK_LOD_CLAMP_NONE;
 
     VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_textureSampler), "Failed to create sampler");
+
+    createInfo                         = {};
+    createInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.magFilter               = VK_FILTER_LINEAR;
+    createInfo.minFilter               = VK_FILTER_LINEAR;
+    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.anisotropyEnable        = VK_FALSE;
+    createInfo.maxAnisotropy           = 1.f;
+    createInfo.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    createInfo.unnormalizedCoordinates = VK_FALSE;
+    createInfo.compareEnable           = VK_TRUE;
+    createInfo.compareOp               = VK_COMPARE_OP_GREATER;
+    createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    createInfo.mipLodBias              = 0.0f;
+    createInfo.minLod                  = 0.0f;
+    createInfo.maxLod                  = 1.0f;
+
+    VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_shadowSampler), "Failed to create sampler");
 }
 
 void Renderer::RefreshDrawCommands()
@@ -1197,7 +1217,7 @@ void Renderer::RefreshShaderDataOffsets()
 {
 }
 
-void Renderer::AddTexture(Image* texture)
+void Renderer::AddTexture(Image* texture, bool isShadow)
 {
     if(m_freeTextureSlots.empty())
     {
@@ -1210,7 +1230,7 @@ void Renderer::AddTexture(Image* texture)
     VkDescriptorImageInfo imageInfo{};
     imageInfo.imageLayout = texture->GetLayout();
     imageInfo.imageView   = texture->GetImageView();
-    imageInfo.sampler     = VulkanContext::m_textureSampler;
+    imageInfo.sampler     = isShadow ? VulkanContext::m_shadowSampler : VulkanContext::m_textureSampler;
 
 
     VkWriteDescriptorSet descriptorWrite{};
@@ -1998,7 +2018,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     // TODO very temp code
     m_shadowmaps.push_back(std::move(vec));
     Image* img = m_shadowmaps[0].back().get();
-    AddTexture(img);
+    AddTexture(img, true);
     m_shadowMaps->AddImagePointer(img);
     uint32_t shadowSlot = m_shadowIndices.Allocate(1, tmp);
     uint32_t imgSlot    = img->GetSlot();
