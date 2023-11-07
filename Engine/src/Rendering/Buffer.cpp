@@ -177,6 +177,44 @@ void Buffer::Bind(const CommandBuffer& commandBuffer)
     }
 }
 
+DynamicBufferAllocator::DynamicBufferAllocator(DynamicBufferAllocator&& other) noexcept
+    : m_currentSize(other.m_currentSize),
+      m_elementSize(other.m_elementSize),
+      m_stagingBufferSize(other.m_stagingBufferSize),
+      m_usage(other.m_usage),
+      m_mappable(other.m_mappable),
+      m_buffer(std::move(other.m_buffer)),
+      m_stagingBuffer(std::move(other.m_stagingBuffer)),
+      m_tempBuffer(std::move(other.m_tempBuffer)),
+      m_needDelete(other.m_needDelete),
+      m_block(other.m_block),
+      m_tempBlock(other.m_tempBlock),
+      m_allocations(std::move(other.m_allocations)),
+      m_fence(other.m_fence)
+{
+    other.m_fence = VK_NULL_HANDLE;
+}
+DynamicBufferAllocator& DynamicBufferAllocator::operator=(DynamicBufferAllocator&& other) noexcept
+{
+    if(this == &other)
+        return *this;
+    m_currentSize       = other.m_currentSize;
+    m_elementSize       = other.m_elementSize;
+    m_stagingBufferSize = other.m_stagingBufferSize;
+    m_usage             = other.m_usage;
+    m_mappable          = other.m_mappable;
+    m_buffer            = std::move(other.m_buffer);
+    m_stagingBuffer     = std::move(other.m_stagingBuffer);
+    m_tempBuffer        = std::move(other.m_tempBuffer);
+    m_needDelete        = other.m_needDelete;
+    m_block             = other.m_block;
+    m_tempBlock         = other.m_tempBlock;
+    m_allocations       = std::move(other.m_allocations);
+    m_fence             = other.m_fence;
+
+    other.m_fence = VK_NULL_HANDLE;
+    return *this;
+}
 
 uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, bool& didResize, void* pUserData)
 {

@@ -46,7 +46,7 @@ public:
     void RemoveTexture(Image* texture);
 
 private:
-    struct alignas(16) Light
+    struct Light
     {
         int type;
         float attenuation[3];
@@ -62,10 +62,16 @@ private:
 
         glm::vec3 filler;
         uint32_t shadowSlot;
+        uint32_t matricesSlot;
+    };
+
+    struct ShadowMatrices
+    {
         std::array<glm::mat4, NUM_CASCADES> lightSpaceMatrices;  // potentially put the shadowslot in the matrix
         std::array<glm::mat4, NUM_CASCADES> lightViewMatrices;   // potentially put the shadowslot in the matrix
         std::array<glm::vec2, NUM_CASCADES> zPlanes;
     };
+
     struct TileLights  // TODO
     {
         glm::uint count;
@@ -93,6 +99,7 @@ private:
     std::unordered_map<ComponentID, Light> m_lightMap;
     std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
     void UpdateLights(uint32_t index);
+    void UpdateLightMatrices(uint32_t index);
 
     std::shared_ptr<Image> m_lightCullDebugImage;
 
@@ -206,11 +213,17 @@ private:
 
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
 
+    std::vector<DynamicBufferAllocator> m_shadowMatricesBuffers;
+
     // TODO temp
     Buffer m_drawBuffer;
     uint32_t m_numDrawCommands;
     bool m_needDrawBufferReupload = false;
-    DynamicBufferAllocator m_transformBuffer;
+    std::vector<DynamicBufferAllocator> m_transformBuffers;
+
+    RenderingTextureArrayResource* m_shadowMaps;
+    DynamicBufferAllocator m_shadowIndices;
+    uint32_t m_numShadowIndices = 0;
 
     // TODO remove
     Entity* m_frustrumEntity;

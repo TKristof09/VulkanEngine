@@ -63,6 +63,17 @@ RenderingBufferResource& RenderGraph::GetBufferResource(const std::string& name)
     return static_cast<RenderingBufferResource&>(*m_resources.back());
 }
 
+RenderingTextureArrayResource& RenderGraph::GetTextureArrayResource(const std::string& name)
+{
+    auto it = m_resourceIds.find(name);
+    if(it != m_resourceIds.end())
+        return static_cast<RenderingTextureArrayResource&>(*m_resources[it->second]);
+
+    m_resourceIds[name] = m_resources.size();
+    m_resources.push_back(std::make_unique<RenderingTextureArrayResource>(name));
+    return static_cast<RenderingTextureArrayResource&>(*m_resources.back());
+}
+
 void RenderGraph::RegisterResourceRead(const std::string& name, const RenderPass& renderPass)
 {
     m_resourceReads[name].push_back(renderPass.GetId());
@@ -615,109 +626,8 @@ bool HasWriteAccess(VkAccessFlags2 access)
 
 void RenderGraph::AddSynchronization()
 {
-    // just a helper function to avoid code duplication
+    // helper functions
 
-    /*
-    auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
-    {
-        // keep track of the stages we already synced this resource write to
-        // in order to avoid redundant syncyng
-        VkPipelineStageFlags2 alreadySyncedToStages = 0;
-
-        uint32_t srcPassId      = m_orderedPasses[srcIndex]->GetId();
-        bool srcReadOnly        = !HasWriteAccess(srcAccess);
-        VkImageLayout srcLayout = ConvertAccessToLayout(srcAccess);
-
-
-        for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
-        {
-            auto it = resource->GetUsages().find(m_orderedPasses[dstIndex]->GetId());
-            if(it == resource->GetUsages().end())
-                continue;
-
-            auto [stages, usage]    = it->second;
-            uint32_t dstPassId      = m_orderedPasses[dstIndex]->GetId();
-            bool dstReadOnly        = !HasWriteAccess(usage);
-            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
-            VkImage img             = resource->GetImagePointer()->GetImage();
-
-            // if read to read and no layout transition then we don't need to sync
-            if(srcReadOnly && dstReadOnly && srcLayout == dstLayout)
-                continue;
-
-            if(stages & alreadySyncedToStages)
-                continue;
-
-            // find and delete any events from passes that are earlier in the order and remove the barrier corresponging to this resource from them because we no longer need it
-            // because current srcpass is using the same resource as that previous pass so the two must be synced with eachother, and this means that dstpass will still be synced with the previous pass by a synch chain through the current srcpass
-            for(uint32_t k = 0; k < srcindex; ++k)
-            {
-                auto it = m_events.find({m_orderedpasses[k]->getid(), dstpassid});
-                if(it != m_events.end())
-                {
-                    // r(prev)->r(src)->w(dst) and no layout transition between the rs then we remove r1->w (in case its a layout transition) but we need to add back the sync from r1->w because since r1 and r2 aren't synced there wouldn't be a sync chain syncing r1 with w so we add r1's stage and access flag to the r2->w sync
-                    // in addition, by doing this we basically regroup the syncing of a chain of reads (without layout transitions) into a single sync at the end of the chain
-                    auto prevusageit = resource->getusages().find(m_orderedpasses[k]->getid());
-                    if(prevusageit == resource->getusages().end())
-                        continue;
-
-                    vkaccessflags2 prevaccess = prevusageit->second.second;
-                    if(!haswriteaccess(prevaccess) && srcreadonly && !dstreadonly && (convertaccesstolayout(prevaccess) == srclayout))
-                    {
-                        vkimagememorybarrier2 barrier;
-                        if(it->second.getbarrier(img, barrier) && !haswriteaccess(barrier.srcaccessmask))
-                        {
-                            stages |= barrier.srcstagemask;
-                            usage |= barrier.srcaccessmask;
-                        }
-                    }
-                    it->second.removebarrier(resource->getimagepointer()->getimage());
-                }
-            }
-
-
-            VkImageMemoryBarrier2 barrier{};
-            barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-            barrier.srcStageMask        = srcStage;
-            barrier.dstStageMask        = stages;
-            barrier.srcAccessMask       = srcAccess;
-            barrier.dstAccessMask       = usage;
-            barrier.oldLayout           = srcLayout;
-            barrier.newLayout           = dstLayout;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image               = img;
-
-            if(IsDepthFormat(resource->GetImagePointer()->GetFormat()))
-            {
-                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-                if(HasStencil(resource->GetImagePointer()->GetFormat()))
-                    barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
-            else
-                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-            barrier.subresourceRange.baseMipLevel   = 0;
-            barrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
-
-
-            // if it's used in the next pass we should use a normal pipeline barrier because apparently using a VkEvent isn't as good for performance as a normal barrier if we set it then immediately wait for it
-            if(dstIndex == srcIndex + 1)
-            {
-                m_imageBarriers[srcPassId].push_back(barrier);
-            }
-            else  // use an event so work between the two passes can be done without waiting for the synchronisation
-            {
-                // it is fine to do it like this instead of using find because if the event doesn't exist yet we would want to create it anyway, so the map inserting it when using the [] operator is fine because VulkanEvent's default constructor does the vkCreateEvent call
-                auto& event = m_events[{srcPassId, dstPassId}];
-                event.AddBarrier(barrier);
-            }
-            alreadySyncedToStages |= stages;
-        }
-    };
-*/
     auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
     {
         // a resource can only be transitioned once after a pass, now matter how many times it is used in a different layout, so we transition it into the layout that is used first and we add the stage/access masks of further passes that use it in the same layout as what we transition it to up until it should be transitioned into a different layout, after that we don't sync
@@ -762,6 +672,7 @@ void RenderGraph::AddSynchronization()
             }
         }
 
+        bool isUsedAfter = false;
         for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
         {
             uint32_t dstPassId = m_orderedPasses[dstIndex]->GetId();
@@ -770,6 +681,7 @@ void RenderGraph::AddSynchronization()
             if(it == resource->GetUsages().end())
                 continue;
 
+            isUsedAfter             = true;
             auto [stages, usage]    = it->second;
             VkImageLayout dstLayout = ConvertAccessToLayout(usage);
             bool dstReadOnly        = !HasWriteAccess(usage);
@@ -874,10 +786,80 @@ void RenderGraph::AddSynchronization()
                 break;
         }
 
-
-        if(transitionIndex != -1)
+        // if it isnt used later in the frame then transfer it back to the layout it is first used in the frame
+        // also dont do it for the swapchain image as that gets handled already at the end of the frame
+        if(!isUsedAfter && resource->GetName() != SWAPCHAIN_RESOURCE_NAME)
         {
-            if(srcIndex + 1 == transitionIndex)
+            VkPipelineStageFlags2 batchedSrcStage = srcStage;
+            VkAccessFlags2 batchedSrcAccess       = srcAccess;
+
+            VkPipelineStageFlags2 batchedDstStage = 0;
+            VkAccessFlags2 batchedDstAccess       = 0;
+            VkImageLayout dstLayout               = srcLayout;
+
+            int32_t lastWrite = -1;
+            bool first        = true;
+            for(int32_t k = 0; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+                bool needsTransition = (ConvertAccessToLayout(usage) != dstLayout);
+                // if the first use next frame doesnt need a transition then we dont need to do anything
+                if(first && !needsTransition)
+                    break;
+                // if it isnt the first use and needs a transition then the first use will transition it so we only add it to the barrier if it doesnt need a transition or if its the first use
+                // also dont need to do it after the first write because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
+                if((first || !needsTransition) && lastWrite == -1)
+                {
+                    dstLayout         = ConvertAccessToLayout(usage);
+                    batchedDstStage  |= stages;
+                    batchedDstAccess |= usage;
+                }
+
+                if(HasWriteAccess(usage))
+                {
+                    lastWrite = k;
+                }
+                first = false;
+            }
+
+            // add read accesses after the last write to the srcStage and srcAccess because there wont be any sync between those reads and the final read, so the transition barrier needs to also wait on those reads to finish
+            for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+
+                batchedSrcStage  |= stages;
+                batchedSrcAccess |= usage;
+            }
+
+            // if we get into this if then the resource isnt used this frame so the transition barrier isnt filled so we can just fill it and add it like a normal transition barrier instead of doing a brand new barrier
+            transitionBarrier.srcStageMask        = batchedSrcStage;
+            transitionBarrier.srcAccessMask       = batchedSrcAccess;
+            transitionBarrier.dstStageMask        = batchedDstStage;
+            transitionBarrier.dstAccessMask       = batchedDstAccess;
+            transitionBarrier.oldLayout           = resource->GetLifetime() == RenderingResource::Lifetime::Transient ? VK_IMAGE_LAYOUT_UNDEFINED : srcLayout;  // if its transient we can use undefined src layout to let the driver potentially discard the contents for better perf
+            transitionBarrier.newLayout           = dstLayout;
+            transitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            transitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            transitionBarrier.image               = img;
+
+            transitionBarrier.subresourceRange.aspectMask     = aspectMask;
+            transitionBarrier.subresourceRange.baseMipLevel   = 0;
+            transitionBarrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+            transitionBarrier.subresourceRange.baseArrayLayer = 0;
+            transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+        }
+
+        if(transitionIndex != -1 || (!isUsedAfter && resource->GetName() != SWAPCHAIN_RESOURCE_NAME))
+        {
+            if(srcIndex + 1 == transitionIndex || !isUsedAfter)
             {
                 m_imageBarriers[srcPassId].push_back(transitionBarrier);
             }
@@ -888,8 +870,210 @@ void RenderGraph::AddSynchronization()
             }
         }
     };
-    auto SetupBufferSync
-        = [&](uint32_t i, RenderingBufferResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+
+
+    // TODO try to add event support for image arrays too
+    auto SetupImageArraySync = [&](uint32_t srcIndex, RenderingTextureArrayResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+    {
+        // a resource can only be transitioned once after a pass, now matter how many times it is used in a different layout, so we transition it into the layout that is used first and we add the stage/access masks of further passes that use it in the same layout as what we transition it to up until it should be transitioned into a different layout, after that we don't sync
+        VkImageMemoryBarrier2 transitionBarrier{};
+        transitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+
+        uint32_t srcPassId            = m_orderedPasses[srcIndex]->GetId();
+        VkImageLayout srcLayout       = ConvertAccessToLayout(srcAccess);
+        bool srcReadOnly              = !HasWriteAccess(srcAccess);
+        bool first                    = true;
+        VkImageLayout nextLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+        int32_t transitionIndex       = -1;
+        VkImageAspectFlags aspectMask = 0;
+
+        if(IsDepthFormat(resource->GetFormat()))
+        {
+            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            if(HasStencil(resource->GetFormat()))
+                aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        else
+            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+
+        // find all read accesses that happened before srcpass because we need to add them to the transitionbarrier.srcStage/Accesses in case there is a transition right after srcpass
+        // need to do this because read to read aren't synced so there wouldn't be a sync chain through srcPass
+        if(srcReadOnly)
+        {
+            for(uint32_t k = 0; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+                if(!HasWriteAccess(usage) && srcReadOnly && (ConvertAccessToLayout(usage) == srcLayout))
+                {
+                    transitionBarrier.srcStageMask  |= stages;
+                    transitionBarrier.srcAccessMask |= usage;
+                }
+            }
+        }
+        bool isUsedAfter = false;
+        for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
+        {
+            uint32_t dstPassId = m_orderedPasses[dstIndex]->GetId();
+            auto it            = resource->GetUsages().find(dstPassId);
+
+            if(it == resource->GetUsages().end())
+                continue;
+
+            isUsedAfter             = true;
+            auto [stages, usage]    = it->second;
+            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
+            bool dstReadOnly        = !HasWriteAccess(usage);
+
+            VkPipelineStageFlags2 batchedSrcStage = srcStage;
+            VkAccessFlags2 batchedSrcAccess       = srcAccess;
+
+
+            if(first)
+            {
+                nextLayout = dstLayout;
+                if(srcLayout != dstLayout)
+                {
+                    transitionBarrier.srcStageMask        |= batchedSrcStage;
+                    transitionBarrier.srcAccessMask       |= batchedSrcAccess;
+                    transitionBarrier.dstStageMask         = stages;
+                    transitionBarrier.dstAccessMask        = usage;
+                    transitionBarrier.oldLayout            = srcLayout;
+                    transitionBarrier.newLayout            = dstLayout;
+                    transitionBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    transitionBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    transitionBarrier.image                = VK_NULL_HANDLE;
+
+                    transitionBarrier.subresourceRange.aspectMask     = aspectMask;
+                    transitionBarrier.subresourceRange.baseMipLevel   = 0;
+                    transitionBarrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+                    transitionBarrier.subresourceRange.baseArrayLayer = 0;
+                    transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+
+                    transitionIndex = dstIndex;
+                }
+            }
+            if(nextLayout != dstLayout)
+                break;
+
+            if(transitionIndex != -1)
+            {
+                transitionBarrier.dstStageMask  |= stages;
+                transitionBarrier.dstAccessMask |= usage;
+            }
+            else
+            {
+                if(srcReadOnly && dstReadOnly)
+                    continue;
+
+                VkImageMemoryBarrier2 barrier{};
+                barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+                barrier.srcStageMask        = batchedSrcStage;
+                barrier.dstStageMask        = stages;
+                barrier.srcAccessMask       = batchedSrcAccess;
+                barrier.dstAccessMask       = usage;
+                barrier.oldLayout           = srcLayout;  // srcLayout should be equal to dstLayout
+                barrier.newLayout           = dstLayout;  // so no transition
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image               = VK_NULL_HANDLE;
+
+                barrier.subresourceRange.aspectMask     = aspectMask;
+                barrier.subresourceRange.baseMipLevel   = 0;
+                barrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+                barrier.subresourceRange.baseArrayLayer = 0;
+                barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+
+                m_imageArrayBarriers[srcPassId].emplace_back(barrier, resource);
+            }
+
+            first = false;
+            // we can stop syncing to passes after the first write, because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
+            if(!dstReadOnly)
+                break;
+        }
+        // if it isnt used later in the frame then transfer it back to the layout it is first used in the frame
+        if(!isUsedAfter)
+        {
+            VkPipelineStageFlags2 batchedSrcStage = srcStage;
+            VkAccessFlags2 batchedSrcAccess       = srcAccess;
+
+            VkPipelineStageFlags2 batchedDstStage = 0;
+            VkAccessFlags2 batchedDstAccess       = 0;
+            VkImageLayout dstLayout               = srcLayout;
+
+            int32_t lastWrite = -1;
+            bool first        = true;
+            for(int32_t k = 0; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+                bool needsTransition = (ConvertAccessToLayout(usage) != dstLayout);
+                // if the first use next frame doesnt need a transition then we dont need to do anything
+                if(first && !needsTransition)
+                    break;
+                // if it isnt the first use and needs a transition then the first use will transition it so we only add it to the barrier if it doesnt need a transition or if its the first use
+                // also dont need to do it after the first write because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
+                if((first || !needsTransition) && lastWrite == -1)
+                {
+                    dstLayout         = ConvertAccessToLayout(usage);
+                    batchedDstStage  |= stages;
+                    batchedDstAccess |= usage;
+                }
+
+                if(HasWriteAccess(usage))
+                {
+                    lastWrite = k;
+                }
+                first = false;
+            }
+
+            // add read accesses after the last write to the srcStage and srcAccess because there wont be any sync between those reads and the final read, so the transition barrier needs to also wait on those reads to finish
+            for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+            {
+                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                if(it == resource->GetUsages().end())
+                    continue;
+
+                auto [stages, usage] = it->second;
+
+                batchedSrcStage  |= stages;
+                batchedSrcAccess |= usage;
+            }
+
+            // if we get into this if then the resource isnt used this frame so the transition barrier isnt filled so we can just fill it and add it like a normal transition barrier instead of doing a brand new barrier
+            transitionBarrier.srcStageMask        = batchedSrcStage;
+            transitionBarrier.srcAccessMask       = batchedSrcAccess;
+            transitionBarrier.dstStageMask        = batchedDstStage;
+            transitionBarrier.dstAccessMask       = batchedDstAccess;
+            transitionBarrier.oldLayout           = resource->GetLifetime() == RenderingResource::Lifetime::Transient ? VK_IMAGE_LAYOUT_UNDEFINED : srcLayout;  // if its transient we can use undefined src layout to let the driver potentially discard the contents for better perf
+            transitionBarrier.newLayout           = dstLayout;
+            transitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            transitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            transitionBarrier.image               = VK_NULL_HANDLE;
+
+            transitionBarrier.subresourceRange.aspectMask     = aspectMask;
+            transitionBarrier.subresourceRange.baseMipLevel   = 0;
+            transitionBarrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
+            transitionBarrier.subresourceRange.baseArrayLayer = 0;
+            transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+        }
+
+
+        if(transitionIndex != -1 || !isUsedAfter)
+        {
+            m_imageArrayBarriers[srcPassId].emplace_back(transitionBarrier, resource);
+        }
+    };
+
+    auto SetupBufferSync = [&](uint32_t i, RenderingBufferResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
     {
         // keep track of the stages we already synced this resource write to
         // in order to avoid redundant syncyng
@@ -947,6 +1131,7 @@ void RenderGraph::AddSynchronization()
 
     m_imageBarriers.resize(m_renderPasses.size());
     m_bufferBarriers.resize(m_renderPasses.size());
+    m_imageArrayBarriers.resize(m_renderPasses.size());
 
     for(uint32_t i = 0; i < m_orderedPasses.size(); ++i)
     {
@@ -1009,6 +1194,20 @@ void RenderGraph::AddSynchronization()
             auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
 
             SetupImageSync(i, resource, srcStage, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        }
+
+
+        for(auto* resource : m_orderedPasses[i]->GetTextureArrayOutputs())
+        {
+            auto [srcStage, access] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
+
+            SetupImageArraySync(i, resource, srcStage, access);
+        }
+        for(auto* resource : m_orderedPasses[i]->GetTextureArrayInputs())
+        {
+            auto [srcStage, access] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
+
+            SetupImageArraySync(i, resource, srcStage, access);
         }
     }
 
@@ -1101,7 +1300,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         renderTargetBarrier.subresourceRange.levelCount     = 1;
         renderTargetBarrier.srcAccessMask                   = 0;
         renderTargetBarrier.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        
+
         // TODO remove
         VkImageMemoryBarrier tmpDepthBarrier{};
         tmpDepthBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1119,7 +1318,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         tmpDepthBarrier.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &renderTargetBarrier);
-        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
+        //vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
     }
 
     for(auto& pass : m_orderedPasses)
@@ -1134,26 +1333,32 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         if(!events.empty())
             vkCmdWaitEvents2(cb.GetCommandBuffer(), events.size(), events.data(), dependencies.data());
 
-        if(pass->GetType() == QueueTypeFlagBits::Compute)
-        {
-            pass->Execute(cb, frameIndex);
-        }
-        else
-        {
-            vkCmdBeginRendering(cb.GetCommandBuffer(), pass->GetRenderingInfo());
-            pass->Execute(cb, frameIndex);
-            vkCmdEndRendering(cb.GetCommandBuffer());
-        }
 
+        pass->Execute(cb, frameIndex);
+
+
+        std::vector<VkImageMemoryBarrier2> imageBarriers(m_imageBarriers[pass->GetId()]);
+        // add the image array barriers to the list of image barriers
+        // need to do it here because we dont know the size and the images of the array at build time
+        for(const auto& [barrierTemplate, resource] : m_imageArrayBarriers[pass->GetId()])
+        {
+            for(auto* img : resource->GetImagePointers())
+            {
+                VkImageMemoryBarrier2 imageBarrier = barrierTemplate;
+                imageBarrier.image                 = img->GetImage();
+                imageBarriers.push_back(imageBarrier);
+            }
+        }
         VkDependencyInfo dependencyInfo{};
         dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
         dependencyInfo.dependencyFlags          = 0;
         dependencyInfo.bufferMemoryBarrierCount = m_bufferBarriers[pass->GetId()].size();
         dependencyInfo.pBufferMemoryBarriers    = m_bufferBarriers[pass->GetId()].data();
-        dependencyInfo.imageMemoryBarrierCount  = m_imageBarriers[pass->GetId()].size();
-        dependencyInfo.pImageMemoryBarriers     = m_imageBarriers[pass->GetId()].data();
+        dependencyInfo.imageMemoryBarrierCount  = imageBarriers.size();
+        dependencyInfo.pImageMemoryBarriers     = imageBarriers.data();
 
         vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
+
 
         for(auto* event : m_eventSignals[pass->GetId()])
         {
@@ -1261,15 +1466,18 @@ void RenderGraph::ToDOT(const std::string& filename)
         tooltip += "   newLayout: ";
         tooltip += string_VkImageLayout(imgBarrier.newLayout);
         tooltip += "\\n";
-        tooltip += "   srcQueueFamily: ";
-        tooltip += std::to_string(imgBarrier.srcQueueFamilyIndex);
-        tooltip += "\\n";
-        tooltip += "   dstQueueFamily: ";
-        tooltip += std::to_string(imgBarrier.dstQueueFamilyIndex);
-        tooltip += "\\n";
         tooltip += "   aspect: ";
         tooltip += string_VkImageAspectFlags(imgBarrier.subresourceRange.aspectMask);
         tooltip += "\\n";
+        if(imgBarrier.srcQueueFamilyIndex != imgBarrier.dstQueueFamilyIndex)
+        {
+            tooltip += "   srcQueueFamily: ";
+            tooltip += std::to_string(imgBarrier.srcQueueFamilyIndex);
+            tooltip += "\\n";
+            tooltip += "   dstQueueFamily: ";
+            tooltip += std::to_string(imgBarrier.dstQueueFamilyIndex);
+            tooltip += "\\n";
+        }
     };
 
     auto AddBufferBarrierToTooltip
@@ -1288,12 +1496,15 @@ void RenderGraph::ToDOT(const std::string& filename)
         tooltip += "   dstAccess: ";
         tooltip += string_VkAccessFlags2(bufferBarrier.dstAccessMask);
         tooltip += "\\n";
-        tooltip += "   srcQueueFamily: ";
-        tooltip += std::to_string(bufferBarrier.srcQueueFamilyIndex);
-        tooltip += "\\n";
-        tooltip += "   dstQueueFamily: ";
-        tooltip += std::to_string(bufferBarrier.dstQueueFamilyIndex);
-        tooltip += "\\n";
+        if(bufferBarrier.srcQueueFamilyIndex != bufferBarrier.dstQueueFamilyIndex)
+        {
+            tooltip += "   srcQueueFamily: ";
+            tooltip += std::to_string(bufferBarrier.srcQueueFamilyIndex);
+            tooltip += "\\n";
+            tooltip += "   dstQueueFamily: ";
+            tooltip += std::to_string(bufferBarrier.dstQueueFamilyIndex);
+            tooltip += "\\n";
+        }
     };
 
 
@@ -1334,6 +1545,14 @@ void RenderGraph::ToDOT(const std::string& filename)
                     for(auto bufferBarrier : m_bufferBarriers[node])
                     {
                         AddBufferBarrierToTooltip(tooltip, bufferBarrier);
+                    }
+                }
+                if(!m_imageArrayBarriers[node].empty())
+                {
+                    syncMethod += "ImageArrayBarrier, ";
+                    for(const auto& [imgArrayBarrier, _] : m_imageArrayBarriers[node])
+                    {
+                        AddImageBarrierToTooltip(tooltip, imgArrayBarrier);
                     }
                 }
             }

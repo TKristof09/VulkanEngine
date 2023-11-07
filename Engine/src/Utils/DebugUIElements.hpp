@@ -672,7 +672,7 @@ class UIImage : public DebugUIElement
 public:
     UIImage(Image* image) : m_image(image)
     {
-        m_desc = ImGui_ImplVulkan_AddTexture(VulkanContext::GetTextureSampler(), m_image->GetImageView(), m_image->GetLayout());
+        m_desc = ImGui_ImplVulkan_AddTexture(VulkanContext::GetTextureSampler(), m_image->GetImageView(), VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
     }
     void Update() override
     {

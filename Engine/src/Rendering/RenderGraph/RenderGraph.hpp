@@ -47,6 +47,7 @@ public:
 
     RenderingTextureResource& GetTextureResource(const std::string& name);
     RenderingBufferResource& GetBufferResource(const std::string& name);
+    RenderingTextureArrayResource& GetTextureArrayResource(const std::string& name);
 
     void RegisterResourceRead(const std::string& name, const RenderPass& renderPass);
     void RegisterResourceWrite(const std::string& name, const RenderPass& renderPass);
@@ -109,6 +110,7 @@ private:
     // list of all barriers that need to be executed after each pass, indexed by passId
     std::vector<std::vector<VkBufferMemoryBarrier2>> m_bufferBarriers;
     std::vector<std::vector<VkImageMemoryBarrier2>> m_imageBarriers;
+    std::vector<std::vector<std::pair<VkImageMemoryBarrier2, RenderingTextureArrayResource*>>> m_imageArrayBarriers;
 
     struct PairHash
     {

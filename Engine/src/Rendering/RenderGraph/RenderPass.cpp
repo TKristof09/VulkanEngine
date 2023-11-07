@@ -277,3 +277,22 @@ RenderingBufferResource& RenderPass::AddStorageBufferOutput(const std::string& n
 
     return resource;
 }
+
+RenderingTextureArrayResource& RenderPass::AddTextureArrayInput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+    auto& resource = m_graph.GetTextureArrayResource(name);
+    m_graph.RegisterResourceRead(name, *this);
+    resource.AddQueueUse(m_type);
+    resource.AddUse(m_id, stages, access);
+    m_textureArrayInputs.push_back(&resource);
+    return resource;
+}
+RenderingTextureArrayResource& RenderPass::AddTextureArrayOutput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+{
+    auto& resource = m_graph.GetTextureArrayResource(name);
+    m_graph.RegisterResourceWrite(name, *this);
+    resource.AddQueueUse(m_type);
+    resource.AddUse(m_id, stages, access);
+    m_textureArrayOutputs.push_back(&resource);
+    return resource;
+}

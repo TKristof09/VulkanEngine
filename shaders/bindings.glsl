@@ -3,6 +3,7 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
 layout (set = 0, binding = 0) uniform sampler2D textures[];
+layout (set = 0, binding = 0) uniform sampler2DShadow shadowTextures[];
 //layout (set = 0, binding = 1) uniform image2D storageTextures[];
 layout(buffer_reference, buffer_reference_align=4) readonly buffer Transforms {
     mat4 m[];

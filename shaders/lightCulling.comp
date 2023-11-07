@@ -33,7 +33,6 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
 struct ViewFrustum
 {
 	vec4 planes[6];
-	vec3 points[8]; // 0-3 near 4-7 far
 
 	vec4 boundingSphere;
 };
@@ -45,7 +44,7 @@ shared ViewFrustum frustum;
 shared uint lightCountForTile;
 
 
-ViewFrustum BuildFrustum(ivec2 tileID)
+void BuildFrustum(ivec2 tileID)
 {
 	mat4 inverseVP = inverse(viewProj);
 
@@ -58,49 +57,49 @@ ViewFrustum BuildFrustum(ivec2 tileID)
 	ndcPoints[2] = vec2(ndcPoints[0].x + ndcSizePerTile.x, ndcPoints[0].y + ndcSizePerTile.y);// lower right
 	ndcPoints[3] = vec2(ndcPoints[0].x					 , ndcPoints[0].y + ndcSizePerTile.y); // lower left
 
-	ViewFrustum frustum;
 
 	vec4 temp;
 
 	temp = inverseVP * vec4(ndcPoints[0].x + ndcSizePerTile.x / 2.0, ndcPoints[0].y - ndcSizePerTile.y / 2.0, (maxDepth - minDepth) / 2.0, 1.0);
 
 	vec3 center = temp.xyz / (temp.w + 0.0000152587);
+	vec3 frustumPoints[8]; // 0-3 near 4-7 far
 	for (int i = 0; i < 4; i++)
 	{
 		temp = inverseVP * vec4(ndcPoints[i], maxDepth, 1.0); //thse are the near ones actually because we are using reverse Z
 		float w = temp.w + 0.0000152587;
-		frustum.points[i] = temp.xyz / w;
+		frustumPoints[i] = temp.xyz / w;
 
-		//debugPrintfEXT("Point: %f, %f, %f : %f, %f, %f", ndcPoints[i].x, ndcPoints[i].y, minDepth, frustum.points[i].x, frustum.points[i].y, frustum.points[i].z);
+		//debugPrintfEXT("Point: %f, %f, %f : %f, %f, %f", ndcPoints[i].x, ndcPoints[i].y, minDepth, frustumPoints[i].x, frustumPoints[i].y, frustumPoints[i].z);
 		temp = inverseVP * vec4(ndcPoints[i], minDepth, 1.0);
 		w = temp.w + 0.0000152587;
-		frustum.points[i + 4] = temp.xyz / (w);
+		frustumPoints[i + 4] = temp.xyz / (w);
 	}
 
-	frustum.boundingSphere = vec4(center, sqrt(dot(frustum.points[0] - center, frustum.points[0] - center)));
+	frustum.boundingSphere = vec4(center, sqrt(dot(frustumPoints[0] - center, frustumPoints[0] - center)));
 
 	vec3 normal;
 	for (int i = 0; i < 4; i++)
 	{
 		//Cax+Cby+Ccz+Cd = 0, planes[i] = (Ca, Cb, Cc, Cd)
-		normal = cross(frustum.points[i] - cameraPos, frustum.points[i + 1] - cameraPos);
+		normal = cross(frustumPoints[i] - cameraPos, frustumPoints[i + 1] - cameraPos);
 		normal = normalize(normal);
-		frustum.planes[i] = vec4(normal, - dot(normal, frustum.points[i]));
+		frustum.planes[i] = vec4(normal, - dot(normal, frustumPoints[i]));
 	}
 	// near plane
 	{
-		normal = cross(frustum.points[1] - frustum.points[0], frustum.points[3] - frustum.points[0]);
+		normal = cross(frustumPoints[1] - frustumPoints[0], frustumPoints[3] - frustumPoints[0]);
 		normal = normalize(normal);
-		frustum.planes[4] = vec4(normal, - dot(normal, frustum.points[0]));
+		frustum.planes[4] = vec4(normal, - dot(normal, frustumPoints[0]));
 	}
 	// far plane
 	{
-		normal = cross(frustum.points[7] - frustum.points[4], frustum.points[5] - frustum.points[4]);
+		normal = cross(frustumPoints[7] - frustumPoints[4], frustumPoints[5] - frustumPoints[4]);
 		normal = normalize(normal);
-		frustum.planes[5] = vec4(normal, - dot(normal, frustum.points[4]));
+		frustum.planes[5] = vec4(normal, - dot(normal, frustumPoints[4]));
 	}
 
-	return frustum;
+
 }
 
 bool ConeInFrustumSphere(Light light)
@@ -188,8 +187,8 @@ void main()
 		}
 
 
-
-		frustum = BuildFrustum(tileID);
+		if(maxDepth != 0.0 || minDepth != 0.0)
+			BuildFrustum(tileID);
 
 
 

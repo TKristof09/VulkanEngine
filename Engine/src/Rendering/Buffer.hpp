@@ -98,6 +98,15 @@ public:
         }
     }
 
+    // delete copy constructor and assignment
+    DynamicBufferAllocator(const DynamicBufferAllocator&)            = delete;
+    DynamicBufferAllocator& operator=(const DynamicBufferAllocator&) = delete;
+
+    // move constructor and assignment definiton
+    DynamicBufferAllocator(DynamicBufferAllocator&& other) noexcept;
+    DynamicBufferAllocator& operator=(DynamicBufferAllocator&& other) noexcept;
+
+
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
     void UploadData(uint64_t slot, void* data);
     void UploadData(const std::vector<uint64_t>& slots, const std::vector<void*>& datas);

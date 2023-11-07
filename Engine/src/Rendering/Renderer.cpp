@@ -80,11 +80,12 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_commandPool(VulkanContext::m_commandPool),
       m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5),
       m_indexBuffer(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6),
-      m_transformBuffer(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false),
-      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, false),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
-      m_pushConstants({}),
-      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS)
 
+      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, false),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
+
+      m_pushConstants({}),
+      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS),
+      m_shadowIndices(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false)
 {
     scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
     scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
@@ -93,6 +94,13 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     scene->eventHandler->Subscribe(this, &Renderer::OnPointLightAdded);
     scene->eventHandler->Subscribe(this, &Renderer::OnSpotLightAdded);
 
+    // m_shadowMatricesBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
+    // m_transformBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
+    for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
+    {
+        m_shadowMatricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
+        m_transformBuffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
+    }
 
     // fill in the free texture slots
     std::iota(m_freeTextureSlots.begin(), m_freeTextureSlots.end(), 0);
@@ -203,6 +211,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         depthPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
+                vkCmdBeginRendering(cb.GetCommandBuffer(), depthPass.GetRenderingInfo());
+
                 ComponentManager* cm       = m_ecs->componentManager;
                 Camera camera              = *(*(cm->begin<Camera>()));
                 Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
@@ -216,12 +226,14 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
                 PROFILE_SCOPE("Prepass draw call loop");
                 m_pushConstants.viewProj           = vp;
-                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
 
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
                 m_vertexBuffer.Bind(cb);
                 m_indexBuffer.Bind(cb);
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
+
+                vkCmdEndRendering(cb.GetCommandBuffer());
             });
     }
     {
@@ -231,6 +243,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             glm::ivec2 tileNums;
             uint64_t lightBuffer;
             uint64_t visibleLightsBuffer;
+            uint64_t shadowMatricesBuffer;
 
             uint64_t shadowMapIds;
             uint32_t shadowMapCount;
@@ -244,7 +257,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
         visibleLightsBuffer.SetBufferPointer(m_visibleLightsBuffers[0].get());
         auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
-        // TODO shadow maps
+        auto& shadowMaps           = lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
         lightingPass.SetInitialiseCallback(
             [&](RenderGraph& rg)
             {
@@ -252,13 +266,16 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
                 data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                // TODO temp
+                data.shadowMapIds        = m_shadowIndices.GetDeviceAddress(0);
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
-                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
                     //  data.shadowMapIds
                     //  data.shadowMapCount
-                    bool tmp         = false;
-                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    bool tmp                  = false;
+                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
                     m_shaderDataBuffer.UploadData(offset, &data);
                     // store the offset somewhere
                     m_shaderDataOffsets[i]["forwardplus"] = offset;
@@ -267,6 +284,23 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         lightingPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
+                // TODO temporary
+                ShaderData data          = {};
+                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                // TODO temp
+                data.shadowMapIds        = m_shadowIndices.GetDeviceAddress(0);
+                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
+                {
+                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    data.shadowMapCount       = m_numShadowIndices;
+                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
+                    m_shaderDataBuffer.UploadData(m_shaderDataOffsets[i]["forwardplus"], &data);
+                }
+
+                vkCmdBeginRendering(cb.GetCommandBuffer(), lightingPass.GetRenderingInfo());
+
                 ComponentManager* cm  = m_ecs->componentManager;
                 auto materialIterator = cm->begin<Material>();
                 auto end              = cm->end<Material>();
@@ -277,7 +311,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->m_pipeline);
 
-                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
                 m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["forwardplus"]);
                 m_pushConstants.materialDataPtr    = pipeline->GetMaterialBufferPtr();
 
@@ -290,12 +324,84 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 m_indexBuffer.Bind(cb);
 
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
+
+                vkCmdEndRendering(cb.GetCommandBuffer());
             });
     }
     {
-        // auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
-        //  TODO
+        struct ShaderData
+        {
+            uint64_t lightBuffer;
+            uint64_t shadowMatricesBuffer;
+        };
+        auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
+        // auto& shadowMatricesBuffer = shadowPass.AddStorageBufferReadOnly("shadowMatrices", VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, true);
 
+        m_shadowMaps = &shadowPass.AddTextureArrayOutput("shadowMaps", VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
+        m_shadowMaps->SetFormat(VK_FORMAT_D32_SFLOAT);
+        shadowPass.SetInitialiseCallback(
+            [&](RenderGraph& rg)
+            {
+                ShaderData data = {};
+                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
+                {
+                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
+                    //  data.shadowMapIds
+                    //  data.shadowMapCount
+                    bool tmp                  = false;
+                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    m_shaderDataBuffer.UploadData(offset, &data);
+                    // store the offset somewhere
+                    m_shaderDataOffsets[i]["shadow"] = offset;
+                }
+            });
+        shadowPass.SetExecutionCallback(
+            [&](CommandBuffer& cb, uint32_t imageIndex)
+            {
+                ComponentManager* cm = m_ecs->componentManager;
+                for(const auto* img : m_shadowMaps->GetImagePointers())
+                {
+                    // set up the renderingInfo struct
+                    VkRenderingInfo rendering          = {};
+                    rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+                    rendering.layerCount               = 1;
+                    rendering.renderArea.extent.width  = img->GetWidth();
+                    rendering.renderArea.extent.height = img->GetHeight();
+
+                    VkRenderingAttachmentInfo depthAttachment     = {};
+                    depthAttachment.sType                         = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+                    depthAttachment.imageView                     = img->GetImageView();
+                    depthAttachment.clearValue.depthStencil.depth = 0.0f;
+                    depthAttachment.loadOp                        = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    depthAttachment.storeOp                       = VK_ATTACHMENT_STORE_OP_STORE;
+                    depthAttachment.imageLayout                   = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+                    rendering.pDepthAttachment                    = &depthAttachment;
+
+                    vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+
+                    // render the corresponding light
+
+                    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
+
+                    m_pushConstants.debugMode          = 0;
+                    m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
+                    m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["shadow"]);
+                    m_pushConstants.materialDataPtr    = 0;
+
+                    vkCmdPushConstants(cb.GetCommandBuffer(), m_shadowPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+
+                    VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+                    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+
+                    m_vertexBuffer.Bind(cb);
+                    m_indexBuffer.Bind(cb);
+
+                    vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
+                    vkCmdEndRendering(cb.GetCommandBuffer());
+                }
+            });
     }
 
     {
@@ -358,7 +464,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 
-                m_pushConstants.transformBufferPtr = m_transformBuffer.GetDeviceAddress(0);
+                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
                 m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["lightCull"]);
 
 
@@ -371,8 +477,14 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     {
         auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
         uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
-        uiPass.SetExecutionCallback([&](CommandBuffer& cb, uint32_t frameIndex)
-                                    { m_debugUI->Draw(&cb); });
+        uiPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        uiPass.SetExecutionCallback(
+            [&](CommandBuffer& cb, uint32_t frameIndex)
+            {
+                vkCmdBeginRendering(cb.GetCommandBuffer(), uiPass.GetRenderingInfo());
+                m_debugUI->Draw(&cb);
+                vkCmdEndRendering(cb.GetCommandBuffer());
+            });
     }
     m_renderGraph.Build();
 }
@@ -1048,8 +1160,8 @@ void Renderer::CreateSampler()
     createInfo.maxAnisotropy           = 16.f;
     createInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     createInfo.unnormalizedCoordinates = VK_FALSE;
-    createInfo.compareEnable           = VK_FALSE;
-    createInfo.compareOp               = VK_COMPARE_OP_ALWAYS;
+    createInfo.compareEnable           = VK_TRUE;
+    createInfo.compareOp               = VK_COMPARE_OP_GREATER;
     createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     createInfo.mipLodBias              = 0.0f;
     createInfo.minLod                  = 0.0f;
@@ -1077,6 +1189,8 @@ void Renderer::RefreshDrawCommands()
     }
     m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
     m_numDrawCommands = drawCommands.size();
+
+    m_needDrawBufferReupload = false;
 }
 
 void Renderer::RefreshShaderDataOffsets()
@@ -1164,6 +1278,85 @@ void Renderer::RemoveTexture(Image* texture)
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
 }
+std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
+{
+    std::array<glm::mat4, NUM_CASCADES> resVP;
+    std::array<glm::mat4, NUM_CASCADES> resV;
+    std::array<glm::vec2, NUM_CASCADES> zPlanes;
+
+    float maxDepthNDC  = zNear / maxDepth;
+    float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
+    float step         = maxDepth / NUM_CASCADES;
+    for(int i = 0; i < NUM_CASCADES; ++i)
+    {
+        float cascadeDepthStart = zNear / glm::max(zNear, (i * step));
+        float cascadeDepthEnd   = zNear / ((i + 1) * step);
+
+        glm::vec3 min(std::numeric_limits<float>::infinity());
+        glm::vec3 max(-std::numeric_limits<float>::infinity());
+        // cube between -1,-1,0 and 1,1,1
+        std::vector<glm::vec4> boundingVertices = {
+            {-1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom left
+            {-1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top left
+            { 1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom right
+            { 1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top right
+            {-1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom left
+            {-1.0f,  1.0f,   cascadeDepthEnd, 1.0f}, // far top left
+            { 1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom right
+            { 1.0f,  1.0f,   cascadeDepthEnd, 1.0f}  // far top right
+        };
+        // clip space to world space
+        for(glm::vec4& vert : boundingVertices)
+        {
+            vert  = invCamera * vert;
+            vert /= vert.w;
+        }
+
+        glm::vec3 center(0.0f);
+        for(const glm::vec4& vert : boundingVertices)
+        {
+            center += glm::vec3(vert);
+        }
+        center /= boundingVertices.size();
+
+        glm::vec3 up(lightDir.y, -lightDir.x, 0.0f);  // TODO
+        glm::mat4 lightView = glm::lookAt(center - lightDir, center, glm::normalize(up));
+
+        // world space to light space
+        for(glm::vec4& vert : boundingVertices)
+        {
+            vert  = lightView * vert;
+            min.x = glm::min(min.x, vert.x);
+            min.y = glm::min(min.y, vert.y);
+            min.z = glm::min(min.z, vert.z);
+            max.x = glm::max(max.x, vert.x);
+            max.y = glm::max(max.y, vert.y);
+            max.z = glm::max(max.z, vert.z);
+        }
+
+        // make the cascade constant size in world space
+        float radius = glm::distance(boundingVertices[0], boundingVertices[7]) / 2.0f;
+
+        min.x = center.x - radius;
+        min.y = center.y - radius;
+        max.x = center.x + radius;
+        max.y = center.y + radius;
+
+        /*
+        // round the boundaries to pixel size
+        float pixelSize = radius * 2.0f / SHADOWMAP_SIZE;
+        min.x = std::round(min.y / pixelSize) * pixelSize;
+        max.x = std::round(max.y / pixelSize) * pixelSize;
+        min.y = std::round(min.y / pixelSize) * pixelSize;
+        max.y = std::round(max.y / pixelSize) * pixelSize;
+        */
+        // glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
+        resV[i]    = lightView;
+        resVP[i]   = glm::ortho(min.x, max.x, min.y, max.y, max.z, min.z) * lightView;  // for z we do max for near and min for far because of reverse z
+        zPlanes[i] = glm::vec2(max.z, min.z);
+    }
+    return {resVP, resV, zPlanes};
+}
 
 void Renderer::UpdateLights(uint32_t index)
 {
@@ -1192,6 +1385,7 @@ void Renderer::UpdateLights(uint32_t index)
                 for(auto& dict : m_changedLights)
                     dict[lightComp->_slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
             }
+            // light.lightSpaceMatrices = GetCascadeMatricesOrtho(glm::mat4(1.0), newDir,
         }
     }
     {
@@ -1282,93 +1476,28 @@ void Renderer::UpdateLights(uint32_t index)
     // m_lightsBuffers[index]->UpdateBuffer(slotsAndDatas);
 }
 
-std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
+void Renderer::UpdateLightMatrices(uint32_t index)
 {
-    std::array<glm::mat4, NUM_CASCADES> resVP;
-    std::array<glm::mat4, NUM_CASCADES> resV;
-    std::array<glm::vec2, NUM_CASCADES> zPlanes;
-
-    float maxDepthNDC  = zNear / maxDepth;
-    float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
-    float step         = maxDepth / NUM_CASCADES;
-    for(int i = 0; i < NUM_CASCADES; ++i)
+    ComponentManager* cm       = m_ecs->componentManager;
+    Camera camera              = *(*(cm->begin<Camera>()));
+    Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
+    glm::mat4 inverseVP        = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection());  // TODO implement a function for inverse projection matrix instead of using generic inverse
+    for(auto* light : cm->GetComponents<DirectionalLight>())
     {
-        float cascadeDepthStart = zNear / glm::max(zNear, (i * step));
-        float cascadeDepthEnd   = zNear / ((i + 1) * step);
+        Light internalLight                   = m_lightMap[light->GetComponentID()];
+        auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, camera.zNear, MAX_SHADOW_DEPTH);
 
-        glm::vec3 min(std::numeric_limits<float>::infinity());
-        glm::vec3 max(-std::numeric_limits<float>::infinity());
-        // cube between -1,-1,0 and 1,1,1
-        std::vector<glm::vec4> boundingVertices = {
-            {-1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom left
-            {-1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top left
-            { 1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom right
-            { 1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top right
-            {-1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom left
-            {-1.0f,  1.0f,   cascadeDepthEnd, 1.0f}, // far top left
-            { 1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom right
-            { 1.0f,  1.0f,   cascadeDepthEnd, 1.0f}  // far top right
-        };
-        // clip space to world space
-        for(glm::vec4& vert : boundingVertices)
-        {
-            vert  = invCamera * vert;
-            vert /= vert.w;
-        }
+        ShadowMatrices data{};
+        data.lightSpaceMatrices = cascadesVP;
+        data.lightViewMatrices  = cascadesV;
+        data.zPlanes            = zPlanes;
 
-        glm::vec3 center(0.0f);
-        for(const glm::vec4& vert : boundingVertices)
-        {
-            center += glm::vec3(vert);
-        }
-        center /= boundingVertices.size();
-
-        glm::vec3 up(lightDir.y, -lightDir.x, 0.0f);  // TODO
-        glm::mat4 lightView = glm::lookAt(center - lightDir, center, glm::normalize(up));
-
-        // world space to light space
-        for(glm::vec4& vert : boundingVertices)
-        {
-            vert  = lightView * vert;
-            min.x = glm::min(min.x, vert.x);
-            min.y = glm::min(min.y, vert.y);
-            min.z = glm::min(min.z, vert.z);
-            max.x = glm::max(max.x, vert.x);
-            max.y = glm::max(max.y, vert.y);
-            max.z = glm::max(max.z, vert.z);
-        }
-
-        // make the cascade constant size in world space
-        float radius = glm::distance(boundingVertices[0], boundingVertices[7]) / 2.0f;
-
-        min.x = center.x - radius;
-        min.y = center.y - radius;
-        max.x = center.x + radius;
-        max.y = center.y + radius;
-
-        /*
-        // round the boundaries to pixel size
-        float pixelSize = radius * 2.0f / SHADOWMAP_SIZE;
-        min.x = std::round(min.y / pixelSize) * pixelSize;
-        max.x = std::round(max.y / pixelSize) * pixelSize;
-        min.y = std::round(min.y / pixelSize) * pixelSize;
-        max.y = std::round(max.y / pixelSize) * pixelSize;
-        */
-        // glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
-        resV[i]    = lightView;
-        resVP[i]   = glm::ortho(min.x, max.x, min.y, max.y, max.z, min.z) * lightView;  // for z we do max for near and min for far because of reverse z
-        zPlanes[i] = glm::vec2(max.z, min.z);
+        m_shadowMatricesBuffers[index].UploadData(internalLight.matricesSlot, &data);
     }
-    return {resVP, resV, zPlanes};
 }
-
 
 void Renderer::Render(double dt)
 {
-    vkDeviceWaitIdle(m_device);
-    CommandBuffer cb;
-    cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-    cb.SubmitIdle();
     PROFILE_FUNCTION();
     uint32_t imageIndex;
     VkResult result;
@@ -1397,8 +1526,6 @@ void Renderer::Render(double dt)
         VK_CHECK(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "Failed to reset in flight fences");
 
 
-        UpdateLights(imageIndex);
-
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
         ComponentManager* cm       = m_ecs->componentManager;
         Camera camera              = *(*(cm->begin<Camera>()));
@@ -1406,21 +1533,25 @@ void Renderer::Render(double dt)
         glm::mat4 proj             = camera.GetProjection();
 
         glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+        UpdateLights(imageIndex);
+        UpdateLightMatrices(imageIndex);
 
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
-        vkDeviceWaitIdle(m_device);
-        for(auto* transform : cm->GetComponents<Transform>())
-        {
-            if(cm->HasComponent<Renderable>(transform->GetOwner()))
-            {
-                glm::mat4 model = transform->GetTransform();
 
-                m_transformBuffer.UploadData(transform->ub_id, &model);
+        if(m_needDrawBufferReupload)
+        {
+            for(auto* transform : cm->GetComponents<Transform>())
+            {
+                if(cm->HasComponent<Renderable>(transform->GetOwner()))
+                {
+                    glm::mat4 model = transform->GetTransform();
+
+                    for(auto& buffer : m_transformBuffers)
+                        buffer.UploadData(transform->ub_id, &model);
+                }
             }
-        }
-        vkDeviceWaitIdle(m_device);
-        if(true)
             RefreshDrawCommands();
+        }
     }
 
     /*
@@ -1695,7 +1826,6 @@ void Renderer::Render(double dt)
         presentInfo.pSwapchains    = &m_swapchain;
         presentInfo.pImageIndices  = &imageIndex;
         result                     = vkQueuePresentKHR(m_presentQueue, &presentInfo);
-        VK_CHECK(result, "Failed to present the swapchain image");
     }
     std::array<uint64_t, 4> queryResults;
     {
@@ -1707,8 +1837,8 @@ void Renderer::Render(double dt)
         m_window->SetResized(false);
         RecreateSwapchain();
     }
-    else if(result != VK_SUCCESS)
-        throw std::runtime_error("Failed to present swap chain image");
+    else
+        VK_CHECK(result, "Failed to present the swapchain image");
 
     m_queryResults[m_currentFrame] = (queryResults[3] - queryResults[0]) * m_timestampPeriod;
     // LOG_INFO("GPU took {0} ms", m_queryResults[m_currentFrame] * 1e-6);
@@ -1783,12 +1913,12 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
     */
 
     uint32_t slot = 0;
-    for(uint32_t i = 0; i < 1; ++i)
+    for(auto& buffer : m_transformBuffers)
     {
-        bool didResize                                                     = false;
-        slot                                                               = m_transformBuffer.Allocate(1, didResize);
-        m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
+        bool didResize = false;
+        slot           = buffer.Allocate(1, didResize);
     }
+    m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
 
     comp->objectID = slot;
 
@@ -1836,6 +1966,12 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     m_lightMap[e->component->GetComponentID()] = {0};  // 0 = DirectionalLight
     Light* light                               = &m_lightMap[e->component->GetComponentID()];
 
+    uint32_t matricesSlot = 0;
+    for(auto& buffer : m_shadowMatricesBuffers)
+        matricesSlot = buffer.Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+
+    light->matricesSlot = matricesSlot;
+
     for(auto& dict : m_changedLights)
     {
         dict[slot] = light;
@@ -1845,7 +1981,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     ImageCreateInfo ci;
     ci.format      = VK_FORMAT_D32_SFLOAT;
     ci.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    ci.layout      = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;  // the render pass will transfer to good layout
+    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;  // the render pass will transfer to good layout
     ci.useMips     = false;
     ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
@@ -1858,24 +1994,30 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     {
         vec[i] = std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci);
     }
+
+    // TODO very temp code
     m_shadowmaps.push_back(std::move(vec));
+    Image* img = m_shadowmaps[0].back().get();
+    AddTexture(img);
+    m_shadowMaps->AddImagePointer(img);
+    uint32_t shadowSlot = m_shadowIndices.Allocate(1, tmp);
+    uint32_t imgSlot    = img->GetSlot();
+    m_shadowIndices.UploadData(shadowSlot, &imgSlot);
+    m_numShadowIndices++;
+    // TODO
 
     light->shadowSlot = slot;
     std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos;
     std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF;
-    for(int i = 0; i < NUM_CASCADES; ++i)
+
+    // debugimages
+    int i = 0;
+    for(auto* img : m_shadowMaps->GetImagePointers())
     {
-        imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;  // TODO: depth_read_only_optimal
-        imageInfos[i].imageView   = m_shadowmaps[slot][i]->GetImageView();
-        imageInfos[i].sampler     = m_shadowSampler;
-
-        imageInfosPCF[i].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;  // TODO: depth_read_only_optimal
-        imageInfosPCF[i].imageView   = m_shadowmaps[slot][i]->GetImageView();
-        imageInfosPCF[i].sampler     = m_shadowSamplerPCF;
-
-        auto debugImage = std::make_shared<UIImage>(m_shadowmaps[slot][i].get());
+        auto debugImage = std::make_shared<UIImage>(img);
         debugImage->SetName(std::string("Cascade #") + std::to_string(i));
         m_rendererDebugWindow->AddElement(debugImage);
+        i++;
     }
 }
 

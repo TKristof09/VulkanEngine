@@ -19,23 +19,30 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer LightBuffer {
 layout(buffer_reference, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
     TileLights data[];
 };
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
-    ivec2 viewportSize;
-    ivec2 tileNums;
-    LightBuffer lightBuffer;
-    VisibleLightsBuffer visibleLightsBuffer;
-
-    uint64_t shadowMapIds;
-    uint32_t shadowMapCount;
-};
 
 layout(buffer_reference, buffer_reference_align=4) readonly buffer MaterialData
 {
     uint albedoIndex;
     uint normalIndex;
 };
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ShadowMapIndices
+{
+    int id;
+};
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ShadowMatricesBuffer {
+    ShadowMatrices data[];
+};
 
-#if 0
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
+    ivec2 viewportSize;
+    ivec2 tileNums;
+    LightBuffer lightBuffer;
+    VisibleLightsBuffer visibleLightsBuffer;
+    ShadowMatricesBuffer shadowMatricesBuffer;
+
+    ShadowMapIndices shadowMapIds;
+    uint32_t shadowMapCount;
+};
 float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
 {
     int numBlockers = 0;
@@ -53,13 +60,13 @@ float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
     }
     return numBlockers > 0 ? avgDist / numBlockers : -1;
 }
-float PCF(vec3 coords, sampler2DShadow shadowMapPCF, float radius)
+float PCF(vec3 coords, int slot, float radius)
 {
     float sum = 0.0;
     for(int i = 0; i < PCF_SAMPLES; ++i)
     {
-        vec3 offset = vec3(Poisson64[i] * radius, 0);
-        sum += texture(shadowMapPCF, coords + offset);
+        vec3 coordOffset = vec3(Poisson64[i] * radius, 0);
+        sum += texture(shadowTextures[slot], coords + coordOffset);
     }
     return sum / PCF_SAMPLES;
 }
@@ -81,12 +88,16 @@ float CalculateShadow(Light light)
             break;
         }
     }
-    int slot = light.shadowSlot * NUM_CASCADES + cascadeIndex;
-    float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
-    float NEAR_PLANE = light.zPlanes[cascadeIndex].y;
-    float FAR_PLANE = light.zPlanes[cascadeIndex].x;
+    cascadeIndex = 0; // TODO temp
 
-    vec4 lsPos = light.lightSpaceMatrices[cascadeIndex] * vec4(worldPos, 1.0);
+    ShadowMatrices shadowMatrices = shaderDataPtr.shadowMatricesBuffer.data[light.matricesSlot];
+
+    int slot = shaderDataPtr.shadowMapIds[light.shadowSlot].id;
+    float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
+    float NEAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].y;
+    float FAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].x;
+
+    vec4 lsPos = shadowMatrices.lightSpaceMatrices[cascadeIndex] * vec4(worldPos, 1.0);
 
     vec3 projectedCoords = (lsPos.xyz / lsPos.w) * vec3(0.5,0.5,1) + vec3(0.5,0.5, 0.005); // bias
     projectedCoords.y = 1 - projectedCoords.y;// not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
@@ -102,10 +113,8 @@ float CalculateShadow(Light light)
     float kernelSize = lightSize * penumbraSize * NEAR_PLANE / z_vs;
     */
 
-    return PCF(projectedCoords, shadowMapsPCF[nonuniformEXT(slot)], 0.001);
+    return PCF(projectedCoords, slot, 0.001);
 }
-#endif
-
 vec3 GetNormalFromMap(){
     vec3 n = vec3(0.5,0.5,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
     n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
@@ -134,7 +143,7 @@ vec3 CalculateBaseLight(Light light, vec3 direction)
 
 vec3 CalculateDirectionalLight(Light light)
 {
-    return CalculateBaseLight(light, light.direction);//  * CalculateShadow(light);
+    return CalculateBaseLight(light, light.direction)  * CalculateShadow(light);
 }
 vec3 CalculatePointLight(Light light)
 {

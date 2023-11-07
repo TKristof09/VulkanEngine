@@ -6,7 +6,7 @@
 #define SPOT_LIGHT 2
 
 #define BLOCKER_SAMPLES 64
-#define PCF_SAMPLES 64
+#define PCF_SAMPLES 1
 
 #define NUM_CASCADES 4
 
@@ -34,12 +34,18 @@ struct Light
 	float range; // only for spot and point
 
     vec3 filler;
-    int shadowSlot;
+    uint shadowSlot;
+    uint matricesSlot;
+
+};
+
+struct ShadowMatrices
+{
     mat4 lightSpaceMatrices[NUM_CASCADES];
     mat4 lightViewMatrices[NUM_CASCADES];
     vec2 zPlanes[NUM_CASCADES];
-
 };
+
 struct TileLights
 {
 	uint count;

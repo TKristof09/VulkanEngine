@@ -2,12 +2,14 @@
 
 #include "Rendering/Buffer.hpp"
 #include "Rendering/CommandBuffer.hpp"
-#include "vulkan/vulkan_core.h"
 #include <vulkan/vulkan.h>
+
+#include <utility>
 
 class RenderGraph;
 class RenderingTextureResource;
 class RenderingBufferResource;
+class RenderingTextureArrayResource;
 
 enum QueueTypeFlagBits
 {
@@ -38,7 +40,7 @@ struct DrawCommand
     uint32_t firstIndex;
     int32_t vertexOffset;
     uint32_t firstInstance;
-    //uint32_t objectID;
+    // uint32_t objectID;
 };
 class RenderPass
 {
@@ -64,9 +66,12 @@ public:
     RenderingBufferResource& AddStorageBufferReadOnly(const std::string& name, VkPipelineStageFlags2 stages = 0, bool external = false);
     RenderingBufferResource& AddStorageBufferOutput(const std::string& name, const std::string& input = "", VkPipelineStageFlags2 stages = 0, bool external = false);
 
+    RenderingTextureArrayResource& AddTextureArrayInput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
+    RenderingTextureArrayResource& AddTextureArrayOutput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
 
-    void SetInitialiseCallback(std::function<void(RenderGraph&)> callback) { m_initialiseCallback = callback; }
-    void SetExecutionCallback(std::function<void(CommandBuffer&, uint32_t)> callback) { m_executionCallback = callback; }
+
+    void SetInitialiseCallback(std::function<void(RenderGraph&)> callback) { m_initialiseCallback = std::move(callback); }
+    void SetExecutionCallback(std::function<void(CommandBuffer&, uint32_t)> callback) { m_executionCallback = std::move(callback); }
 
     // This happens AFTER the physical resources have been created by the rendergraph
     // This is where you should create descriptor sets for example
@@ -109,6 +114,9 @@ public:
 
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetStorageBufferInputs() const { return m_storageBufferInputs; }
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetStorageBufferOutputs() const { return m_storageBufferOutputs; }
+
+    [[nodiscard]] const std::vector<RenderingTextureArrayResource*>& GetTextureArrayInputs() const { return m_textureArrayInputs; }
+    [[nodiscard]] const std::vector<RenderingTextureArrayResource*>& GetTextureArrayOutputs() const { return m_textureArrayOutputs; }
 
     [[nodiscard]] uint32_t GetId() const { return m_id; }
     [[nodiscard]] const std::string& GetName() const { return m_name; }
@@ -153,6 +161,9 @@ private:
 
     std::vector<RenderingBufferResource*> m_storageBufferInputs;
     std::vector<RenderingBufferResource*> m_storageBufferOutputs;
+
+    std::vector<RenderingTextureArrayResource*> m_textureArrayInputs;
+    std::vector<RenderingTextureArrayResource*> m_textureArrayOutputs;
 
     std::vector<VkRenderingAttachmentInfo> m_attachmentInfos;
     int32_t m_swapchainAttachmentIndex = -1;
