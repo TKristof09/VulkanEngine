@@ -3,7 +3,10 @@
 #include "Rendering/VulkanContext.hpp"
 
 Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
-    : m_name(shaderName), m_priority(priority), m_isGlobal(createInfo.isGlobal)
+    : m_name(shaderName),
+      m_priority(priority),
+      m_isGlobal(createInfo.isGlobal),
+      m_viewMask(createInfo.viewMask)
 {
     if(createInfo.type == PipelineType::GRAPHICS)
     {
@@ -156,6 +159,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     // ##################### RENDERING #####################
     VkPipelineRenderingCreateInfo renderingCreateInfo = {};
     renderingCreateInfo.sType                         = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderingCreateInfo.viewMask                      = createInfo.viewMask;
     VkFormat defaultColorFormat                       = VulkanContext::GetSwapchainImageFormat();
     if(createInfo.colorFormats.empty() && createInfo.useColor)
     {

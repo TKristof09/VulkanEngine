@@ -1,6 +1,8 @@
 #version 460
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_multiview : enable
+
 #include "common.glsl"
 #include "bindings.glsl"
 
@@ -21,5 +23,6 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
 };
 
 void main() {
-    gl_Position = shaderDataPtr.shadowMatricesBuffer.data[shaderDataPtr.lightBuffer.data[debugMode].matricesSlot].lightSpaceMatrices[0] * transformsPtr.m[gl_DrawID] * vec4(inPosition, 1.0);
+    // TODO: in the future maybe pass the light index in some other way than just using debugMode
+    gl_Position = shaderDataPtr.shadowMatricesBuffer.data[shaderDataPtr.lightBuffer.data[debugMode].matricesSlot].lightSpaceMatrices[gl_ViewIndex] * transformsPtr.m[gl_DrawID] * vec4(inPosition, 1.0);
 }

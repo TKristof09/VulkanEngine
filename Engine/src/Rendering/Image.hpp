@@ -16,6 +16,8 @@ struct ImageCreateInfo
 
     bool useMips = true;
 
+    uint8_t layerCount = 1;
+
     VkImage image = VK_NULL_HANDLE;  // just to make it so that we can create an Image from the swapchain images
 };
 class Image

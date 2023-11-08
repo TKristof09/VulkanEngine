@@ -44,6 +44,8 @@ struct PipelineCreateInfo
 
     bool depthClampEnable = false;
 
+    uint32_t viewMask = 0;
+
     bool isGlobal = false;
 };
 
@@ -70,6 +72,7 @@ public:
           m_shaders(std::move(other.m_shaders)),
           m_pipeline(other.m_pipeline),
           m_layout(other.m_layout),
+          m_viewMask(other.m_viewMask),
           m_materialBufferPtr(other.m_materialBufferPtr),
           m_uniformBuffers(std::move(other.m_uniformBuffers)),
           m_textures(std::move(other.m_textures)),
@@ -91,6 +94,7 @@ public:
         m_shaders           = std::move(other.m_shaders);
         m_pipeline          = other.m_pipeline;
         m_layout            = other.m_layout;
+        m_viewMask          = other.m_viewMask;
         m_materialBufferPtr = other.m_materialBufferPtr;
         m_uniformBuffers    = std::move(other.m_uniformBuffers);
         m_textures          = std::move(other.m_textures);
@@ -102,6 +106,7 @@ public:
     }
 
     [[nodiscard]] uint64_t GetMaterialBufferPtr() const { return m_materialBufferPtr; }
+    [[nodiscard]] uint32_t GetViewMask() const { return m_viewMask; }
 
 private:
     friend class Renderer;
@@ -120,6 +125,7 @@ private:
     VkPipeline m_pipeline;
     VkPipelineLayout m_layout;
 
+    uint32_t m_viewMask          = 0;
     uint64_t m_materialBufferPtr = 0;
 
 

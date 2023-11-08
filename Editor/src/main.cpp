@@ -40,7 +40,7 @@ int main()
     //t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(0,1,0));
 
     Entity* e2 = AssimpImporter::LoadFile("models/sponza.fbx", ecs);
-    //e2->GetComponent<Transform>()->scale = {0.01f, 0.01f, 0.01f};
+    e2->GetComponent<Transform>()->scale = {0.01f, 0.01f, 0.01f};
 
 	Entity* dlight = ecs->entityManager->CreateEntity();
     dlight->GetComponent<NameTag>()->name = "DLight";

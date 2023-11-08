@@ -34,7 +34,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         ci.extent.height     = height;
         ci.extent.depth      = 1;
         ci.mipLevels         = m_mipLevels;
-        ci.arrayLayers       = 1;
+        ci.arrayLayers       = createInfo.layerCount;
         ci.format            = createInfo.format;
         ci.tiling            = createInfo.tiling;
         ci.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -53,7 +53,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
     VkImageViewCreateInfo viewCreateInfo = {};
     viewCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewCreateInfo.image                 = m_image;
-    viewCreateInfo.viewType              = VK_IMAGE_VIEW_TYPE_2D;
+    viewCreateInfo.viewType              = createInfo.layerCount > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
     viewCreateInfo.format                = m_format;
     // stick to default color mapping(probably could leave this as default)
     viewCreateInfo.components.r          = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -65,7 +65,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
     viewCreateInfo.subresourceRange.baseMipLevel   = 0;
     viewCreateInfo.subresourceRange.levelCount     = 1;
     viewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    viewCreateInfo.subresourceRange.layerCount     = 1;
+    viewCreateInfo.subresourceRange.layerCount     = createInfo.layerCount;
 
     VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
 
@@ -101,6 +101,8 @@ void Image::Free()
     }
 }
 
+// TODO add layer support for other functions
+
 void Image::TransitionLayout(VkImageLayout newLayout)
 {
     CommandBuffer commandBuffer;
@@ -123,9 +125,9 @@ void Image::TransitionLayout(VkImageLayout newLayout)
     }
 
     barrier.subresourceRange.baseMipLevel   = 0;
-    barrier.subresourceRange.levelCount     = m_mipLevels;
+    barrier.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount     = 1;
+    barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;

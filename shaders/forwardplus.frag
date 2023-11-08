@@ -60,13 +60,14 @@ float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
     }
     return numBlockers > 0 ? avgDist / numBlockers : -1;
 }
-float PCF(vec3 coords, int slot, float radius)
+float PCF(vec3 coords, int slot, int cascadeIndex, float radius)
 {
     float sum = 0.0;
+    const vec4 p = vec4(coords.xy, cascadeIndex, coords.z);
     for(int i = 0; i < PCF_SAMPLES; ++i)
     {
-        vec3 coordOffset = vec3(Poisson64[i] * radius, 0);
-        sum += texture(shadowTextures[slot], coords + coordOffset);
+        vec4 pOffset = vec4(Poisson64[i] * radius, 0.0, 0.0);
+        sum += texture(shadowTextures[slot], p + pOffset); // TODO try to use textureOffset
     }
     return sum / PCF_SAMPLES;
 }
@@ -113,7 +114,7 @@ float CalculateShadow(Light light)
     float kernelSize = lightSize * penumbraSize * NEAR_PLANE / z_vs;
     */
 
-    return PCF(projectedCoords, slot, 0.001);
+    return PCF(projectedCoords, slot, cascadeIndex, 0.001);
 }
 vec3 GetNormalFromMap(){
     vec3 n = vec3(0.5,0.5,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;

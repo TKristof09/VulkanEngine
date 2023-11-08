@@ -361,14 +361,16 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
                 ComponentManager* cm = m_ecs->componentManager;
+                // TODO: how would this work with multiple lights? we somehow need to associate light with the corresponding image
                 for(const auto* img : m_shadowMaps->GetImagePointers())
                 {
                     // set up the renderingInfo struct
                     VkRenderingInfo rendering          = {};
                     rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
-                    rendering.layerCount               = 1;
                     rendering.renderArea.extent.width  = img->GetWidth();
                     rendering.renderArea.extent.height = img->GetHeight();
+                    // rendering.layerCount               = 1;
+                    rendering.viewMask                 = m_shadowPipeline->GetViewMask();
 
                     VkRenderingAttachmentInfo depthAttachment     = {};
                     depthAttachment.sType                         = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -722,6 +724,7 @@ void Renderer::CreateDevice()
     VkPhysicalDeviceVulkan11Features device11Features = {};
     device11Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     device11Features.shaderDrawParameters             = VK_TRUE;
+    device11Features.multiview                        = VK_TRUE;
 
     VkPhysicalDeviceVulkan12Features device12Features             = {};
     device12Features.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -955,6 +958,7 @@ void Renderer::CreatePipeline()
     shadowPipeline.useMultiSampling = true;
     shadowPipeline.useColorBlend    = false;
     shadowPipeline.viewportExtent   = {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
+    shadowPipeline.viewMask         = 0b1111;  // NUM_CASCADES of 1s TODO make it not hardcoded
 
     shadowPipeline.isGlobal = true;
 
@@ -2004,6 +2008,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;  // the render pass will transfer to good layout
     ci.useMips     = false;
     ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ci.layerCount  = NUM_CASCADES;
 
     slot                      = m_shadowmaps.size();
     e->component->_shadowSlot = slot;
@@ -2036,7 +2041,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     {
         auto debugImage = std::make_shared<UIImage>(img);
         debugImage->SetName(std::string("Cascade #") + std::to_string(i));
-        m_rendererDebugWindow->AddElement(debugImage);
+        // m_rendererDebugWindow->AddElement(debugImage);
         i++;
     }
 }
