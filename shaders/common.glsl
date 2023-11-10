@@ -10,6 +10,8 @@
 
 #define NUM_CASCADES 4
 
+
+
 struct Attenuation
 {
 	// quadratic*x^2+linear*x+constant
@@ -32,12 +34,18 @@ struct Light
 	float range; // only for spot and point
 
     vec3 filler;
-    int shadowSlot;
+    uint shadowSlot;
+    uint matricesSlot;
+
+};
+
+struct ShadowMatrices
+{
     mat4 lightSpaceMatrices[NUM_CASCADES];
     mat4 lightViewMatrices[NUM_CASCADES];
     vec2 zPlanes[NUM_CASCADES];
-
 };
+
 struct TileLights
 {
 	uint count;

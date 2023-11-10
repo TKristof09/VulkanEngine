@@ -29,7 +29,7 @@ struct Node
 #define SWAPCHAIN_RESOURCE_NAME "__swapchain"
 #define NUM_FRAMES_IN_FLIGHT    2
 
-class RenderPass2;
+class RenderPass;
 class RenderGraph
 {
 public:
@@ -43,13 +43,14 @@ public:
     }
 
     void SetupSwapchainImages(const std::vector<VkImage>& swapchainImages);
-    RenderPass2& AddRenderPass(const std::string& name, QueueTypeFlagBits type);
+    RenderPass& AddRenderPass(const std::string& name, QueueTypeFlagBits type);
 
     RenderingTextureResource& GetTextureResource(const std::string& name);
     RenderingBufferResource& GetBufferResource(const std::string& name);
+    RenderingTextureArrayResource& GetTextureArrayResource(const std::string& name);
 
-    void RegisterResourceRead(const std::string& name, const RenderPass2& renderPass);
-    void RegisterResourceWrite(const std::string& name, const RenderPass2& renderPass);
+    void RegisterResourceRead(const std::string& name, const RenderPass& renderPass);
+    void RegisterResourceWrite(const std::string& name, const RenderPass& renderPass);
 
     void Build();
 
@@ -90,9 +91,9 @@ private:
     std::unordered_map<std::string, std::vector<uint32_t>> m_resourceWrites;
 
     // TODO RenderPasses are not owned by the graph?
-    std::vector<RenderPass2*> m_renderPasses;
+    std::vector<RenderPass*> m_renderPasses;
     // same as m_renderPasses but ordered based on the dependencies between passes, to be used for execution
-    std::vector<RenderPass2*> m_orderedPasses;
+    std::vector<RenderPass*> m_orderedPasses;
     std::unordered_map<std::string, uint32_t> m_renderPassIds;
 
 
@@ -109,6 +110,7 @@ private:
     // list of all barriers that need to be executed after each pass, indexed by passId
     std::vector<std::vector<VkBufferMemoryBarrier2>> m_bufferBarriers;
     std::vector<std::vector<VkImageMemoryBarrier2>> m_imageBarriers;
+    std::vector<std::vector<std::pair<VkImageMemoryBarrier2, RenderingTextureArrayResource*>>> m_imageArrayBarriers;
 
     struct PairHash
     {

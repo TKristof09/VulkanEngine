@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include "RenderPass.hpp"
-#include "vulkan/vulkan_core.h"
+#include "Rendering/Image.hpp"
 
 class Image;
 class Buffer;
@@ -12,7 +12,8 @@ public:
     enum class Type
     {
         Texture,
-        Buffer
+        Buffer,
+        TextureArray  // runtime texture array - size isnt known at rendergraph compile time (e.g. shadowmap array) - this means that this has to be external lifetime
     };
     enum class Lifetime
     {
@@ -130,4 +131,34 @@ public:
 private:
     BufferInfo m_bufferInfo;
     Buffer* m_buffer = nullptr;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
+};
+
+// All the images have to have the same format, layout
+class RenderingTextureArrayResource : public RenderingResource
+{
+public:
+    RenderingTextureArrayResource(const std::string& name)
+        : RenderingResource(Type::TextureArray, name),
+          m_format(VK_FORMAT_UNDEFINED)
+    {
+        SetLifetime(Lifetime::External);
+    }
+
+    void SetFormat(VkFormat format) { m_format = format; }
+    [[nodiscard]] VkFormat GetFormat() const { return m_format; }
+    void AddImagePointer(Image* image)
+    {
+        if(m_format != VK_FORMAT_UNDEFINED)
+            assert(m_format == image->GetFormat());
+        else
+            m_format = image->GetFormat();
+
+        m_images.push_back(image);
+    }
+
+    [[nodiscard]] const std::vector<Image*>& GetImagePointers() const { return m_images; }
+
+private:
+    VkFormat m_format;
+    std::vector<Image*> m_images;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };

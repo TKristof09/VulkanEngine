@@ -1,0 +1,42 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "bindings.glsl"
+
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(buffer_reference) buffer DrawIdToObjectId {
+    uint v[];
+};
+struct DrawCommand
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int vertexOffset;
+    uint firstInstance;
+    uint objectID;
+};
+layout(buffer_reference) buffer DrawCmdBuffer {
+    DrawCommand v[];
+};
+/*layout(buffer_reference) buffer ShaderData {
+    DrawIdToObjectId data;
+    DrawCmdBuffer drawCmdPtr;
+    uint drawCmdCount;
+};*/
+
+void main()
+{
+    /*
+    ShaderData shaderData = ShaderData(shaderDataPtr);
+    DrawCmdBuffer drawCmds = DrawCmdBuffer(shaderData.drawCmdPtr);
+    DrawIdToObjectId drawIdToObjectId = DrawIdToObjectId(shaderData.data);
+
+    for (uint i = 0; i < shaderData.drawCmdCount; ++i) {
+        drawIdToObjectId.v[i] = drawCmds.v[i].objectID;
+    }
+    */
+
+}

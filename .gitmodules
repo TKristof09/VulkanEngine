@@ -13,3 +13,6 @@
 [submodule "external/yaml-cpp"]
 	path = external/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp
+[submodule "external/glm"]
+	path = external/glm
+	url = git@github.com:g-truc/glm.git

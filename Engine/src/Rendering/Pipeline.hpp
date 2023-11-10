@@ -2,171 +2,153 @@
 
 #include "VulkanContext.hpp"
 #include "Shader.hpp"
-#include "RenderPass.hpp"
-#include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan.h"
 
-const uint32_t OBJECTS_PER_DESCRIPTOR_CHUNK = 32;
-class Pipeline;
 
-enum class PipelineType{
-	GRAPHICS,
-	COMPUTE
+enum class PipelineType
+{
+    GRAPHICS,
+    COMPUTE
 };
 
+class Pipeline;
 struct PipelineCreateInfo
 {
-	PipelineType type;
+    PipelineType type;
 
-	bool allowDerivatives = false;
-	Pipeline* parent = nullptr;
+    bool allowDerivatives = false;
+    Pipeline* parent      = nullptr;
 
 
-	// for GRAPHICS
+    // for GRAPHICS
     bool useColor         = true;
     bool useDepth         = false;
     bool useStencil       = false;
-	bool useColorBlend    = false;
-	bool useMultiSampling = false;
-	bool useTesselation   = false; // not supported yet
-	bool useDynamicState  = false; // not supported yet
+    bool useColorBlend    = false;
+    bool useMultiSampling = false;
+    bool useTesselation   = false;  // not supported yet
+    bool useDynamicState  = false;  // not supported yet
 
 
     std::vector<VkFormat> colorFormats;
-    VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-    VkFormat stencilFormat = VK_FORMAT_S8_UINT; // TODO look into stencil stuff
+    VkFormat depthFormat   = VK_FORMAT_D32_SFLOAT;
+    VkFormat stencilFormat = VK_FORMAT_S8_UINT;  // TODO look into stencil stuff
 
-	VkShaderStageFlags stages = 0;
-	VkExtent2D viewportExtent = {};
+    VkShaderStageFlags stages = 0;
+    VkExtent2D viewportExtent = {};
 
-	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-	bool depthWriteEnable = false;
-	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
+    bool depthWriteEnable      = false;
+    VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
 
-	bool depthClampEnable = false;
+    bool depthClampEnable = false;
 
-	bool isGlobal = false;
+    uint32_t viewMask = 0;
+
+    bool isGlobal = false;
 };
 
 class Pipeline
 {
 public:
-	Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority=std::numeric_limits<uint16_t>::max());
-	~Pipeline();
+    Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority = std::numeric_limits<uint16_t>::max());
+    ~Pipeline();
 
-	friend bool operator<(const Pipeline& lhs, const Pipeline& rhs)
-	{
-		if(lhs.m_priority == rhs.m_priority)
-			if(lhs.m_renderPass == rhs.m_renderPass)
-				return lhs.m_name < rhs.m_name;
-			else
-				return lhs.m_renderPass < rhs.m_renderPass;
-		else
-			return lhs.m_priority < rhs.m_priority;
-	}
+    friend bool operator<(const Pipeline& lhs, const Pipeline& rhs)
+    {
+        if(lhs.m_priority == rhs.m_priority)
+            return lhs.m_name < rhs.m_name;
+        else
+            return lhs.m_priority < rhs.m_priority;
+    }
 
-	Pipeline(const Pipeline& other) = delete;
+    Pipeline(const Pipeline& other) = delete;
 
-	Pipeline(Pipeline&& other) noexcept
-		: m_priority(other.m_priority),
-		  m_isGlobal(other.m_isGlobal),
-		  m_name(std::move(other.m_name)),
-		  m_shaders(std::move(other.m_shaders)),
-		  m_renderPass(other.m_renderPass),
-		  m_pipeline(other.m_pipeline),
-		  m_layout(other.m_layout),
-		  m_descSetLayouts(std::move(other.m_descSetLayouts)),
-		  m_numDescSets(other.m_numDescSets),
-		  m_descSets(std::move(other.m_descSets)),
-		  m_pushConstants(std::move(other.m_pushConstants)),
-		  m_uniformBuffers(std::move(other.m_uniformBuffers)),
-		  m_textures(std::move(other.m_textures)),
-		  m_storageImages(std::move(other.m_storageImages)),
-		  m_storageBuffers(std::move(other.m_storageBuffers))
-	{
-		other.m_pipeline = VK_NULL_HANDLE;
-	}
+    Pipeline(Pipeline&& other) noexcept
+        : m_priority(other.m_priority),
+          m_isGlobal(other.m_isGlobal),
+          m_name(std::move(other.m_name)),
+          m_shaders(std::move(other.m_shaders)),
+          m_pipeline(other.m_pipeline),
+          m_layout(other.m_layout),
+          m_viewMask(other.m_viewMask),
+          m_materialBufferPtr(other.m_materialBufferPtr),
+          m_uniformBuffers(std::move(other.m_uniformBuffers)),
+          m_textures(std::move(other.m_textures)),
+          m_storageImages(std::move(other.m_storageImages)),
+          m_storageBuffers(std::move(other.m_storageBuffers))
+    {
+        other.m_pipeline = VK_NULL_HANDLE;
+    }
 
-	Pipeline& operator=(const Pipeline& other) = delete;
+    Pipeline& operator=(const Pipeline& other) = delete;
 
-	Pipeline& operator=(Pipeline&& other) noexcept
-	{
-		if(this == &other)
-			return *this;
-		m_priority       = other.m_priority;
-		m_isGlobal       = other.m_isGlobal;
-		m_name           = std::move(other.m_name);
-		m_shaders        = std::move(other.m_shaders);
-		m_renderPass     = other.m_renderPass;
-		m_pipeline       = other.m_pipeline;
-		m_layout         = other.m_layout;
-		m_descSetLayouts = std::move(other.m_descSetLayouts);
-		m_numDescSets    = other.m_numDescSets;
-		m_descSets       = std::move(other.m_descSets);
-		m_pushConstants  = std::move(other.m_pushConstants);
-		m_uniformBuffers = std::move(other.m_uniformBuffers);
-		m_textures       = std::move(other.m_textures);
-		m_storageImages  = std::move(other.m_storageImages);
-		m_storageBuffers = std::move(other.m_storageBuffers);
+    Pipeline& operator=(Pipeline&& other) noexcept
+    {
+        if(this == &other)
+            return *this;
+        m_priority          = other.m_priority;
+        m_isGlobal          = other.m_isGlobal;
+        m_name              = std::move(other.m_name);
+        m_shaders           = std::move(other.m_shaders);
+        m_pipeline          = other.m_pipeline;
+        m_layout            = other.m_layout;
+        m_viewMask          = other.m_viewMask;
+        m_materialBufferPtr = other.m_materialBufferPtr;
+        m_uniformBuffers    = std::move(other.m_uniformBuffers);
+        m_textures          = std::move(other.m_textures);
+        m_storageImages     = std::move(other.m_storageImages);
+        m_storageBuffers    = std::move(other.m_storageBuffers);
 
-		other.m_pipeline = VK_NULL_HANDLE;
-		return *this;
-	}
+        other.m_pipeline = VK_NULL_HANDLE;
+        return *this;
+    }
+
+    [[nodiscard]] uint64_t GetMaterialBufferPtr() const { return m_materialBufferPtr; }
+    [[nodiscard]] uint32_t GetViewMask() const { return m_viewMask; }
 
 private:
-	friend class Renderer;
-	friend class MaterialSystem;
-	friend class DescriptorSetAllocator;
-	friend class Shader;
+    friend class Renderer;
+    friend class MaterialSystem;
+    friend class DescriptorSetAllocator;
+    friend class Shader;
 
-	void CreateDescriptorSetLayout();
-	void CreateGraphicsPipeline(PipelineCreateInfo createInfo);
-	void CreateComputePipeline(PipelineCreateInfo createInfo);
-	void AllocateDescriptors();
+    void CreateGraphicsPipeline(const PipelineCreateInfo& createInfo);
+    void CreateComputePipeline(const PipelineCreateInfo& createInfo);
 
-	void MergeDuplicateBindings();
 
-	uint16_t				m_priority;
-	bool					m_isGlobal;
-	std::string				m_name;
-	std::vector<Shader>		m_shaders;
-	RenderPass*				m_renderPass;
-	VkPipeline				m_pipeline;
-	VkPipelineLayout		m_layout;
-	std::array<VkDescriptorSetLayout, 4> m_descSetLayouts;
-	uint8_t					m_numDescSets; //TODO in the future this will not be needed as every shader will be required to use 4 sets
+    uint16_t m_priority;
+    bool m_isGlobal;
+    std::string m_name;
+    std::vector<Shader> m_shaders;
+    VkPipeline m_pipeline;
+    VkPipelineLayout m_layout;
 
-	std::unordered_map<std::string, VkDescriptorSet> m_descSets;
+    uint32_t m_viewMask          = 0;
+    uint64_t m_materialBufferPtr = 0;
 
-	struct BufferInfo
-	{
-		VkPipelineStageFlags stages;
 
-		size_t size;
+    struct BufferInfo
+    {
+        VkPipelineStageFlags stages;
 
-		uint32_t binding;
-		uint32_t set;
-		uint32_t count;
-	};
-	struct TextureInfo
-	{
-		VkPipelineStageFlags stages;
+        size_t size;
 
-		uint32_t binding;
-		uint32_t set;
-		uint32_t count;
-	};
-	struct PushConstantInfo
-	{
+        uint32_t binding;
+        uint32_t set;
+        uint32_t count;
+    };
+    struct TextureInfo
+    {
+        VkPipelineStageFlags stages;
 
-		VkShaderStageFlags stages;
-		uint32_t size;
-		uint32_t offset;
-	};
-	std::unordered_map<std::string, PushConstantInfo> m_pushConstants;
-	std::unordered_map<std::string, BufferInfo> m_uniformBuffers;
-	std::unordered_map<std::string, TextureInfo> m_textures;
-	std::unordered_map<std::string, TextureInfo> m_storageImages;
-	std::unordered_map<std::string, BufferInfo> m_storageBuffers;
+        uint32_t binding;
+        uint32_t set;
+        uint32_t count;
+    };
+    std::unordered_map<std::string, BufferInfo> m_uniformBuffers;
+    std::unordered_map<std::string, TextureInfo> m_textures;
+    std::unordered_map<std::string, TextureInfo> m_storageImages;
+    std::unordered_map<std::string, BufferInfo> m_storageBuffers;
 };
-
