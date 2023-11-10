@@ -9,8 +9,8 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer Transforms {
     mat4 m[];
 };
 // TODO look at alignment
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData;
-layout(buffer_reference, buffer_reference_align=4) readonly buffer MaterialData;
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData;
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer MaterialData;
 layout(push_constant) uniform PC
 {
     mat4 viewProj;

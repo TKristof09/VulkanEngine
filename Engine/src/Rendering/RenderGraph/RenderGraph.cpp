@@ -3,7 +3,7 @@
 #include "Rendering/RenderGraph/RenderPass.hpp"
 #include "Rendering/RenderGraph/RenderingResource.hpp"
 #include "Rendering/VulkanContext.hpp"
-#include "vulkan/vulkan_core.h"
+#include "Rendering/Renderer.hpp"
 #include <vulkan/vulkan.h>
 #include <stack>
 #include <vulkan/vk_enum_string_helper.h>
@@ -380,6 +380,8 @@ void RenderGraph::CreatePhysicalResources()
     for(auto& info : imageInfos)
     {
         auto* ptr = &m_transientImages.emplace_back(info.width, info.height, info.createInfo);
+        if(info.createInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)  // TODO also do this for storage images later on
+            m_renderer->AddTexture(ptr);
 
         for(auto id : info.virtualResourceIds)
         {
@@ -1318,7 +1320,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         tmpDepthBarrier.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &renderTargetBarrier);
-        //vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
+        // vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
     }
 
     for(auto& pass : m_orderedPasses)

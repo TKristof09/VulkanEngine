@@ -24,7 +24,7 @@ struct Light
 	int type;
 	Attenuation attenuation;
 
-	vec3 color; // use vec3 to have the struct take up 128 bytes
+	vec3 color; 
 	float intensity;
 
 	vec3 direction; // only for directional or spot
@@ -33,9 +33,9 @@ struct Light
 	vec3 position;
 	float range; // only for spot and point
 
-    vec3 filler;
     uint shadowSlot;
     uint matricesSlot;
+    vec2 filler;
 
 };
 

@@ -13,27 +13,27 @@ layout(location = 5) in flat int ID;
 
 
 layout(location = 0) out vec4 outColor;
-layout(buffer_reference, buffer_reference_align=4) readonly buffer LightBuffer {
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer LightBuffer {
     Light data[];
 };
-layout(buffer_reference, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
     TileLights data[];
 };
 
-layout(buffer_reference, buffer_reference_align=4) readonly buffer MaterialData
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer MaterialData
 {
     uint albedoIndex;
     uint normalIndex;
 };
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShadowMapIndices
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShadowMapIndices
 {
     int id;
 };
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShadowMatricesBuffer {
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShadowMatricesBuffer {
     ShadowMatrices data[];
 };
 
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData {
     ivec2 viewportSize;
     ivec2 tileNums;
     LightBuffer lightBuffer;

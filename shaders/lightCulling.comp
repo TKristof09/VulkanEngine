@@ -2,6 +2,7 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_debug_printf : require
+#extension GL_EXT_nonuniform_qualifier : require
 #include "common.glsl"
 #include "bindings.glsl"
 
@@ -15,7 +16,7 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Light
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
     TileLights data[];
 };
-layout(buffer_reference, buffer_reference_align=4) readonly buffer ShaderData {
+layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData {
     ivec2 viewportSize;
     ivec2 tileNums;
     LightBuffer lightBuffer;
@@ -133,7 +134,6 @@ bool InFrustum(Light light)
 
 	if(light.type == POINT_LIGHT)
 	{
-
 		for(int i = 0; i < 6; i++)
 		{
 			if(dot(light.position, frustum.planes[i].xyz) + frustum.planes[i].w < -light.range)
@@ -178,7 +178,7 @@ void main()
 			{
 				vec2 sampleLoc = (vec2(TILE_SIZE, TILE_SIZE) * tileID + vec2(x,y))/ shaderDataPtr.viewportSize;
 
-				float depth = 1;//texture(depthTexture, sampleLoc).x;
+				float depth = texture(textures[shaderDataPtr.depthTextureId], sampleLoc).x;
 
 
 				minDepth = min(minDepth, depth); // this causes crash if we use msaa

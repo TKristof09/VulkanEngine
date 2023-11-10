@@ -78,6 +78,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_device(VulkanContext::m_device),
       m_graphicsQueue(VulkanContext::m_graphicsQueue),
       m_commandPool(VulkanContext::m_commandPool),
+      m_renderGraph(RenderGraph(this)),
       m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5),
       m_indexBuffer(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6),
 
@@ -405,7 +406,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 }
             });
     }
-
     {
         struct ShaderData
         {
@@ -428,7 +428,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
                 data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                data.lightNum            = 1;  // m_lightMap.size();
+                data.lightNum            = m_lightMap.size();
+                data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
                     data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
@@ -462,10 +463,22 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
                 vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
                 */
-
+                ShaderData data          = {};
+                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                data.lightNum            = m_lightMap.size();
+                data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
+                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
+                {
+                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
+                    m_shaderDataBuffer.UploadData(m_shaderDataOffsets[i]["lightCull"], &data);
+                }
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 
+                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &descSet, 0, nullptr);
                 m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
                 m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["lightCull"]);
 
@@ -648,11 +661,14 @@ void Renderer::CreateInstance()
 
 
     // VkValidationFeatureEnableEXT enables[] = { VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT}
-    VkValidationFeatureEnableEXT enables[] = {VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT, VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT};
+    // Disable sync validation for now because of false positive when using bindless texture array but not actually accessing a texture, workaround to this in the validation layer is coming in a future SDK release, see https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/3450
+    std::vector<VkValidationFeatureEnableEXT> enables = {VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT /*, VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT*/};
+
+
     VkValidationFeaturesEXT features       = {};
     features.sType                         = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
-    features.enabledValidationFeatureCount = 2;
-    features.pEnabledValidationFeatures    = enables;
+    features.enabledValidationFeatureCount = enables.size();
+    features.pEnabledValidationFeatures    = enables.data();
 
     debugCreateInfo.pNext = &features;
     createInfo.pNext      = &debugCreateInfo;
@@ -730,6 +746,7 @@ void Renderer::CreateDevice()
     device12Features.sType                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     // these are for dynamic descriptor indexing
     deviceFeatures.shaderSampledImageArrayDynamicIndexing         = VK_TRUE;
+    deviceFeatures.shaderStorageBufferArrayDynamicIndexing        = VK_TRUE;
     device12Features.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
     device12Features.runtimeDescriptorArray                       = VK_TRUE;
     device12Features.descriptorBindingPartiallyBound              = VK_TRUE;
@@ -2029,6 +2046,7 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     uint32_t imgSlot    = img->GetSlot();
     m_shadowIndices.UploadData(shadowSlot, &imgSlot);
     m_numShadowIndices++;
+
     // TODO
 
     light->shadowSlot = slot;
@@ -2036,14 +2054,16 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF;
 
     // debugimages
+    /*
     int i = 0;
     for(auto* img : m_shadowMaps->GetImagePointers())
     {
         auto debugImage = std::make_shared<UIImage>(img);
         debugImage->SetName(std::string("Cascade #") + std::to_string(i));
-        // m_rendererDebugWindow->AddElement(debugImage);
+        m_rendererDebugWindow->AddElement(debugImage);
         i++;
     }
+    */
 }
 
 void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
@@ -2077,11 +2097,10 @@ void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
     m_lightMap[e->component->GetComponentID()] = {2};  // 2 = SpotLight
     Light* light                               = &m_lightMap[e->component->GetComponentID()];
 
-    for(auto& list : m_changedLights)
-        for(auto& dict : m_changedLights)
-        {
-            dict[slot] = light;
-        }
+    for(auto& dict : m_changedLights)
+    {
+        dict[slot] = light;
+    }
 }
 
 

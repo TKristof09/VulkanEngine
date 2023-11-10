@@ -30,10 +30,13 @@ struct Node
 #define NUM_FRAMES_IN_FLIGHT    2
 
 class RenderPass;
+class Renderer;
 class RenderGraph
 {
 public:
-    RenderGraph() : m_swapchainResource(RenderingTextureResource(SWAPCHAIN_RESOURCE_NAME))
+    RenderGraph(Renderer* renderer) : m_swapchainResource(RenderingTextureResource(SWAPCHAIN_RESOURCE_NAME)),
+                                      m_renderer(renderer)
+
     {
         TextureInfo info        = {};
         VkClearValue clearValue = {};
@@ -81,6 +84,8 @@ private:
 
 
     void TopologicalSortUtil(uint32_t currentNode, std::stack<uint32_t>& stack, std::unordered_set<uint32_t>& visited);
+
+    Renderer* m_renderer;
 
     std::vector<std::unordered_set<int32_t>> m_graph;
     bool m_isBuilt = false;

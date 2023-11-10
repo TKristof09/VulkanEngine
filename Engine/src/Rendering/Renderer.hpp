@@ -60,9 +60,9 @@ private:
         glm::vec3 position;
         float range;  // only for spot and point
 
-        glm::vec3 filler;
         uint32_t shadowSlot;
         uint32_t matricesSlot;
+        glm::vec2 filler;
     };
 
     struct ShadowMatrices
