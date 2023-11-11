@@ -13,6 +13,7 @@ layout(location = 5) in flat int ID;
 
 
 layout(location = 0) out vec4 outColor;
+
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer LightBuffer {
     Light data[];
 };
@@ -22,8 +23,10 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Visib
 
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer MaterialData
 {
-    uint albedoIndex;
-    uint normalIndex;
+    uint albedoMap;
+    uint normalMap;
+    uint roughnessMap;
+    uint metalicnessMap;
 };
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShadowMapIndices
 {
@@ -43,23 +46,30 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     ShadowMapIndices shadowMapIds;
     uint32_t shadowMapCount;
 };
-float FindBlockerDistance(vec3 coords, sampler2D shadowMap, float radius)
-{
-    int numBlockers = 0;
-    float avgDist = 0.0;
 
-    vec2 uv = coords.xy;
-    for(int i = 0; i < BLOCKER_SAMPLES; ++i)
-    {
-        float depth = texture(shadowMap, uv + Poisson64[i] * radius).x;
-        if(coords.z < depth)
-        {
-            numBlockers++;
-            avgDist += depth;
-        }
-    }
-    return numBlockers > 0 ? avgDist / numBlockers : -1;
+// tonemap from https://64.github.io/tonemapping/
+vec3 uncharted2_tonemap_partial(vec3 x)
+{
+    float A = 0.15f;
+    float B = 0.50f;
+    float C = 0.10f;
+    float D = 0.20f;
+    float E = 0.02f;
+    float F = 0.30f;
+    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
 }
+
+vec3 uncharted2_filmic(vec3 v)
+{
+    float exposure_bias = 2.0f;
+    vec3 curr = uncharted2_tonemap_partial(v * exposure_bias);
+
+    vec3 white_scale = vec3(1.0f) / uncharted2_tonemap_partial(vec3(11.2f));
+    return curr * white_scale;
+}
+
+
+
 float PCF(vec3 coords, int slot, int cascadeIndex, float radius)
 {
     float sum = 0.0;
@@ -71,16 +81,11 @@ float PCF(vec3 coords, int slot, int cascadeIndex, float radius)
     }
     return sum / PCF_SAMPLES;
 }
-//TODO understand
-//calulate the eye space depth from clip space depth
-float ZClipToEye(float z, float zNear, float zFar) {
-    return zNear * zFar / (zFar - z * (zFar - zNear));
-}
+
 float CalculateShadow(Light light)
 {
-
     int cascadeIndex = 0;
-    float cascadeSplits[4] = {0.1, 500.0, 1000.0, 1500.0};
+    const float cascadeSplits[4] = {0.1, 500.0, 1000.0, 1500.0};
     for(int i = 0; i < NUM_CASCADES-1; ++i)
     {
         if(gl_FragCoord.z <= 0.1 / cascadeSplits[i] && gl_FragCoord.z > 0.1 / cascadeSplits[i+1])
@@ -89,113 +94,145 @@ float CalculateShadow(Light light)
             break;
         }
     }
-    cascadeIndex = 0; // TODO temp
-
     ShadowMatrices shadowMatrices = shaderDataPtr.shadowMatricesBuffer.data[light.matricesSlot];
 
-    int slot = shaderDataPtr.shadowMapIds[light.shadowSlot].id;
-    float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
-    float NEAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].y;
-    float FAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].x;
+    //float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
+    //float NEAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].y;
+    //float FAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].x;
 
     vec4 lsPos = shadowMatrices.lightSpaceMatrices[cascadeIndex] * vec4(worldPos, 1.0);
 
     vec3 projectedCoords = (lsPos.xyz / lsPos.w) * vec3(0.5,0.5,1) + vec3(0.5,0.5, 0.005); // bias
     projectedCoords.y = 1 - projectedCoords.y;// not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
-    /*
-    vec4 pos_vs = (light.lightViewMatrices[cascadeIndex] * vec4(worldPos, 1.0));//ZClipToEye(projectedCoords.z, NEAR_PLANE, FAR_PLANE);
-    float z_vs = pos_vs.z / pos_vs.w;
-    float searchWidth = lightSize * (z_vs - NEAR_PLANE) / z_vs;
-    float blockerDist = FindBlockerDistance(projectedCoords, shadowMaps[nonuniformEXT(slot)], searchWidth);
-    if(blockerDist == -1)
-        return 1;
-    float blockerDistVS = ZClipToEye(blockerDist, NEAR_PLANE, FAR_PLANE);
-    float penumbraSize =  (z_vs - blockerDistVS)/ blockerDistVS;
-    float kernelSize = lightSize * penumbraSize * NEAR_PLANE / z_vs;
-    */
 
-    return PCF(projectedCoords, slot, cascadeIndex, 0.001);
-}
-vec3 GetNormalFromMap(){
-    vec3 n = vec3(0.5,0.5,1);//texture(normal[uint(material.textureIndex.x)],fragTexCoord).rgb;
-    n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
-    n = normalize(TBN * n);
-    return n;
+
+    return PCF(projectedCoords, shaderDataPtr.shadowMapIds[light.shadowSlot].id, cascadeIndex, 0.001);
 }
 
-vec3 CalculateBaseLight(Light light, vec3 direction)
+
+
+float CalculateAttenuation(Light light)
 {
-    direction = normalize(-direction);
+    if(light.type == DIRECTIONAL_LIGHT)
+        return 1.0;
 
-
-    // diffuse
-    vec3 norm = GetNormalFromMap();
-    float angle = max(dot(norm, direction), 0.0);
-    vec3 diffuse = angle * light.color.xyz * light.intensity;
-
-    // specular
-    vec3 viewDir = normalize(cameraPos - worldPos);
-    vec3 reflectDir = reflect(-direction, norm);
-    float specularFactor = pow(max(dot(viewDir, reflectDir), 0.0), 1);//material.specularExponent);
-    vec3 specularV = specularFactor * light.color /* texture(specular[nonuniformEXT(uint(material.textureIndex.x))], fragTexCoord).rgb*/;
-
-    return diffuse + 0*specularV;
-}
-
-vec3 CalculateDirectionalLight(Light light)
-{
-    return CalculateBaseLight(light, light.direction)  * CalculateShadow(light);
-}
-vec3 CalculatePointLight(Light light)
-{
     vec3 lightDir = worldPos - light.position;
     float distanceToLight = length(lightDir);
 
     if(distanceToLight > light.range)
-        return vec3(0,0,0);
-    lightDir = normalize(lightDir);
-    lightDir.xyz;
+        return 0.0;
+
+    lightDir = lightDir / distanceToLight;
 
     float attenuation = 1 / (light.attenuation.quadratic * distanceToLight * distanceToLight +
             light.attenuation.linear * distanceToLight +
             light.attenuation.constant + 0.00001);
-    // +0.00001 to prevent division with 0
 
-    return CalculateBaseLight(light, lightDir) * attenuation;
+    if(light.type == POINT_LIGHT)
+        return attenuation;
+
+
+    // SPOT_LIGHT TODO: make the spotlight's edges not be instant but smooth
+    float angle = dot(lightDir, normalize(-light.direction));
+    return angle > light.cutoff ? attenuation * (1.0 -(1.0 - angle) / (1.0 - light.cutoff)) : 0.0;
+
+
 }
-vec3 CalculateSpotLight(Light light)
+
+// Normal Distribution function (Distribution of microfacets that face the correct normal)
+float NDF_GGX(float NdotH, float roughness)
 {
-    vec3 lightDir = normalize(worldPos - light.position);
-    float angle = dot(lightDir, normalize(light.direction));
-    return  int(angle > light.cutoff) * CalculatePointLight(light) * (1.0 -(1.0 - angle) / (1.0 - light.cutoff));
+	float alpha = roughness * roughness;
+	float alpha2 = alpha * alpha;
+	float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
+	return (alpha2)/(denom*denom)*INVPI;
 }
 
-void main() {
+// Geometric Shadowing function (Microfacet shadowing and masking)
+float G_SchlickSmithGGX(float NdotL, float NdotV, float roughness)
+{
+	float r = (roughness + 1.0);
+	float k = (r*r) / 8.0;
+	return NdotL / (NdotL * (1.0 - k) + k) * NdotV / (NdotV * (1.0 - k) + k);
+}
 
-    ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
-    int tileIndex = tileID.y * shaderDataPtr.tileNums.x + tileID.x;
+// Fresnel function
+vec3 F_Schlick(float cosTheta, vec3 F0)
+{
+	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
 
-    uint tileLightNum = shaderDataPtr.visibleLightsBuffer.data[tileIndex].count;
 
-    vec3 illuminance = vec3(0.2); // ambient
+vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metallic, float roughness, uint tileIndex, uint lightNum)
+{
+    vec3 Lo = vec3(0.0);
+    float NdotV = max(dot(normal, viewDir), 0.0);
+    // F = Fresnel factor (Reflectance depending on angle of incidence)
+    vec3 F = F_Schlick(NdotV, F0);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
 
-    for(int i = 0; i < tileLightNum; ++i)
+
+    for(int i = 0; i < lightNum; ++i)
     {
         uint lightIndex = shaderDataPtr.visibleLightsBuffer.data[tileIndex].indices[i];
 
         Light light = shaderDataPtr.lightBuffer.data[lightIndex];
-        switch(light.type)
-        {
-            case DIRECTIONAL_LIGHT:
-                illuminance += CalculateDirectionalLight(light);
-                break;
-            case POINT_LIGHT:
-                illuminance += CalculatePointLight(light);
-                break;
-            case SPOT_LIGHT:
-                illuminance += CalculateSpotLight(light);
-                break;
+
+
+        vec3 lightDir = light.type == DIRECTIONAL_LIGHT ? -light.direction : (light.position - worldPos);
+        lightDir = normalize(lightDir);
+        vec3 H = normalize(viewDir + lightDir);
+        float NdotH = max(dot(normal, H), 0.0);
+        float NdotL = max(dot(normal, lightDir), 0.0);
+
+
+        float attenuation = CalculateAttenuation(light);
+        if (NdotL > 0.0 && attenuation > 0.0) {
+            float NDF = NDF_GGX(NdotH, roughness);
+            float G = G_SchlickSmithGGX(NdotL, NdotV, roughness);
+
+            vec3 spec = NDF * F * G / (4.0 * NdotL * NdotV + 0.000001);
+            Lo += (kD * albedo * INVPI + spec) * NdotL * attenuation * light.color * light.intensity;
         }
     }
-    outColor = vec4(illuminance * texture(textures[uint(materialsPtr[ID].albedoIndex)], fragTexCoord).rgb, 1.0);
+    return Lo;
+}
+vec3 GetNormalFromMap(){
+    vec3 n = texture(textures[materialsPtr[ID].normalMap],fragTexCoord).rgb;
+    n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
+    n = normalize(TBN * n);
+    return n;
+}
+void main() {
+    ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
+    uint tileIndex = tileID.y * shaderDataPtr.tileNums.x + tileID.x;
+
+    uint tileLightNum = shaderDataPtr.visibleLightsBuffer.data[tileIndex].count;
+
+    /* TODO
+    if(tileLightNum == 0)
+    {
+        outColor = vec4(0.0);
+        return;
+    }
+    */
+
+    vec3 normal = GetNormalFromMap();
+    vec3 viewDir = normalize(cameraPos - worldPos);
+
+    float metallic = texture(textures[materialsPtr[ID].metalicnessMap], fragTexCoord).r;
+    float roughness = texture(textures[materialsPtr[ID].roughnessMap], fragTexCoord).r;
+
+    vec3 albedo = pow(texture(textures[materialsPtr[ID].albedoMap], fragTexCoord).rgb, vec3(2.2));
+
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+    vec3 Lo = CookTorrance(viewDir, normal, F0, albedo, metallic, roughness, tileIndex, tileLightNum);
+
+    Lo += vec3(0.03) * albedo;
+
+    Lo = pow(uncharted2_filmic(Lo), vec3(1.0/2.2));
+
+
+    outColor = vec4(Lo, 1.0);
 }

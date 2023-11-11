@@ -1,6 +1,5 @@
 #pragma once
 #include "ECS/Component.hpp"
-#include "Rendering/Texture.hpp"
 struct Material : public Component<Material>
 {
     std::string shaderName;  // each shader in the pipeline must have the same name only with different file extensions (except maybe compute shaders when we support those)
@@ -16,4 +15,6 @@ struct ShaderMaterial
 {
     uint32_t albedoTexture;
     uint32_t normalTexture;
+    uint32_t roughnessTexture;
+    uint32_t metallicTexture;
 };

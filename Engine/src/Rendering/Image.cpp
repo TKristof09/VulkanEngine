@@ -151,7 +151,8 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
 {
     if(m_mipLevels == 1)
     {
-        LOG_WARN("Image::GenerateMipmaps called on an image that wasn't created with useMips");
+        LOG_WARN("Image::GenerateMipmaps called on an image that has only one mip level");
+        TransitionLayout(newLayout);
         return;
     }
     // Check if image format supports linear blitting

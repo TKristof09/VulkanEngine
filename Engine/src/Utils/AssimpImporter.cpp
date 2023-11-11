@@ -13,7 +13,7 @@
 
 Assimp::Importer AssimpImporter::s_importer = {};
 
-Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
+Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine, Entity* parent)
 {
     auto* assimpLogger = Assimp::DefaultLogger::create("DebugTools/AssimpLogger.txt", Assimp::Logger::VERBOSE);
     assimpLogger->info("Test info call");
@@ -28,8 +28,16 @@ Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine)
         LOG_ERROR(s_importer.GetErrorString());
         return nullptr;
     }
+    Entity* rootEntity;
+    if(!parent)
+    {
+        rootEntity = ecsEngine->entityManager->CreateEntity();
+    }
+    else
+    {
+        rootEntity = ecsEngine->entityManager->CreateChild(parent);
+    }
 
-    Entity* rootEntity = ecsEngine->entityManager->CreateEntity();
     ProcessNode(scene->mRootNode, scene, ecsEngine, rootEntity);
     LOG_TRACE("Loaded {0}", file);
 
@@ -53,6 +61,8 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
     transform->pos       = ToGLM(pos);
     transform->rot       = ToGLM(rot);
     transform->scale     = ToGLM(scale);
+
+    entity->AddComponent<NameTag>()->name = node->mName.C_Str();
 
 
     for(int i = 0; i < node->mNumMeshes; ++i)
@@ -115,6 +125,11 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture(texturePath);
         mat2->textures["albedo"] = texturePath;
     }
+    else
+    {
+        TextureManager::LoadTexture("./textures/white.jpg");
+        mat2->textures["albedo"] = "./textures/white.jpg";
+    }
     if(aiMat->GetTexture(aiTextureType_NORMALS, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();
@@ -129,6 +144,36 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture("./textures/normal.jpg");
         mat2->textures["normal"] = "./textures/normal.jpg";
     }
+    // for some reason the roughness texture gets put into aiTextureType_SHININESS for fbx files
+    if(aiMat->GetTexture(aiTextureType_SHININESS, 0, &tempPath) == aiReturn_SUCCESS)
+    {
+        std::string texturePath = tempPath.C_Str();
+        /* texturePath        = "./models/" + texturePath;
+        auto it                 = texturePath.find("\\");
+        texturePath.replace(it, 1, "/", 1);*/
+        TextureManager::LoadTexture(texturePath);
+        mat2->textures["roughness"] = texturePath;
+    }
+    else
+    {
+        TextureManager::LoadTexture("./textures/black.jpg");
+        mat2->textures["roughness"] = "./textures/black.jpg";
+    }
+    if(aiMat->GetTexture(aiTextureType_METALNESS, 0, &tempPath) == aiReturn_SUCCESS)
+    {
+        std::string texturePath = tempPath.C_Str();
+        /* texturePath        = "./models/" + texturePath;
+        auto it                 = texturePath.find("\\");
+        texturePath.replace(it, 1, "/", 1);*/
+        TextureManager::LoadTexture(texturePath);
+        mat2->textures["metallic"] = texturePath;
+    }
+    else
+    {
+        TextureManager::LoadTexture("./textures/white.jpg");
+        mat2->textures["metallic"] = "./textures/white.jpg";
+    }
+
     if(mesh->mName.length > 0)
         entity->AddComponent<NameTag>()->name = mesh->mName.C_Str();
     entity->AddComponent<Mesh>(vertices, indices);

@@ -10,7 +10,11 @@
 
 #define NUM_CASCADES 4
 
-
+#define PI 3.1415926535897932384626433832795 
+#define TWOPI 6.283185307179586476925286766559
+#define HALFPI 1.5707963267948966192313216916398
+#define INVPI 0.31830988618379067153776752674503
+#define PI2 9.8696044010893586188344909998762
 
 struct Attenuation
 {
@@ -24,7 +28,7 @@ struct Light
 	int type;
 	Attenuation attenuation;
 
-	vec3 color; 
+	vec3 color;
 	float intensity;
 
 	vec3 direction; // only for directional or spot

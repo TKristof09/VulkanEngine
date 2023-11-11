@@ -66,6 +66,14 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
     m_renderer->AddTexture(&normal);
     mat.normalTexture = normal.GetSlot();
 
+    Texture& roughness = TextureManager::GetTexture(comp->textures["roughness"]); 
+    m_renderer->AddTexture(&roughness);
+    mat.roughnessTexture = roughness.GetSlot();
+     
+    Texture& metallic = TextureManager::GetTexture(comp->textures["metallic"]);
+    m_renderer->AddTexture(&metallic); 
+    mat.metallicTexture = metallic.GetSlot();
+
     materialIt.first->second.UploadData(slot, &mat);
 
     // add transform ptr + material info ptr to the pipeline's object data buffer

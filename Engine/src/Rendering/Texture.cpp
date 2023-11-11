@@ -28,7 +28,7 @@ Image(LoadFile(fileName),
 
     TransitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     stagingBuffer.CopyToImage(m_image, m_width, m_height);
-    GenerateMipmaps(VK_IMAGE_LAYOUT_GENERAL);
+    GenerateMipmaps(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 
 
 

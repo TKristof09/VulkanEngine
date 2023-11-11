@@ -9,11 +9,13 @@
 class TestSystem : public System<TestSystem>
 {
 public:
-	TestSystem(){}
+	TestSystem(float distance=5, float speed=10)
+        : m_distance(distance),
+          m_speed(speed)
+    {}
+
 	void FixedUpdate(double dt) override
 	{
-        float distance = 5;
-        float speed    = 10;
         float s        = glm::sin((float)Time::GetTime());
 		for (auto* light : m_scene.ecs->componentManager->GetComponents<PointLight>())
 		{
@@ -21,15 +23,17 @@ public:
             uint64_t id          = light->GetOwner();
             std::hash<uint64_t> hasher;
             uint64_t hashedId = hasher(id);
-            float angle     = glm::pi<float>() * (hashedId % 10) / 10.f;
+            float angle     = glm::two_pi<float>() * (id % 10) / 10.f;
 
 
-            float cosSquared  = glm::cos(angle) * glm::cos(angle);
-            float sinSquared = glm::sin(angle) * glm::sin(angle);
-            glm::vec3 direction(cosSquared, 0, sinSquared);
+            glm::vec3 direction(glm::cos(angle), 0, glm::sin(angle));
+            direction = glm::normalize(direction);
             
-            transform->pos +=  s * direction * distance * (float)dt * speed;
+            transform->pos += s * direction * m_distance * (float)dt * m_speed;
 		}
 	}
 
+private:
+    float m_distance;
+    float m_speed;
 };

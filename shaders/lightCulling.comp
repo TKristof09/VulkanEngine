@@ -13,7 +13,7 @@ layout(local_size_x=TILE_SIZE, local_size_y=TILE_SIZE, local_size_z=1) in;
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer LightBuffer {
     Light data[];
 };
-layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer VisibleLightsBuffer {
+layout(buffer_reference, std430, buffer_reference_align=4) writeonly buffer VisibleLightsBuffer {
     TileLights data[];
 };
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData {
@@ -146,6 +146,7 @@ bool InFrustum(Light light)
 
 	else
 	{
+        return true; // TODO fix this
 		if(!ConeInFrustumSphere(light)) // early out if the cone isn't even in the bounding sphere, but have to do plane tests because the bounding sphere can get huge if there are large depth discrepancies in the tile
 			return false;
 

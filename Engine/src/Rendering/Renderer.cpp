@@ -469,11 +469,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
                 data.lightNum            = m_lightMap.size();
                 data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
-                    m_shaderDataBuffer.UploadData(m_shaderDataOffsets[i]["lightCull"], &data);
-                }
+                data.lightBuffer         = m_lightsBuffers[imageIndex]->GetDeviceAddress(0);
+                m_shaderDataBuffer.UploadData(m_shaderDataOffsets[imageIndex]["lightCull"], &data);
+
                 uint32_t offset = 0;
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
 
@@ -955,8 +953,8 @@ void Renderer::CreatePipeline()
         }
 
         // TODO
-        m_lightsBuffers.emplace_back(std::make_unique<DynamicBufferAllocator>(100, sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 20));  // MAX_LIGHTS_PER_TILE
-        m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));  // MAX_LIGHTS_PER_TILE
+        m_lightsBuffers.emplace_back(std::make_unique<DynamicBufferAllocator>(100, sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0, true));  // MAX_LIGHTS_PER_TILE
+        m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));       // MAX_LIGHTS_PER_TILE
     }
 
 
@@ -1576,7 +1574,7 @@ void Renderer::Render(double dt)
         glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
         UpdateLights(imageIndex);
         UpdateLightMatrices(imageIndex);
-
+        m_pushConstants.cameraPos = cameraTransform->pos;
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
 
         if(m_needDrawBufferReupload)

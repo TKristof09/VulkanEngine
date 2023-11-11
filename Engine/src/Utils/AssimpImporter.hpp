@@ -14,7 +14,7 @@ class Mesh;
 class AssimpImporter
 {
 public:
-    static Entity* LoadFile(const std::string& file, ECSEngine* ecsEngine);
+    static Entity* LoadFile(const std::string& file, ECSEngine* ecsEngine, Entity* parent = nullptr);
 
 private:
     static void ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, Entity* entity);
