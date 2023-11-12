@@ -6,11 +6,10 @@
 #include "bindings.glsl"
 #include "common.glsl"
 
-layout(location = 0) in mat3 TBN;
-layout(location = 3) in vec2 fragTexCoord;
-layout(location = 4) in vec3 worldPos;
-layout(location = 5) in flat int ID;
-
+layout(location = 0) in vec3 inNormal;
+layout(location = 1) in vec2 fragTexCoord;
+layout(location = 2) in vec3 worldPos;
+layout(location = 3) in flat int ID;
 
 layout(location = 0) out vec4 outColor;
 
@@ -159,6 +158,7 @@ float G_SchlickSmithGGX(float NdotL, float NdotV, float roughness)
 // Fresnel function
 vec3 F_Schlick(float cosTheta, vec3 F0)
 {
+
 	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
@@ -166,7 +166,7 @@ vec3 F_Schlick(float cosTheta, vec3 F0)
 vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metallic, float roughness, uint tileIndex, uint lightNum)
 {
     vec3 Lo = vec3(0.0);
-    float NdotV = max(dot(normal, viewDir), 0.0);
+    float NdotV = clamp(dot(normal, viewDir), 0.00001, 1.0);
     // F = Fresnel factor (Reflectance depending on angle of incidence)
     vec3 F = F_Schlick(NdotV, F0);
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
@@ -182,8 +182,8 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
         vec3 lightDir = light.type == DIRECTIONAL_LIGHT ? -light.direction : (light.position - worldPos);
         lightDir = normalize(lightDir);
         vec3 H = normalize(viewDir + lightDir);
-        float NdotH = max(dot(normal, H), 0.0);
-        float NdotL = max(dot(normal, lightDir), 0.0);
+        float NdotH = clamp(dot(normal, H), 0.0, 1.0);
+        float NdotL = clamp(dot(normal, lightDir), 0.0, 1.0);
 
 
         float attenuation = CalculateAttenuation(light);
@@ -197,12 +197,35 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
     }
     return Lo;
 }
-vec3 GetNormalFromMap(){
-    vec3 n = texture(textures[materialsPtr[ID].normalMap],fragTexCoord).rgb;
-    n = normalize(n * 2.0 - 1.0); //transform from [0,1] to [-1,1]
-    n = normalize(TBN * n);
-    return n;
+
+// code from http://www.thetenthplanet.de/archives/1180
+mat3 cotangent_frame( vec3 N, vec3 p, vec2 uv )
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( uv );
+    vec2 duv2 = dFdy( uv );
+
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // construct a scale-invariant frame
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
 }
+vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord )
+{
+    vec3 n = texture(textures[materialsPtr[ID].normalMap],fragTexCoord).xyz;
+    n = n * 2.0 - 1.0;
+    mat3 TBN = cotangent_frame( N, -V, texcoord );
+    return normalize( TBN * n );
+}
+
+
 void main() {
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
     uint tileIndex = tileID.y * shaderDataPtr.tileNums.x + tileID.x;
@@ -217,8 +240,9 @@ void main() {
     }
     */
 
-    vec3 normal = GetNormalFromMap();
+    //vec3 normal = GetNormalFromMap();
     vec3 viewDir = normalize(cameraPos - worldPos);
+    vec3 normal = perturb_normal(normalize(inNormal), viewDir, fragTexCoord);
 
     float metallic = texture(textures[materialsPtr[ID].metalicnessMap], fragTexCoord).r;
     float roughness = texture(textures[materialsPtr[ID].roughnessMap], fragTexCoord).r;

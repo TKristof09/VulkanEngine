@@ -21,9 +21,9 @@ public:
 		{
             auto* transform = m_scene.ecs->componentManager->GetComponent<Transform>(light->GetOwner());
             uint64_t id          = light->GetOwner();
-            std::hash<uint64_t> hasher;
-            uint64_t hashedId = hasher(id);
-            float angle     = glm::two_pi<float>() * (id % 10) / 10.f;
+            uint64_t hashedId = hash(id);
+
+            float angle     = glm::two_pi<float>() * (hashedId % 100) / 100.f;
 
 
             glm::vec3 direction(glm::cos(angle), 0, glm::sin(angle));
@@ -34,6 +34,13 @@ public:
 	}
 
 private:
+    uint64_t hash(uint64_t x)
+    {
+        x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+        x = x ^ (x >> 31);
+        return x;
+    }
     float m_distance;
     float m_speed;
 };

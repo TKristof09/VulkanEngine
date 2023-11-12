@@ -140,7 +140,8 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
 
     m_drawBuffer.Allocate(1000 * sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, true);  // TODO change to non mappable and use staging buffer
-    m_frustrumEntity = m_ecs->entityManager->CreateEntity();
+    m_frustrumEntity                                = m_ecs->entityManager->CreateEntity();
+    m_frustrumEntity->GetComponent<NameTag>()->name = "Frustum object";
     // auto mesh = m_frustrumEntity->AddComponent<Mesh>();
     {
         auto button = std::make_shared<Button>("Show frustrum");
@@ -180,7 +181,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 {
                     vert  = inverseVP * vert;
                     vert /= vert.w;
-                    vertices.push_back({vert, {}, {}, {}});
+                    vertices.push_back({vert, {}, {}});
                 }
                 mesh->vertices = vertices;
                 mesh->indices  = {

@@ -99,7 +99,6 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
 
         vertex.normal = ToGLM(mesh->mNormals[i]);
 
-        vertex.tangent = ToGLM(mesh->mTangents[i]);
 
         vertices[i] = vertex;
     }
@@ -156,8 +155,8 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
     }
     else
     {
-        TextureManager::LoadTexture("./textures/black.jpg");
-        mat2->textures["roughness"] = "./textures/black.jpg";
+        TextureManager::LoadTexture("./textures/white.jpg");
+        mat2->textures["roughness"] = "./textures/white.jpg";
     }
     if(aiMat->GetTexture(aiTextureType_METALNESS, 0, &tempPath) == aiReturn_SUCCESS)
     {
@@ -170,8 +169,8 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
     }
     else
     {
-        TextureManager::LoadTexture("./textures/white.jpg");
-        mat2->textures["metallic"] = "./textures/white.jpg";
+        TextureManager::LoadTexture("./textures/black.jpg");
+        mat2->textures["metallic"] = "./textures/black.jpg";
     }
 
     if(mesh->mName.length > 0)
