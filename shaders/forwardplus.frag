@@ -61,10 +61,9 @@ vec3 uncharted2_tonemap_partial(vec3 x)
 vec3 uncharted2_filmic(vec3 v)
 {
     float exposure_bias = 2.0f;
-    vec3 curr = uncharted2_tonemap_partial(v * exposure_bias);
 
     vec3 white_scale = vec3(1.0f) / uncharted2_tonemap_partial(vec3(11.2f));
-    return curr * white_scale;
+    return uncharted2_tonemap_partial(v * exposure_bias) * white_scale;
 }
 
 
@@ -166,10 +165,8 @@ vec3 F_Schlick(float cosTheta, vec3 F0)
 vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metallic, float roughness, uint tileIndex, uint lightNum)
 {
     vec3 Lo = vec3(0.0);
-    float NdotV = clamp(dot(normal, viewDir), 0.00001, 1.0);
+    float NdotV = clamp(dot(normal, viewDir), 0.0, 1.0);
     // F = Fresnel factor (Reflectance depending on angle of incidence)
-    vec3 F = F_Schlick(NdotV, F0);
-    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
 
 
     for(int i = 0; i < lightNum; ++i)
@@ -177,21 +174,22 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
         uint lightIndex = shaderDataPtr.visibleLightsBuffer.data[tileIndex].indices[i];
 
         Light light = shaderDataPtr.lightBuffer.data[lightIndex];
-
-
         vec3 lightDir = light.type == DIRECTIONAL_LIGHT ? -light.direction : (light.position - worldPos);
         lightDir = normalize(lightDir);
         vec3 H = normalize(viewDir + lightDir);
         float NdotH = clamp(dot(normal, H), 0.0, 1.0);
         float NdotL = clamp(dot(normal, lightDir), 0.0, 1.0);
+        float VdotH = clamp(dot(viewDir, H), 0.0, 1.0);
 
 
         float attenuation = CalculateAttenuation(light);
         if (NdotL > 0.0 && attenuation > 0.0) {
+            vec3 F = F_Schlick(VdotH, F0);
             float NDF = NDF_GGX(NdotH, roughness);
             float G = G_SchlickSmithGGX(NdotL, NdotV, roughness);
 
-            vec3 spec = NDF * F * G / (4.0 * NdotL * NdotV + 0.000001);
+            vec3 spec = NDF * F * G / (4.0 * NdotL * NdotV + 0.0001);
+            vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
             Lo += (kD * albedo * INVPI + spec) * NdotL * attenuation * light.color * light.intensity;
         }
     }

@@ -198,10 +198,10 @@ int main()
     int sceneId = 1;
     switch (sceneId)
     {
-    case 0:
+    case 1:
         sponza_test(ecs);
         break;
-    case 1:
+    case 2:
         pbr_spheres(ecs);
         break;
     default:
