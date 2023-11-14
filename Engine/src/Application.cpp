@@ -16,7 +16,7 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
 {
 	s_instance = this;
 
-	std::filesystem::current_path("G:/Programozas/C++/VulkanEngine");
+	std::filesystem::current_path("H:/Programming/VulkanEngine");
 
 	Log::Init();
 	LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
