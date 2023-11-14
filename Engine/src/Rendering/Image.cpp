@@ -8,6 +8,7 @@ bool hasStencilComponent(VkFormat format)
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
+
 Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_width(width),
                                                                             m_height(height),
                                                                             m_format(createInfo.format),
@@ -19,6 +20,9 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 {
     if(width == 0 && height == 0)
         return;
+
+    if(createInfo.isCubeMap)
+        createInfo.layerCount = 6;
 
     if(createInfo.image == VK_NULL_HANDLE)
     {
@@ -42,7 +46,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         ci.usage             = m_usage;
         ci.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         ci.samples           = createInfo.msaaSamples;  // msaa
-        ci.flags             = 0;
+        ci.flags             = createInfo.isCubeMap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 
 
         VmaAllocationCreateInfo allocInfo = {};
@@ -53,13 +57,16 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
     VkImageViewCreateInfo viewCreateInfo = {};
     viewCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewCreateInfo.image                 = m_image;
-    viewCreateInfo.viewType              = createInfo.layerCount > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
-    viewCreateInfo.format                = m_format;
+    if(createInfo.isCubeMap)
+        viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    else
+        viewCreateInfo.viewType = createInfo.layerCount > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    viewCreateInfo.format       = m_format;
     // stick to default color mapping(probably could leave this as default)
-    viewCreateInfo.components.r          = VK_COMPONENT_SWIZZLE_IDENTITY;
-    viewCreateInfo.components.g          = VK_COMPONENT_SWIZZLE_IDENTITY;
-    viewCreateInfo.components.b          = VK_COMPONENT_SWIZZLE_IDENTITY;
-    viewCreateInfo.components.a          = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
     viewCreateInfo.subresourceRange.aspectMask     = createInfo.aspectFlags;
     viewCreateInfo.subresourceRange.baseMipLevel   = 0;
@@ -71,6 +78,22 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 
     if(createInfo.layout != VK_IMAGE_LAYOUT_UNDEFINED)
         TransitionLayout(createInfo.layout);
+
+    if(!createInfo.debugName.empty())
+    {
+        // TODO load vulkan functions better
+        auto* fn                           = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"));
+        VkDebugUtilsObjectNameInfoEXT info = {};
+        info.sType                         = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        info.objectHandle                  = (uint64_t)m_image;
+        info.objectType                    = VK_OBJECT_TYPE_IMAGE;
+        info.pObjectName                   = createInfo.debugName.c_str();
+        fn(VulkanContext::GetDevice(), &info);
+
+        info.objectHandle = (uint64_t)m_imageView;
+        info.objectType   = VK_OBJECT_TYPE_IMAGE_VIEW;
+        fn(VulkanContext::GetDevice(), &info);
+    }
 }
 
 Image::Image(VkExtent2D extent, ImageCreateInfo createInfo) : Image(extent.width, extent.height, createInfo)

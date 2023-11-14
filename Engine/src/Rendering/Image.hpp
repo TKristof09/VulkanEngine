@@ -18,7 +18,11 @@ struct ImageCreateInfo
 
     uint8_t layerCount = 1;
 
+    bool isCubeMap = false;  // this implicitly sets layerCount to 6
+
     VkImage image = VK_NULL_HANDLE;  // just to make it so that we can create an Image from the swapchain images
+
+    std::string debugName;
 };
 class Image
 {
