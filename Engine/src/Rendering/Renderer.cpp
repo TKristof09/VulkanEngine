@@ -134,6 +134,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
     CreateCommandBuffers();
     CreateSyncObjects();
 
+    vkDeviceWaitIdle(m_device);
+    CreateEnvironmentMap();
+
 
     m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
     AddDebugUIWindow(m_rendererDebugWindow.get());
@@ -489,9 +492,26 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             });
     }
     {
+        auto& skyboxPass = m_renderGraph.AddRenderPass("skyboxPass", QueueTypeFlagBits::Graphics);
+        skyboxPass.AddColorOutput("skyboxImage", {}, "colorImage");
+        skyboxPass.AddDepthInput("depthImage");
+        skyboxPass.SetExecutionCallback(
+            [&](CommandBuffer& cb, uint32_t imageIndex)
+            {
+                vkCmdBeginRendering(cb.GetCommandBuffer(), skyboxPass.GetRenderingInfo());
+
+                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_pipeline);
+                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+                m_pushConstants.debugMode = m_envMap->GetSlot();
+                vkCmdPushConstants(cb.GetCommandBuffer(), m_skyboxPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+                vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
+                vkCmdEndRendering(cb.GetCommandBuffer());
+            });
+    }
+    {
         auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
-        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "colorImage");
-        uiPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "skyboxImage");
         uiPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t frameIndex)
             {
@@ -501,6 +521,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             });
     }
     m_renderGraph.Build();
+
+
+    vkDeviceWaitIdle(VulkanContext::GetDevice());
 }
 
 Renderer::~Renderer()
@@ -520,10 +543,6 @@ Renderer::~Renderer()
     TextureManager::ClearLoadedTextures();
 
     CleanupSwapchain();
-
-    vkDestroySampler(m_device, m_computeSampler, nullptr);
-    vkDestroySampler(m_device, m_shadowSampler, nullptr);
-    vkDestroySampler(m_device, m_shadowSamplerPCF, nullptr);
 
 
     vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
@@ -893,54 +912,34 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 }
 void Renderer::CreatePipeline()
 {
-    // Compute
-    PipelineCreateInfo compute = {};
-    compute.type               = PipelineType::COMPUTE;
-    m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
-
     {
-        VkSamplerCreateInfo ci     = {};
-        ci.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        ci.magFilter               = VK_FILTER_LINEAR;
-        ci.minFilter               = VK_FILTER_LINEAR;
-        ci.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        ci.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        ci.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        ci.anisotropyEnable        = VK_TRUE;
-        ci.maxAnisotropy           = 1.0f;
-        ci.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        ci.unnormalizedCoordinates = VK_FALSE;  // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-        ci.compareEnable           = VK_FALSE;  // this is used for percentage closer filtering for shadow maps
-        ci.compareOp               = VK_COMPARE_OP_ALWAYS;
-        ci.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        ci.mipLodBias              = 0.0f;
-        ci.minLod                  = 0.0f;
-        ci.maxLod                  = 1.0f;
-
-        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_computeSampler), "Failed to create depth texture sampler");
+        // Compute
+        PipelineCreateInfo compute = {};
+        compute.type               = PipelineType::COMPUTE;
+        m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
     }
+    {
+        // Depth prepass pipeline
+        LOG_WARN("Creating depth pipeline");
+        PipelineCreateInfo depthPipeline;
+        depthPipeline.type             = PipelineType::GRAPHICS;
+        depthPipeline.useColor         = false;
+        // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
+        depthPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
+        depthPipeline.depthWriteEnable = true;
+        depthPipeline.useDepth         = true;
+        depthPipeline.depthClampEnable = false;
+        depthPipeline.msaaSamples      = m_msaaSamples;
+        depthPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
+        depthPipeline.useMultiSampling = true;
+        depthPipeline.useColorBlend    = false;
+        depthPipeline.viewportExtent   = m_swapchainExtent;
 
-    // Depth prepass pipeline
-    LOG_WARN("Creating depth pipeline");
-    PipelineCreateInfo depthPipeline;
-    depthPipeline.type             = PipelineType::GRAPHICS;
-    depthPipeline.useColor         = false;
-    // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
-    depthPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
-    depthPipeline.depthWriteEnable = true;
-    depthPipeline.useDepth         = true;
-    depthPipeline.depthClampEnable = false;
-    depthPipeline.msaaSamples      = m_msaaSamples;
-    depthPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
-    depthPipeline.useMultiSampling = true;
-    depthPipeline.useColorBlend    = false;
-    depthPipeline.viewportExtent   = m_swapchainExtent;
+        depthPipeline.isGlobal = true;
 
-    depthPipeline.isGlobal = true;
-
-    // m_depthPipeline = AddPipeline("depth", depthPipeline, 0);
-    m_depthPipeline = std::make_unique<Pipeline>("depth", depthPipeline, 0);
-
+        // m_depthPipeline = AddPipeline("depth", depthPipeline, 0);
+        m_depthPipeline = std::make_unique<Pipeline>("depth", depthPipeline, 0);
+    }
     uint32_t totaltiles = ceil(m_swapchainExtent.width / 16.f) * ceil(m_swapchainExtent.height / 16.f);
 
     for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
@@ -958,69 +957,67 @@ void Renderer::CreatePipeline()
         m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));       // MAX_LIGHTS_PER_TILE
     }
 
-
-    // Shadow prepass pipeline
-    LOG_WARN("Creating shadow pipeline");
-    PipelineCreateInfo shadowPipeline;
-    shadowPipeline.type             = PipelineType::GRAPHICS;
-    shadowPipeline.useColor         = false;
-    // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
-    shadowPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
-    shadowPipeline.depthWriteEnable = true;
-    shadowPipeline.useDepth         = true;
-    shadowPipeline.depthClampEnable = false;
-    shadowPipeline.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
-    shadowPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
-    shadowPipeline.useMultiSampling = true;
-    shadowPipeline.useColorBlend    = false;
-    shadowPipeline.viewportExtent   = {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
-    shadowPipeline.viewMask         = 0b1111;  // NUM_CASCADES of 1s TODO make it not hardcoded
-
-    shadowPipeline.isGlobal = true;
-
-    m_shadowPipeline = std::make_unique<Pipeline>("shadow", shadowPipeline);  // depth shader is fine for the shadow maps too since we only need the depth info from it
-
     {
-        VkSamplerCreateInfo ci     = {};
-        ci.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        ci.magFilter               = VK_FILTER_NEAREST;
-        ci.minFilter               = VK_FILTER_NEAREST;
-        ci.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.anisotropyEnable        = VK_FALSE;
-        ci.maxAnisotropy           = 1.0f;
-        ci.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        ci.unnormalizedCoordinates = VK_FALSE;  // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-        ci.compareEnable           = VK_FALSE;  // this is used for percentage closer filtering for shadow maps
-        ci.compareOp               = VK_COMPARE_OP_NEVER;
-        ci.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        ci.mipLodBias              = 0.0f;
-        ci.minLod                  = 0.0f;
-        ci.maxLod                  = 1.0f;
+        // Shadow prepass pipeline
+        LOG_WARN("Creating shadow pipeline");
+        PipelineCreateInfo shadowPipeline;
+        shadowPipeline.type             = PipelineType::GRAPHICS;
+        shadowPipeline.useColor         = false;
+        // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
+        shadowPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
+        shadowPipeline.depthWriteEnable = true;
+        shadowPipeline.useDepth         = true;
+        shadowPipeline.depthClampEnable = false;
+        shadowPipeline.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
+        shadowPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
+        shadowPipeline.useMultiSampling = true;
+        shadowPipeline.useColorBlend    = false;
+        shadowPipeline.viewportExtent   = {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
+        shadowPipeline.viewMask         = 0b1111;  // NUM_CASCADES of 1s TODO make it not hardcoded
 
-        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSampler), "Failed to create shadow texture sampler");
+        shadowPipeline.isGlobal = true;
+
+        m_shadowPipeline = std::make_unique<Pipeline>("shadow", shadowPipeline);  // depth shader is fine for the shadow maps too since we only need the depth info from it
     }
-    {
-        VkSamplerCreateInfo ci     = {};
-        ci.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        ci.magFilter               = VK_FILTER_LINEAR;
-        ci.minFilter               = VK_FILTER_LINEAR;
-        ci.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        ci.anisotropyEnable        = VK_FALSE;
-        ci.maxAnisotropy           = 1.0f;
-        ci.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        ci.unnormalizedCoordinates = VK_FALSE;  // this should always be false because UV coords are in [0,1) not in [0, width),etc...
-        ci.compareEnable           = VK_TRUE;   // this is used for percentage closer filtering for shadow maps
-        ci.compareOp               = VK_COMPARE_OP_GREATER;
-        ci.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        ci.mipLodBias              = 0.0f;
-        ci.minLod                  = 0.0f;
-        ci.maxLod                  = 1.0f;
 
-        VK_CHECK(vkCreateSampler(VulkanContext::GetDevice(), &ci, nullptr, &m_shadowSamplerPCF), "Failed to create shadow texture sampler");
+    {
+        // Skybox pipeline
+        LOG_WARN("Creating skybox pipeline");
+        PipelineCreateInfo ci;
+        ci.type             = PipelineType::GRAPHICS;
+        ci.useColor         = true;
+        ci.depthCompareOp   = VK_COMPARE_OP_EQUAL;  // only write to pixels with depth = 0 which is infinitely far away
+        ci.depthWriteEnable = false;
+        ci.useDepth         = true;
+        ci.depthClampEnable = false;
+        ci.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
+        ci.stages           = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        ci.useMultiSampling = true;
+        ci.useColorBlend    = true;
+        ci.viewportExtent   = VulkanContext::GetSwapchainExtent();
+
+        m_skyboxPipeline = std::make_unique<Pipeline>("skybox", ci);
+    }
+
+    {
+        // Equirectangular to cubemap pipeline
+        LOG_WARN("Creating equiToCube pipeline");
+        PipelineCreateInfo ci;
+        ci.type             = PipelineType::GRAPHICS;
+        ci.useColor         = true;
+        ci.colorFormats     = {VK_FORMAT_R8G8B8A8_UNORM};
+        ci.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+        ci.depthWriteEnable = false;
+        ci.useDepth         = false;
+        ci.depthClampEnable = false;
+        ci.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
+        ci.stages           = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        ci.useMultiSampling = false;
+        ci.useColorBlend    = false;
+        ci.viewportExtent   = {512, 512};
+        ci.viewMask         = 0b111111;  // one for each face of the cube
+
+        m_equiToCubePipeline = std::make_unique<Pipeline>("equiToCube", ci);
     }
 }
 
@@ -1318,6 +1315,57 @@ void Renderer::RemoveTexture(Image* texture)
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
 }
+
+
+void Renderer::CreateEnvironmentMap()
+{
+    ImageCreateInfo ci{};
+    ci.format      = VK_FORMAT_R8G8B8A8_UNORM;
+    ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    ci.isCubeMap   = true;
+    ci.debugName   = "Environment Map";
+
+    m_envMap = std::make_unique<Image>(512, 512, ci);
+
+    CommandBuffer cb;
+    cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    // set up the renderingInfo struct
+    VkRenderingInfo rendering          = {};
+    rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering.renderArea.extent.width  = 512;
+    rendering.renderArea.extent.height = 512;
+    // rendering.layerCount               = 1;
+    rendering.viewMask                 = m_equiToCubePipeline->GetViewMask();
+
+    VkRenderingAttachmentInfo attachment = {};
+    attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    attachment.imageView                 = m_envMap->GetImageView();
+    attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
+    attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    rendering.pColorAttachments          = &attachment;
+    rendering.colorAttachmentCount       = 1;
+
+    TextureManager::LoadTexture("textures/env.hdr");
+    Texture& img = TextureManager::GetTexture("textures/env.hdr");
+    AddTexture(&img);
+
+    vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_pipeline);
+    VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+    m_pushConstants.debugMode = img.GetSlot();
+    vkCmdPushConstants(cb.GetCommandBuffer(), m_equiToCubePipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+    vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
+    vkCmdEndRendering(cb.GetCommandBuffer());
+    cb.SubmitIdle();
+
+    AddTexture(m_envMap.get());
+}
+
 std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
 {
     std::array<glm::mat4, NUM_CASCADES> resVP;

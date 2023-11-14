@@ -95,7 +95,6 @@ private:
     std::vector<std::unique_ptr<DynamicBufferAllocator>> m_lightsBuffers;
     std::vector<std::unique_ptr<Buffer>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
-    VkSampler m_computeSampler;  // TODO
     std::unordered_map<ComponentID, Light> m_lightMap;
     std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
     void UpdateLights(uint32_t index);
@@ -105,8 +104,6 @@ private:
 
     std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps;  // non point lights, store NUM_CASCADES images for each light
     std::unique_ptr<Pipeline> m_shadowPipeline;
-    VkSampler m_shadowSampler;
-    VkSampler m_shadowSamplerPCF;
     // std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
 
 
@@ -149,6 +146,9 @@ private:
     void RefreshShaderDataOffsets();
 
     void SetupDebugMessenger();
+
+    void CreateEnvironmentMap();
+
 
     ECSEngine* m_ecs;
 
@@ -214,6 +214,13 @@ private:
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
 
     std::vector<DynamicBufferAllocator> m_shadowMatricesBuffers;
+
+
+    std::unique_ptr<Pipeline> m_skyboxPipeline;
+
+    std::unique_ptr<Pipeline> m_equiToCubePipeline;
+    std::unique_ptr<Image> m_envMap;
+
 
     // TODO temp
     Buffer m_drawBuffer;

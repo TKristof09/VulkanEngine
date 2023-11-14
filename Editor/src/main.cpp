@@ -195,7 +195,7 @@ int main()
 	ECSEngine* ecs = scene.ecs;
 	HierarchyUI hierarchyUi(&scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-    int sceneId = 1;
+    int sceneId = 2;
     switch (sceneId)
     {
     case 1:
