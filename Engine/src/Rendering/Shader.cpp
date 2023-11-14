@@ -64,6 +64,63 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
     spirv_cross::Compiler comp(*data);
 
     spirv_cross::ShaderResources resources = comp.get_shader_resources();
+
+
+    if(m_stage == VK_SHADER_STAGE_VERTEX_BIT)
+    {
+        uint32_t bindingSize = 0;
+        LOG_TRACE("-----VERTEX ATTRIBUTES-----");
+
+        for(auto& resource : resources.stage_inputs)
+        {
+            spirv_cross::SPIRType type = comp.get_type(resource.type_id);
+            uint32_t location          = comp.get_decoration(resource.id, spv::DecorationLocation);
+            uint32_t size              = type.vecsize * type.width / 8;  // size in bytes
+            uint32_t offset            = comp.get_decoration(resource.id, spv::DecorationOffset);
+
+            LOG_TRACE(resource.name);
+            LOG_TRACE("   Location: {0}", location);
+            LOG_TRACE("   Size: {0}", size);
+            LOG_TRACE("   Offset: {0}", offset);
+
+            VkVertexInputAttributeDescription attribDescription = {};
+            attribDescription.binding                           = 0;  // only support one binding for now
+            attribDescription.location                          = location;
+            switch(size)
+            {
+            case 4:
+                attribDescription.format = VK_FORMAT_R32_SFLOAT;
+                break;
+            case 8:
+                attribDescription.format = VK_FORMAT_R32G32_SFLOAT;
+                break;
+            case 12:
+                attribDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+                break;
+            case 16:
+                attribDescription.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                break;
+            }
+            attribDescription.offset = offset;
+
+            pipeline->m_vertexInputAttributes.push_back(attribDescription);
+
+            bindingSize += size;
+        }
+
+
+        if(bindingSize > 0)
+        {
+            // only support one binding for now
+            VkVertexInputBindingDescription bindingDescription = {};
+            bindingDescription.binding                         = 0;
+            bindingDescription.stride                          = bindingSize;
+            bindingDescription.inputRate                       = VK_VERTEX_INPUT_RATE_VERTEX;
+
+            pipeline->m_vertexInputBinding = bindingDescription;
+        }
+    }
+
     LOG_TRACE("-----PUSH CONSTANTS-----");
 
     for(auto& resource : resources.push_constant_buffers)

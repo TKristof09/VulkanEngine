@@ -3,6 +3,7 @@
 #include "VulkanContext.hpp"
 #include "Shader.hpp"
 #include "vulkan/vulkan.h"
+#include <optional>
 
 
 enum class PipelineType
@@ -77,7 +78,9 @@ public:
           m_uniformBuffers(std::move(other.m_uniformBuffers)),
           m_textures(std::move(other.m_textures)),
           m_storageImages(std::move(other.m_storageImages)),
-          m_storageBuffers(std::move(other.m_storageBuffers))
+          m_storageBuffers(std::move(other.m_storageBuffers)),
+          m_vertexInputAttributes(std::move(other.m_vertexInputAttributes)),
+          m_vertexInputBinding(std::move(other.m_vertexInputBinding))
     {
         other.m_pipeline = VK_NULL_HANDLE;
     }
@@ -88,18 +91,20 @@ public:
     {
         if(this == &other)
             return *this;
-        m_priority          = other.m_priority;
-        m_isGlobal          = other.m_isGlobal;
-        m_name              = std::move(other.m_name);
-        m_shaders           = std::move(other.m_shaders);
-        m_pipeline          = other.m_pipeline;
-        m_layout            = other.m_layout;
-        m_viewMask          = other.m_viewMask;
-        m_materialBufferPtr = other.m_materialBufferPtr;
-        m_uniformBuffers    = std::move(other.m_uniformBuffers);
-        m_textures          = std::move(other.m_textures);
-        m_storageImages     = std::move(other.m_storageImages);
-        m_storageBuffers    = std::move(other.m_storageBuffers);
+        m_priority              = other.m_priority;
+        m_isGlobal              = other.m_isGlobal;
+        m_name                  = std::move(other.m_name);
+        m_shaders               = std::move(other.m_shaders);
+        m_pipeline              = other.m_pipeline;
+        m_layout                = other.m_layout;
+        m_viewMask              = other.m_viewMask;
+        m_materialBufferPtr     = other.m_materialBufferPtr;
+        m_uniformBuffers        = std::move(other.m_uniformBuffers);
+        m_textures              = std::move(other.m_textures);
+        m_storageImages         = std::move(other.m_storageImages);
+        m_storageBuffers        = std::move(other.m_storageBuffers);
+        m_vertexInputAttributes = std::move(other.m_vertexInputAttributes);
+        m_vertexInputBinding    = std::move(other.m_vertexInputBinding);
 
         other.m_pipeline = VK_NULL_HANDLE;
         return *this;
@@ -151,4 +156,7 @@ private:
     std::unordered_map<std::string, TextureInfo> m_textures;
     std::unordered_map<std::string, TextureInfo> m_storageImages;
     std::unordered_map<std::string, BufferInfo> m_storageBuffers;
+
+    std::vector<VkVertexInputAttributeDescription> m_vertexInputAttributes;
+    std::optional<VkVertexInputBindingDescription> m_vertexInputBinding;  // only support one for now
 };

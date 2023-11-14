@@ -61,15 +61,17 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
         stagesCI.push_back(ci);
     }
     // ##################### VERTEX INPUT #####################
-    auto bindingDescription = GetVertexBindingDescription();
-    auto attribDescriptions = GetVertexAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInput = {};  // vertex info hardcoded for the moment
     vertexInput.sType                                = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInput.vertexBindingDescriptionCount        = 1;
-    vertexInput.pVertexBindingDescriptions           = &bindingDescription;
-    vertexInput.vertexAttributeDescriptionCount      = static_cast<uint32_t>(attribDescriptions.size());
-    vertexInput.pVertexAttributeDescriptions         = attribDescriptions.data();
+    if(m_vertexInputBinding.has_value())
+    {
+        vertexInput.vertexBindingDescriptionCount = 1;
+        vertexInput.pVertexBindingDescriptions    = &m_vertexInputBinding.value();
+        ;
+        vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_vertexInputAttributes.size());
+        vertexInput.pVertexAttributeDescriptions    = m_vertexInputAttributes.data();
+    }
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {};
     assembly.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -110,13 +112,13 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     multisample.sType                                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample.sampleShadingEnable                  = VK_TRUE;
     multisample.minSampleShading                     = 0.2f;  // closer to 1 is smoother
-    multisample.rasterizationSamples                 = createInfo.msaaSamples;
+    multisample.rasterizationSamples                 = createInfo.useMultiSampling ? createInfo.msaaSamples : VK_SAMPLE_COUNT_1_BIT;
 
 
     // ##################### COLOR BLEND #####################
     VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
     colorBlendAttachment.colorWriteMask                      = VK_COLOR_COMPONENT_A_BIT | VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
-    colorBlendAttachment.blendEnable                         = true;
+    colorBlendAttachment.blendEnable                         = createInfo.useColorBlend;
     colorBlendAttachment.srcColorBlendFactor                 = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor                 = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendAttachment.colorBlendOp                        = VK_BLEND_OP_ADD;
@@ -126,7 +128,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
 
     VkPipelineColorBlendStateCreateInfo colorBlend = {};
     colorBlend.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlend.logicOpEnable                       = false;
+    colorBlend.logicOpEnable                       = VK_FALSE;
     colorBlend.attachmentCount                     = 1;
     colorBlend.pAttachments                        = &colorBlendAttachment;
 
@@ -184,11 +186,9 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     pipelineInfo.pInputAssemblyState          = &assembly;
     pipelineInfo.pViewportState               = &viewportState;
     pipelineInfo.pRasterizationState          = &rasterizer;
-    if(createInfo.useMultiSampling)
-        pipelineInfo.pMultisampleState = &multisample;
-    if(createInfo.useColorBlend)
-        pipelineInfo.pColorBlendState = &colorBlend;
-    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pMultisampleState            = &multisample;
+    pipelineInfo.pColorBlendState             = &colorBlend;
+    pipelineInfo.pDepthStencilState           = &depthStencil;
     if(createInfo.allowDerivatives)
         pipelineInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
     else if(createInfo.parent)

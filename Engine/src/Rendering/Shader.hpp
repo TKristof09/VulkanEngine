@@ -56,5 +56,4 @@ private:
 	VkShaderModule m_shaderModule;
 	VkShaderStageFlagBits m_stage;
 
-
 };
