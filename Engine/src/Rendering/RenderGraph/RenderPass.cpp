@@ -45,10 +45,10 @@ RenderingTextureResource& RenderPass::AddTextureInput(const std::string& name, b
 
 RenderingTextureResource& RenderPass::AddColorOutput(const std::string& name, AttachmentInfo attachmentInfo, const std::string& input)
 {
-    auto& resource   = m_graph.GetTextureResource(name);
-    TextureInfo info = {};
-    info.format      = VulkanContext::GetSwapchainImageFormat();
-    info.usageFlags  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    auto& resource    = m_graph.GetTextureResource(name);
+    TextureInfo info  = resource.GetTextureInfo();
+    info.format       = VulkanContext::GetSwapchainImageFormat();
+    info.usageFlags  |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if(name == SWAPCHAIN_RESOURCE_NAME)
     {
         info.usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -91,11 +91,11 @@ RenderingTextureResource& RenderPass::AddDepthInput(const std::string& name)
 {
     auto& resource = m_graph.GetTextureResource(name);
 
-    TextureInfo info = {};
-    info.format      = VK_FORMAT_D32_SFLOAT;
-    info.usageFlags  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    TextureInfo info  = resource.GetTextureInfo();
+    info.format       = VK_FORMAT_D32_SFLOAT;
+    info.usageFlags  |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    info.aspectFlags  = VK_IMAGE_ASPECT_DEPTH_BIT;
+    info.layout       = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
     VkClearValue clear{};
     clear.depthStencil.depth = 0.0f;
     info.SetClearValue(clear);
@@ -112,11 +112,11 @@ RenderingTextureResource& RenderPass::AddDepthOutput(const std::string& name, At
 {
     auto& resource = m_graph.GetTextureResource(name);
 
-    TextureInfo info = {};
-    info.format      = VK_FORMAT_D32_SFLOAT;
-    info.usageFlags  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    TextureInfo info  = resource.GetTextureInfo();
+    info.format       = VK_FORMAT_D32_SFLOAT;
+    info.usageFlags  |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    info.aspectFlags  = VK_IMAGE_ASPECT_DEPTH_BIT;
+    info.layout       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 
     if(attachmentInfo.clear)

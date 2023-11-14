@@ -51,7 +51,7 @@ public:
         m_uses[passId] = {stages, usage};
     }
 
-    std::unordered_map<uint32_t, std::pair<VkPipelineStageFlags2, VkAccessFlags2>>& GetUsages() { return m_uses; }
+    [[nodiscard]] const std::unordered_map<uint32_t, std::pair<VkPipelineStageFlags2, VkAccessFlags2>>& GetUsages() const { return m_uses; }
 
 private:
     friend class RenderGraph;
@@ -105,7 +105,7 @@ public:
     [[nodiscard]] Image* GetImagePointer() const { return m_image; }
 
 private:
-    TextureInfo m_textureInfo;
+    TextureInfo m_textureInfo{};
     Image* m_image = nullptr;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };
 
@@ -129,7 +129,7 @@ public:
     [[nodiscard]] Buffer* GetBufferPointer() const { return m_buffer; }
 
 private:
-    BufferInfo m_bufferInfo;
+    BufferInfo m_bufferInfo{};
     Buffer* m_buffer = nullptr;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };
 
@@ -138,8 +138,8 @@ class RenderingTextureArrayResource : public RenderingResource
 {
 public:
     RenderingTextureArrayResource(const std::string& name)
-        : RenderingResource(Type::TextureArray, name),
-          m_format(VK_FORMAT_UNDEFINED)
+        : RenderingResource(Type::TextureArray, name)
+
     {
         SetLifetime(Lifetime::External);
     }
@@ -159,6 +159,6 @@ public:
     [[nodiscard]] const std::vector<Image*>& GetImagePointers() const { return m_images; }
 
 private:
-    VkFormat m_format;
+    VkFormat m_format{};
     std::vector<Image*> m_images;  // owned either by the rendergraph (for transient resources) or by the user (for external resources)
 };

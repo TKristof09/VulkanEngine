@@ -8,6 +8,13 @@
 #include <stack>
 #include <vulkan/vk_enum_string_helper.h>
 
+
+VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access);
+bool IsDepthFormat(VkFormat format);
+bool HasStencil(VkFormat format);
+bool HasWriteAccess(VkAccessFlags2 access);
+
+
 void RenderGraph::SetupSwapchainImages(const std::vector<VkImage>& swapchainImages)
 {
     m_swapchainImages.clear();
@@ -201,7 +208,7 @@ void RenderGraph::CreatePhysicalResources()
     };
     std::vector<BufferCreateInfo> bufferInfos;
 
-    auto AddOrUpdateImageInfo = [&](RenderingTextureResource* resource)
+    auto AddOrUpdateImageInfo = [&](RenderingTextureResource* resource, uint32_t passId)
     {
         if(resource->GetPhysicalId() == -1)
         {
@@ -216,7 +223,7 @@ void RenderGraph::CreatePhysicalResources()
             info.createInfo.aspectFlags = inputTextureInfo.aspectFlags;
             info.createInfo.msaaSamples = inputTextureInfo.samples;
             info.createInfo.useMips     = inputTextureInfo.mipLevels > 1;
-            info.createInfo.layout      = inputTextureInfo.layout;
+            info.createInfo.layout      = ConvertAccessToLayout(resource->GetUsages().at(passId).second);
 
             switch(inputTextureInfo.sizeModifier)
             {
@@ -235,6 +242,7 @@ void RenderGraph::CreatePhysicalResources()
                 LOG_ERROR("Unsupported size modifier");
             }
 
+            info.createInfo.debugName = resource->GetName();
             info.virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
             imageInfos.push_back(info);
         }
@@ -242,6 +250,7 @@ void RenderGraph::CreatePhysicalResources()
         {
             imageInfos[resource->GetPhysicalId()].createInfo.usage |= resource->GetTextureInfo().usageFlags;
             imageInfos[resource->GetPhysicalId()].virtualResourceIds.push_back(m_resourceIds[resource->GetName()]);
+            imageInfos[resource->GetPhysicalId()].createInfo.debugName += ", " + resource->GetName();
         }
     };
     auto AddOrUpdateBufferInfo = [&](RenderingBufferResource* resource)
@@ -278,7 +287,7 @@ void RenderGraph::CreatePhysicalResources()
             auto* output = colorOutputs[i];
             if(input)
             {
-                AddOrUpdateImageInfo(input);
+                AddOrUpdateImageInfo(input, pass->GetId());
 
                 // We can't have an input without an output for color attachments so no need to check for nullptr
                 if(output->GetPhysicalId() == -1)
@@ -289,19 +298,19 @@ void RenderGraph::CreatePhysicalResources()
         }
         for(auto* output : colorOutputs)
         {
-            AddOrUpdateImageInfo(output);
+            AddOrUpdateImageInfo(output, pass->GetId());
         }
 
         for(auto* output : pass->GetResolveOutputs())
         {
-            AddOrUpdateImageInfo(output);
+            AddOrUpdateImageInfo(output, pass->GetId());
         }
 
         auto* depthInput  = pass->GetDepthInput();
         auto* depthOutput = pass->GetDepthOutput();
         if(depthInput)
         {
-            AddOrUpdateImageInfo(depthInput);
+            AddOrUpdateImageInfo(depthInput, pass->GetId());
             if(depthOutput)
             {
                 if(depthOutput->GetPhysicalId() == -1)
@@ -313,13 +322,13 @@ void RenderGraph::CreatePhysicalResources()
 
         if(depthOutput)
         {
-            AddOrUpdateImageInfo(depthOutput);
+            AddOrUpdateImageInfo(depthOutput, pass->GetId());
         }
 
         auto* depthResolveOutput = pass->GetDepthResolveOutput();
         if(depthResolveOutput)
         {
-            AddOrUpdateImageInfo(depthResolveOutput);
+            AddOrUpdateImageInfo(depthResolveOutput, pass->GetId());
         }
 
         for(auto* input : pass->GetDrawCommandBuffers())
@@ -339,7 +348,7 @@ void RenderGraph::CreatePhysicalResources()
             if(input->GetLifetime() == RenderingResource::Lifetime::External)
                 continue;
 
-            AddOrUpdateImageInfo(input);
+            AddOrUpdateImageInfo(input, pass->GetId());
         }
 
         auto storageBufferInputs  = pass->GetStorageBufferInputs();
@@ -438,8 +447,25 @@ void RenderGraph::CreatePhysicalResources()
 
 void RenderGraph::CreatePhysicalPasses()
 {
+    auto NeedsStore = [&](const RenderingTextureResource& resource, uint32_t orderedPassId)
+    {
+        const auto& usages = resource.GetUsages();
+        for(uint32_t i = orderedPassId; i < m_orderedPasses.size(); ++i)
+        {
+            auto it = usages.find(m_orderedPasses[i]->GetId());
+            if(it != usages.end())
+            {
+                auto [stages, access] = it->second;
+                return !HasWriteAccess(access);  // we only care about first use
+            }
+        }
+        return false;  // no more uses
+    };
+
     std::unordered_set<uint32_t> colorAttachmentIds;
     std::unordered_set<uint32_t> depthAttachmentIds;
+
+    uint32_t orderedPassId = 0;
     for(auto& pass : m_orderedPasses)
     {
         VkRenderingInfo rendering{};
@@ -455,17 +481,19 @@ void RenderGraph::CreatePhysicalPasses()
 
         for(int i = 0; i < colorOutputs.size(); ++i)
         {
+            auto* resource = colorOutputs[i];
+
             VkRenderingAttachmentInfo info{};
             info.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             uint32_t id      = UINT32_MAX;  // use this to indicate swapchain image, get actual id if not swapchain image
-            auto textureInfo = colorOutputs[i]->GetTextureInfo();
-            bool isSwapchain = colorOutputs[i]->GetName() == SWAPCHAIN_RESOURCE_NAME;
-            id               = colorOutputs[i]->GetPhysicalId();
+            auto textureInfo = resource->GetTextureInfo();
+            bool isSwapchain = resource->GetName() == SWAPCHAIN_RESOURCE_NAME;
+            id               = resource->GetPhysicalId();
 
             info.imageView = m_transientImages[id].GetImageView();
 
-            info.imageLayout = textureInfo.layout;
-            info.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+            info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+            info.storeOp     = NeedsStore(*resource, orderedPassId) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
             if(isSwapchain)
             {
                 info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -505,7 +533,7 @@ void RenderGraph::CreatePhysicalPasses()
             VkRenderingAttachmentInfo info{};
             info.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             info.imageView   = m_transientImages[id].GetImageView();
-            info.imageLayout = textureInfo.layout;
+            info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
             info.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
 
             depthAttachmentIds.insert(id);
@@ -534,8 +562,8 @@ void RenderGraph::CreatePhysicalPasses()
             VkRenderingAttachmentInfo info{};
             info.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             info.imageView   = m_transientImages[id].GetImageView();
-            info.imageLayout = textureInfo.layout;
-            info.storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;  // TODO in the future we might have depth input + output?
+            info.storeOp     = NeedsStore(*depthInput, orderedPassId) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
             info.loadOp        = VK_ATTACHMENT_LOAD_OP_LOAD;
             auto* depthResolve = pass->GetDepthResolveOutput();
@@ -554,6 +582,8 @@ void RenderGraph::CreatePhysicalPasses()
         rendering.colorAttachmentCount = pass->GetColorOutputs().size();
         rendering.pColorAttachments    = pass->GetAttachmentInfos().data();
         pass->SetRenderingInfo(rendering);
+
+        orderedPassId++;
     }
 }
 
@@ -591,47 +621,13 @@ void RenderGraph::CheckPhysicalResources()
 }
 
 
-inline VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access)
-{
-    if(access & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT))
-        return VK_IMAGE_LAYOUT_GENERAL;
-
-    // attachment with write access
-    if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT))
-        return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    // read only attachment
-    if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT))
-        return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-
-    // sampled image
-    if(access & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT)
-        return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-
-
-    LOG_ERROR("Access flags not supported, using VK_IMAGE_LAYOUT_GENERAL");
-    return VK_IMAGE_LAYOUT_GENERAL;
-}
-
-inline bool IsDepthFormat(VkFormat format)
-{
-    return format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D24_UNORM_S8_UINT;
-}
-inline bool HasStencil(VkFormat format)
-{
-    return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
-}
-
-bool HasWriteAccess(VkAccessFlags2 access)
-{
-    return access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT);
-}
-
 void RenderGraph::AddSynchronization()
 {
     // helper functions
 
-    auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+    auto SetupImageSync = [&](uint32_t srcIndex, RenderingTextureResource* resource, std::pair<VkPipelineStageFlags2, VkAccessFlags2> usage)
     {
+        auto [srcStage, srcAccess] = usage;
         // a resource can only be transitioned once after a pass, now matter how many times it is used in a different layout, so we transition it into the layout that is used first and we add the stage/access masks of further passes that use it in the same layout as what we transition it to up until it should be transitioned into a different layout, after that we don't sync
         VkImageMemoryBarrier2 transitionBarrier{};
         transitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -829,16 +825,19 @@ void RenderGraph::AddSynchronization()
             }
 
             // add read accesses after the last write to the srcStage and srcAccess because there wont be any sync between those reads and the final read, so the transition barrier needs to also wait on those reads to finish
-            for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+            if(srcReadOnly)
             {
-                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
-                if(it == resource->GetUsages().end())
-                    continue;
+                for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+                {
+                    auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                    if(it == resource->GetUsages().end())
+                        continue;
 
-                auto [stages, usage] = it->second;
+                    auto [stages, usage] = it->second;
 
-                batchedSrcStage  |= stages;
-                batchedSrcAccess |= usage;
+                    batchedSrcStage  |= stages;
+                    batchedSrcAccess |= usage;
+                }
             }
 
             // if we get into this if then the resource isnt used this frame so the transition barrier isnt filled so we can just fill it and add it like a normal transition barrier instead of doing a brand new barrier
@@ -875,8 +874,9 @@ void RenderGraph::AddSynchronization()
 
 
     // TODO try to add event support for image arrays too
-    auto SetupImageArraySync = [&](uint32_t srcIndex, RenderingTextureArrayResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+    auto SetupImageArraySync = [&](uint32_t srcIndex, RenderingTextureArrayResource* resource, std::pair<VkPipelineStageFlags2, VkAccessFlags2> usage)
     {
+        auto [srcStage, srcAccess] = usage;
         // a resource can only be transitioned once after a pass, now matter how many times it is used in a different layout, so we transition it into the layout that is used first and we add the stage/access masks of further passes that use it in the same layout as what we transition it to up until it should be transitioned into a different layout, after that we don't sync
         VkImageMemoryBarrier2 transitionBarrier{};
         transitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -1038,18 +1038,21 @@ void RenderGraph::AddSynchronization()
             }
 
             // add read accesses after the last write to the srcStage and srcAccess because there wont be any sync between those reads and the final read, so the transition barrier needs to also wait on those reads to finish
-            for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+
+            if(srcReadOnly)
             {
-                auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
-                if(it == resource->GetUsages().end())
-                    continue;
+                for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+                {
+                    auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
+                    if(it == resource->GetUsages().end())
+                        continue;
 
-                auto [stages, usage] = it->second;
+                    auto [stages, usage] = it->second;
 
-                batchedSrcStage  |= stages;
-                batchedSrcAccess |= usage;
+                    batchedSrcStage  |= stages;
+                    batchedSrcAccess |= usage;
+                }
             }
-
             // if we get into this if then the resource isnt used this frame so the transition barrier isnt filled so we can just fill it and add it like a normal transition barrier instead of doing a brand new barrier
             transitionBarrier.srcStageMask        = batchedSrcStage;
             transitionBarrier.srcAccessMask       = batchedSrcAccess;
@@ -1075,8 +1078,9 @@ void RenderGraph::AddSynchronization()
         }
     };
 
-    auto SetupBufferSync = [&](uint32_t i, RenderingBufferResource* resource, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess)
+    auto SetupBufferSync = [&](uint32_t i, RenderingBufferResource* resource, std::pair<VkPipelineStageFlags2, VkAccessFlags2> usage)
     {
+        auto [srcStage, srcAccess]                = usage;
         // keep track of the stages we already synced this resource write to
         // in order to avoid redundant syncyng
         VkPipelineStageFlags2 alreadySyncedStages = 0;
@@ -1139,24 +1143,20 @@ void RenderGraph::AddSynchronization()
     {
         for(auto* resource : m_orderedPasses[i]->GetColorOutputs())
         {
-            SetupImageSync(i, resource, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+            SetupImageSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
-        for(auto* resource : m_orderedPasses[i]->GetColorInputs())
-        {
-            if(!resource)
-                continue;
-            SetupImageSync(i, resource, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
-        }
+
+        // dont need to do it for colorInputs because they inputs are always paired with an output so the sync is already inserted in the above loop
 
         auto* depthOutput = m_orderedPasses[i]->GetDepthOutput();
         if(depthOutput)
         {
-            SetupImageSync(i, depthOutput, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+            SetupImageSync(i, depthOutput, depthOutput->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
         auto* depthInput = m_orderedPasses[i]->GetDepthInput();
         if(depthInput)
         {
-            SetupImageSync(i, depthInput, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+            SetupImageSync(i, depthInput, depthInput->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
 
         // TODO: do resolve stuff
@@ -1164,52 +1164,44 @@ void RenderGraph::AddSynchronization()
         {
         }
 
-        for(auto* resource : m_orderedPasses[i]->GetStorageBufferOutputs())
+        for(int i = 0; i < m_orderedPasses[i]->GetStorageBufferInputs().size(); ++i)
         {
-            if(!resource)
-                continue;
+            RenderingBufferResource* resource;
+            // either the input or the output (or both) isnt nullptr, if both arent nullptr then they are the same resource so we only need to do one sync
+            if(m_orderedPasses[i]->GetStorageBufferInputs()[i])
+                resource = m_orderedPasses[i]->GetStorageBufferInputs()[i];
+            else
+                resource = m_orderedPasses[i]->GetStorageBufferOutputs()[i];
 
-            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_SHADER_WRITE_BIT);
+            SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
         for(auto* resource : m_orderedPasses[i]->GetStorageBufferInputs())
         {
             if(!resource)
                 continue;
 
-            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_SHADER_READ_BIT);
+            SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
         for(auto* resource : m_orderedPasses[i]->GetUniformBufferInputs())
         {
             if(!resource)
                 continue;
 
-            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupBufferSync(i, resource, srcStage, VK_ACCESS_2_UNIFORM_READ_BIT);
+            SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
         for(auto* resource : m_orderedPasses[i]->GetTextureInputs())
         {
-            auto [srcStage, _] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupImageSync(i, resource, srcStage, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+            SetupImageSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
 
 
         for(auto* resource : m_orderedPasses[i]->GetTextureArrayOutputs())
         {
-            auto [srcStage, access] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupImageArraySync(i, resource, srcStage, access);
+            SetupImageArraySync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
         for(auto* resource : m_orderedPasses[i]->GetTextureArrayInputs())
         {
-            auto [srcStage, access] = resource->GetUsages()[m_orderedPasses[i]->GetId()];
-
-            SetupImageArraySync(i, resource, srcStage, access);
+            SetupImageArraySync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
     }
 
@@ -1266,7 +1258,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
     auto& renderTarget = m_transientImages[m_resources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]]->GetPhysicalId()];
 
 
-    // transfer swapchain image to color attachment layout
+    // transfer swapchain image to transfer dst layout because we will blit to it
     {
         VkImageMemoryBarrier swapchainBarrier{};
         swapchainBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1359,7 +1351,8 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         dependencyInfo.imageMemoryBarrierCount  = imageBarriers.size();
         dependencyInfo.pImageMemoryBarriers     = imageBarriers.data();
 
-        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
+        if(dependencyInfo.bufferMemoryBarrierCount > 0 || dependencyInfo.imageMemoryBarrierCount > 0)
+            vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
 
 
         for(auto* event : m_eventSignals[pass->GetId()])
@@ -1447,9 +1440,12 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 
 void RenderGraph::ToDOT(const std::string& filename)
 {
-    auto AddImageBarrierToTooltip = [&](std::string& tooltip, VkImageMemoryBarrier2 imgBarrier)
+    auto AddImageBarrierToTooltip = [&](std::string& tooltip, VkImageMemoryBarrier2 imgBarrier, bool isArray = false)
     {
-        tooltip += "Image barrier:\\n";
+        if(isArray)
+            tooltip += "Image array barrier:\\n";
+        else
+            tooltip += "Image barrier:\\n";
         tooltip += "   srcStage: ";
         tooltip += string_VkPipelineStageFlags2(imgBarrier.srcStageMask);
         tooltip += "\\n";
@@ -1554,7 +1550,7 @@ void RenderGraph::ToDOT(const std::string& filename)
                     syncMethod += "ImageArrayBarrier, ";
                     for(const auto& [imgArrayBarrier, _] : m_imageArrayBarriers[node])
                     {
-                        AddImageBarrierToTooltip(tooltip, imgArrayBarrier);
+                        AddImageBarrierToTooltip(tooltip, imgArrayBarrier, true);
                     }
                 }
             }
@@ -1572,4 +1568,39 @@ void RenderGraph::ToDOT(const std::string& filename)
     }
     file << "}";
     file.close();
+}
+
+inline VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access)
+{
+    if(access & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT))
+        return VK_IMAGE_LAYOUT_GENERAL;
+
+    // attachment with write access
+    if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT))
+        return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    // read only attachment
+    if(access & (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT))
+        return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+
+    // sampled image
+    if(access & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT)
+        return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+
+
+    LOG_ERROR("Access flags not supported, using VK_IMAGE_LAYOUT_GENERAL");
+    return VK_IMAGE_LAYOUT_GENERAL;
+}
+
+inline bool IsDepthFormat(VkFormat format)
+{
+    return format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+inline bool HasStencil(VkFormat format)
+{
+    return format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+}
+
+bool HasWriteAccess(VkAccessFlags2 access)
+{
+    return access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT);
 }
