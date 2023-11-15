@@ -70,7 +70,8 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
     {
         uint32_t bindingSize = 0;
         LOG_TRACE("-----VERTEX ATTRIBUTES-----");
-
+        std::vector<std::pair<VkVertexInputAttributeDescription, uint32_t>> attributeDescriptions;
+        attributeDescriptions.resize(resources.stage_inputs.size());
         for(auto& resource : resources.stage_inputs)
         {
             spirv_cross::SPIRType type = comp.get_type(resource.type_id);
@@ -101,11 +102,18 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
                 attribDescription.format = VK_FORMAT_R32G32B32A32_SFLOAT;
                 break;
             }
-            attribDescription.offset = offset;
-
-            pipeline->m_vertexInputAttributes.push_back(attribDescription);
+            // attribDescription.offset = offset; offset is always zero for some reason
+            // so we store them in a vector and do another pass to calculate the offsets
+            attributeDescriptions[location] = {attribDescription, size};
 
             bindingSize += size;
+        }
+        uint32_t currentOffset = 0;
+        for(auto& [attribDescription, size] : attributeDescriptions)
+        {
+            attribDescription.offset  = currentOffset;
+            currentOffset            += size;
+            pipeline->m_vertexInputAttributes.push_back(attribDescription);
         }
 
 
