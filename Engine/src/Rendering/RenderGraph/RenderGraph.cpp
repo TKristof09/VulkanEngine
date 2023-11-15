@@ -13,7 +13,7 @@ VkImageLayout ConvertAccessToLayout(VkAccessFlags2 access);
 bool IsDepthFormat(VkFormat format);
 bool HasStencil(VkFormat format);
 bool HasWriteAccess(VkAccessFlags2 access);
-
+bool HasReadAccess(VkAccessFlags2 access);
 
 void RenderGraph::SetupSwapchainImages(const std::vector<VkImage>& swapchainImages)
 {
@@ -450,13 +450,13 @@ void RenderGraph::CreatePhysicalPasses()
     auto NeedsStore = [&](const RenderingTextureResource& resource, uint32_t orderedPassId)
     {
         const auto& usages = resource.GetUsages();
-        for(uint32_t i = orderedPassId; i < m_orderedPasses.size(); ++i)
+        for(uint32_t i = orderedPassId + 1; i < m_orderedPasses.size(); ++i)
         {
             auto it = usages.find(m_orderedPasses[i]->GetId());
             if(it != usages.end())
             {
                 auto [stages, access] = it->second;
-                return !HasWriteAccess(access);  // we only care about first use
+                return HasReadAccess(access);  // we only care about first use
             }
         }
         return false;  // no more uses
@@ -1603,4 +1603,9 @@ inline bool HasStencil(VkFormat format)
 bool HasWriteAccess(VkAccessFlags2 access)
 {
     return access & (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT);
+}
+
+bool HasReadAccess(VkAccessFlags2 access)
+{
+    return access & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_HOST_READ_BIT);
 }
