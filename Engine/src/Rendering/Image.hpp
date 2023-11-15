@@ -38,7 +38,7 @@ public:
           m_width(other.m_width),
           m_height(other.m_height),
           m_image(other.m_image),
-          m_imageView(other.m_imageView),
+          m_imageViews(std::move(other.m_imageViews)),
           m_format(other.m_format),
           m_layout(other.m_layout),
           m_aspect(other.m_aspect),
@@ -47,8 +47,7 @@ public:
           m_allocation(other.m_allocation),
           m_slot(other.m_slot)
     {
-        other.m_image     = VK_NULL_HANDLE;
-        other.m_imageView = VK_NULL_HANDLE;
+        other.m_image = VK_NULL_HANDLE;
     }
 
     Image& operator=(const Image& other) = delete;
@@ -61,7 +60,7 @@ public:
         m_width               = other.m_width;
         m_height              = other.m_height;
         m_image               = other.m_image;
-        m_imageView           = other.m_imageView;
+        m_imageViews          = std::move(other.m_imageViews);
         m_format              = other.m_format;
         m_layout              = other.m_layout;
         m_aspect              = other.m_aspect;
@@ -70,8 +69,7 @@ public:
         m_allocation          = other.m_allocation;
         m_slot                = other.m_slot;
 
-        other.m_image     = VK_NULL_HANDLE;
-        other.m_imageView = VK_NULL_HANDLE;
+        other.m_image = VK_NULL_HANDLE;
         return *this;
     }
 
@@ -80,7 +78,9 @@ public:
     void TransitionLayout(VkImageLayout newLayout);
     void GenerateMipmaps(VkImageLayout newLayout);
 
-    const VkImageView GetImageView() const { return m_imageView; }
+    VkImageView CreateImageView(uint32_t mip);
+
+    const VkImageView GetImageView(uint32_t index = 0) const { return m_imageViews[index]; }
     const VkImageLayout GetLayout() const { return m_layout; }
     const VkImage GetImage() const { return m_image; }
     const VkFormat GetFormat() const { return m_format; }
@@ -99,11 +99,14 @@ protected:
     uint32_t m_width;
     uint32_t m_height;
     VkImage m_image;
-    VkImageView m_imageView;
+    std::vector<VkImageView> m_imageViews;
     VkFormat m_format;
     VkImageLayout m_layout;
     VkImageAspectFlags m_aspect;
     VkImageUsageFlags m_usage;
+    uint32_t m_layerCount = 1;
+    bool m_isCubeMap      = false;
+    std::string m_debugName;
 
     int32_t m_slot = -1;
 

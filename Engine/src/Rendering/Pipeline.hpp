@@ -22,13 +22,14 @@ struct PipelineCreateInfo
 
 
     // for GRAPHICS
-    bool useColor         = true;
-    bool useDepth         = false;
-    bool useStencil       = false;
-    bool useColorBlend    = false;
-    bool useMultiSampling = false;
-    bool useTesselation   = false;  // not supported yet
-    bool useDynamicState  = false;  // not supported yet
+    bool useColor           = true;
+    bool useDepth           = false;
+    bool useStencil         = false;
+    bool useColorBlend      = false;
+    bool useMultiSampling   = false;
+    bool useTesselation     = false;  // not supported yet
+
+    bool useDynamicViewport = false;
 
 
     std::vector<VkFormat> colorFormats;

@@ -4,16 +4,17 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #include <filesystem>
-Texture::Texture(const std::string& fileName, VkImageUsageFlags usageFlags) : Image(LoadFile(fileName),
-                                                                                    {VK_FORMAT_R8G8B8A8_UNORM,
-                                                                                     VK_IMAGE_TILING_OPTIMAL,
-                                                                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | usageFlags,
-                                                                                     VK_IMAGE_LAYOUT_UNDEFINED,
-                                                                                     VK_IMAGE_ASPECT_COLOR_BIT,
-                                                                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT})
+Texture::Texture(const std::string& fileName, VkImageUsageFlags usageFlags, bool hdr) : Image(LoadFile(fileName, hdr),
+                                                                                              {hdr ? VK_FORMAT_R32G32B32A32_SFLOAT : VK_FORMAT_R8G8B8A8_UNORM,
+                                                                                               VK_IMAGE_TILING_OPTIMAL,
+                                                                                               VK_IMAGE_USAGE_TRANSFER_DST_BIT | usageFlags,
+                                                                                               VK_IMAGE_LAYOUT_UNDEFINED,
+                                                                                               VK_IMAGE_ASPECT_COLOR_BIT,
+                                                                                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT})
 {
     VkDeviceSize imageSize = m_width * m_height * 4;
-
+    if(hdr)
+        imageSize *= 4; // because 32bit per channel instead of 8bit for normal textures
     Buffer stagingBuffer(imageSize,
                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                          true);
@@ -27,11 +28,14 @@ Texture::Texture(const std::string& fileName, VkImageUsageFlags usageFlags) : Im
     GenerateMipmaps(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 }
 
-std::pair<uint32_t, uint32_t> Texture::LoadFile(const std::string& fileName)
+std::pair<uint32_t, uint32_t> Texture::LoadFile(const std::string& fileName, bool hdr)
 {
     int width, height, channels;
     std::filesystem::path f = fileName;
-    m_pixels                = stbi_load(std::filesystem::absolute(f).string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    if(hdr)
+        m_pixels = stbi_loadf(std::filesystem::absolute(f).string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    else
+        m_pixels = stbi_load(std::filesystem::absolute(f).string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
     LOG_INFO("Cwd: {0}", std::filesystem::current_path().string());
     LOG_INFO("File: {0}", std::filesystem::absolute(f));
 

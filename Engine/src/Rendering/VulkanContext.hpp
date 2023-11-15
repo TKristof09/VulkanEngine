@@ -28,6 +28,18 @@ public:
     static VmaAllocator GetVmaImageAllocator() { return m_vmaImageAllocator; }
     static VmaAllocator GetVmaBufferAllocator() { return m_vmaBufferAllocator; }
 
+    static VkViewport GetViewport(uint32_t width, uint32_t height)
+    {
+        VkViewport viewport = {};
+        viewport.width      = static_cast<float>(width);
+        viewport.height     = -static_cast<float>(height);
+        viewport.x          = 0.0f;
+        viewport.y          = static_cast<float>(height);
+        viewport.minDepth   = 0.0f;
+        viewport.maxDepth   = 1.0f;
+        return viewport;
+    }
+
 
     static void Cleanup()
     {

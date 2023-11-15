@@ -252,6 +252,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
             uint64_t shadowMapIds;
             uint32_t shadowMapCount;
+            uint32_t irradianceMapIndex;
+            uint32_t prefilteredEnvMapIndex;
+            uint32_t BRDFLUTIndex;
         };
         auto& lightingPass         = m_renderGraph.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
         AttachmentInfo colorInfo   = {};
@@ -267,12 +270,15 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         lightingPass.SetInitialiseCallback(
             [&](RenderGraph& rg)
             {
-                ShaderData data          = {};
-                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                ShaderData data             = {};
+                data.viewportSize           = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums               = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer    = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
                 // TODO temp
-                data.shadowMapIds        = m_shadowIndices.GetDeviceAddress(0);
+                data.shadowMapIds           = m_shadowIndices.GetDeviceAddress(0);
+                data.irradianceMapIndex     = m_convEnvMap->GetSlot();
+                data.prefilteredEnvMapIndex = m_prefilteredEnvMap->GetSlot();
+                data.BRDFLUTIndex           = m_BRDFLUT->GetSlot();
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
                     data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
@@ -290,12 +296,16 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
                 // TODO temporary
-                ShaderData data          = {};
-                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                ShaderData data             = {};
+                data.viewportSize           = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums               = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+                data.visibleLightsBuffer    = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
                 // TODO temp
-                data.shadowMapIds        = m_shadowIndices.GetDeviceAddress(0);
+                data.shadowMapIds           = m_shadowIndices.GetDeviceAddress(0);
+                data.irradianceMapIndex     = m_convEnvMap->GetSlot();
+                data.prefilteredEnvMapIndex = m_prefilteredEnvMap->GetSlot();
+                data.BRDFLUTIndex           = m_BRDFLUT->GetSlot();
+
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {
                     data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
@@ -503,7 +513,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_pipeline);
                 VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
                 vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-                m_pushConstants.debugMode = m_envMap->GetSlot();
+                m_pushConstants.data[0] = m_envMap->GetSlot();
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_skyboxPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
                 vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
                 vkCmdEndRendering(cb.GetCommandBuffer());
@@ -1005,7 +1015,7 @@ void Renderer::CreatePipeline()
         PipelineCreateInfo ci;
         ci.type             = PipelineType::GRAPHICS;
         ci.useColor         = true;
-        ci.colorFormats     = {VK_FORMAT_R8G8B8A8_UNORM};
+        ci.colorFormats     = {VK_FORMAT_R32G32B32A32_SFLOAT};
         ci.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
         ci.depthWriteEnable = false;
         ci.useDepth         = false;
@@ -1018,6 +1028,67 @@ void Renderer::CreatePipeline()
         ci.viewMask         = 0b111111;  // one for each face of the cube
 
         m_equiToCubePipeline = std::make_unique<Pipeline>("equiToCube", ci);
+    }
+    {
+        // environment map convolution pipeline
+        LOG_WARN("Creating convolution pipeline");
+        PipelineCreateInfo ci;
+        ci.type             = PipelineType::GRAPHICS;
+        ci.useColor         = true;
+        ci.colorFormats     = {VK_FORMAT_R32G32B32A32_SFLOAT};
+        ci.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+        ci.depthWriteEnable = false;
+        ci.useDepth         = false;
+        ci.depthClampEnable = false;
+        ci.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
+        ci.stages           = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        ci.useMultiSampling = false;
+        ci.useColorBlend    = false;
+        ci.viewportExtent   = {512, 512};
+        ci.viewMask         = 0b111111;  // one for each face of the cube
+
+        m_convoltionPipeline = std::make_unique<Pipeline>("convolution", ci);
+    }
+
+    {
+        // environment map prefilter pipeline
+        LOG_WARN("Creating prefilter pipeline");
+        PipelineCreateInfo ci;
+        ci.type               = PipelineType::GRAPHICS;
+        ci.useColor           = true;
+        ci.colorFormats       = {VK_FORMAT_R32G32B32A32_SFLOAT};
+        ci.depthCompareOp     = VK_COMPARE_OP_ALWAYS;
+        ci.depthWriteEnable   = false;
+        ci.useDepth           = false;
+        ci.depthClampEnable   = false;
+        ci.msaaSamples        = VK_SAMPLE_COUNT_1_BIT;
+        ci.stages             = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        ci.useMultiSampling   = false;
+        ci.useColorBlend      = false;
+        ci.useDynamicViewport = true;
+        ci.viewMask           = 0b111111;  // one for each face of the cube
+
+        m_prefilterPipeline = std::make_unique<Pipeline>("prefilterEnv", ci);
+    }
+
+    {
+        // BRDF LUT pipeline
+        LOG_WARN("Creating BRDF LUT pipeline");
+        PipelineCreateInfo ci;
+        ci.type             = PipelineType::GRAPHICS;
+        ci.useColor         = true;
+        ci.colorFormats     = {VK_FORMAT_R16G16_SFLOAT};
+        ci.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+        ci.depthWriteEnable = false;
+        ci.useDepth         = false;
+        ci.depthClampEnable = false;
+        ci.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
+        ci.stages           = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        ci.useMultiSampling = false;
+        ci.useColorBlend    = false;
+        ci.viewportExtent   = {512, 512};
+
+        m_computeBRDFPipeline = std::make_unique<Pipeline>("computeBRDF", ci);
     }
 }
 
@@ -1319,51 +1390,259 @@ void Renderer::RemoveTexture(Image* texture)
 
 void Renderer::CreateEnvironmentMap()
 {
-    ImageCreateInfo ci{};
-    ci.format      = VK_FORMAT_R8G8B8A8_UNORM;
-    ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    ci.isCubeMap   = true;
-    ci.debugName   = "Environment Map";
+    {
+        // CONVERT TO CUBEMAP
 
-    m_envMap = std::make_unique<Image>(512, 512, ci);
+        ImageCreateInfo ci{};
+        ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
+        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+        ci.isCubeMap   = true;
+        ci.debugName   = "Environment Map";
 
-    CommandBuffer cb;
-    cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-    // set up the renderingInfo struct
-    VkRenderingInfo rendering          = {};
-    rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    rendering.renderArea.extent.width  = 512;
-    rendering.renderArea.extent.height = 512;
-    // rendering.layerCount               = 1;
-    rendering.viewMask                 = m_equiToCubePipeline->GetViewMask();
+        m_envMap = std::make_unique<Image>(512, 512, ci);
 
-    VkRenderingAttachmentInfo attachment = {};
-    attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    attachment.imageView                 = m_envMap->GetImageView();
-    attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
-    attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    rendering.pColorAttachments          = &attachment;
-    rendering.colorAttachmentCount       = 1;
+        CommandBuffer cb;
+        cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        // set up the renderingInfo struct
+        VkRenderingInfo rendering          = {};
+        rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        rendering.renderArea.extent.width  = 512;
+        rendering.renderArea.extent.height = 512;
+        // rendering.layerCount               = 1;
+        rendering.viewMask                 = m_equiToCubePipeline->GetViewMask();
 
-    TextureManager::LoadTexture("textures/env.hdr");
-    Texture& img = TextureManager::GetTexture("textures/env.hdr");
-    AddTexture(&img);
+        VkRenderingAttachmentInfo attachment = {};
+        attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachment.imageView                 = m_envMap->CreateImageView(0);
+        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
+        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments          = &attachment;
+        rendering.colorAttachmentCount       = 1;
 
-    vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_pipeline);
-    VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-    m_pushConstants.debugMode = img.GetSlot();
-    vkCmdPushConstants(cb.GetCommandBuffer(), m_equiToCubePipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-    vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
-    vkCmdEndRendering(cb.GetCommandBuffer());
-    cb.SubmitIdle();
+        TextureManager::LoadTexture("textures/env.hdr");
+        Texture& img = TextureManager::GetTexture("textures/env.hdr");
+        AddTexture(&img);
 
-    AddTexture(m_envMap.get());
+        vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_pipeline);
+        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+        m_pushConstants.data[0] = img.GetSlot();
+        vkCmdPushConstants(cb.GetCommandBuffer(), m_equiToCubePipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
+        vkCmdEndRendering(cb.GetCommandBuffer());
+        cb.SubmitIdle();
+
+        m_envMap->GenerateMipmaps(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+
+        AddTexture(m_envMap.get());
+    }
+
+    {
+        // CONVOLUTION
+        ImageCreateInfo ci{};
+        ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
+        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+        ci.isCubeMap   = true;
+        ci.useMips     = false;
+        ci.debugName   = "Convoluted Environment Map";
+
+        m_convEnvMap = std::make_unique<Image>(512, 512, ci);
+
+        CommandBuffer cb;
+        cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        // set up the renderingInfo struct
+        VkRenderingInfo rendering          = {};
+        rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        rendering.renderArea.extent.width  = 512;
+        rendering.renderArea.extent.height = 512;
+        // rendering.layerCount               = 1;
+        rendering.viewMask                 = m_convoltionPipeline->GetViewMask();
+
+        VkRenderingAttachmentInfo attachment = {};
+        attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachment.imageView                 = m_convEnvMap->GetImageView();
+        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
+        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments          = &attachment;
+        rendering.colorAttachmentCount       = 1;
+
+
+        vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_convoltionPipeline->m_pipeline);
+        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_convoltionPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+        m_pushConstants.data[0] = m_envMap->GetSlot();
+        vkCmdPushConstants(cb.GetCommandBuffer(), m_convoltionPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
+        vkCmdEndRendering(cb.GetCommandBuffer());
+        cb.SubmitIdle();
+
+        AddTexture(m_convEnvMap.get());
+    }
+    {
+        // PREFILTER ENVIRONMENT MAP
+        ImageCreateInfo ci{};
+        ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
+        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+        ci.isCubeMap   = true;
+        ci.useMips     = true;
+        ci.debugName   = "Prefiltered Environment Map";
+
+        m_prefilteredEnvMap = std::make_unique<Image>(512, 512, ci);
+
+        uint32_t mipLevels = m_prefilteredEnvMap->GetMipLevels();
+
+        CommandBuffer cb;
+        cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+        // for the first mip we just copy the environment map
+        // pipeline barrier 2 to transfer layout of first mip level to transfer dst optimal
+        /*
+        VkImageMemoryBarrier2 barrier           = {};
+        barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        barrier.srcStageMask                    = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        barrier.srcAccessMask                   = VK_ACCESS_2_NONE;
+        barrier.dstStageMask                    = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        barrier.dstAccessMask                   = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image                           = m_prefilteredEnvMap->GetImage();
+        barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel   = 0;
+        barrier.subresourceRange.levelCount     = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount     = 6;
+
+        VkDependencyInfo dependency        = {};
+        dependency.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependency.imageMemoryBarrierCount = 1;
+        dependency.pImageMemoryBarriers    = &barrier;
+
+        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependency);
+
+        VkImageBlit blit                   = {};
+        blit.srcOffsets[0]                 = {0, 0, 0};
+        blit.srcOffsets[1]                 = {512, 512, 1};
+        blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.mipLevel       = 0;
+        blit.srcSubresource.baseArrayLayer = 0;
+        blit.srcSubresource.layerCount     = 6;
+
+        blit.dstOffsets[0]                 = {0, 0, 0};
+        blit.dstOffsets[1]                 = {512, 512, 1};
+        blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.mipLevel       = 0;
+        blit.dstSubresource.baseArrayLayer = 0;
+        blit.dstSubresource.layerCount     = 6;
+
+        vkCmdBlitImage(cb.GetCommandBuffer(),
+                       m_envMap->GetImage(), VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+                       m_prefilteredEnvMap->GetImage(), VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+                       1, &blit, VK_FILTER_LINEAR);
+        */
+
+
+        for(int i = 0; i < mipLevels; ++i)
+        {
+            uint32_t mipWidth                  = (512 >> i);
+            uint32_t mipHeight                 = (512 >> i);
+            VkRenderingInfo rendering          = {};
+            rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+            rendering.renderArea.extent.width  = mipWidth;
+            rendering.renderArea.extent.height = mipHeight;
+            // rendering.layerCount               = 1;
+            rendering.viewMask                 = m_prefilterPipeline->GetViewMask();
+
+            VkRenderingAttachmentInfo attachment = {};
+            attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            attachment.imageView                 = m_prefilteredEnvMap->CreateImageView(i);
+            attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
+            attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+            attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+            rendering.pColorAttachments          = &attachment;
+            rendering.colorAttachmentCount       = 1;
+
+
+            vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+            vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_prefilterPipeline->m_pipeline);
+
+            VkViewport viewport = VulkanContext::GetViewport(mipWidth, mipHeight);
+
+            vkCmdSetViewport(cb.GetCommandBuffer(), 0, 1, &viewport);
+            vkCmdSetScissor(cb.GetCommandBuffer(), 0, 1, &rendering.renderArea);
+
+            VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+            vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_prefilterPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+            m_pushConstants.data[0] = m_envMap->GetSlot();
+            m_pushConstants.data[1] = (float)i / (float)(mipLevels - 1);
+            vkCmdPushConstants(cb.GetCommandBuffer(), m_prefilterPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+            vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
+            vkCmdEndRendering(cb.GetCommandBuffer());
+        }
+
+        cb.SubmitIdle();
+
+        AddTexture(m_prefilteredEnvMap.get());
+    }
+
+    {
+        // GENERATE BRDF LUT
+        ImageCreateInfo ci{};
+        ci.format      = VK_FORMAT_R16G16_SFLOAT;
+        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+        ci.useMips     = false;
+        ci.debugName   = "BRDF LUT";
+
+        m_BRDFLUT = std::make_unique<Image>(512, 512, ci);
+
+        CommandBuffer cb;
+        cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        // set up the renderingInfo struct
+        VkRenderingInfo rendering          = {};
+        rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        rendering.renderArea.extent.width  = 512;
+        rendering.renderArea.extent.height = 512;
+        rendering.layerCount               = 1;
+
+        VkRenderingAttachmentInfo attachment = {};
+        attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachment.imageView                 = m_BRDFLUT->GetImageView();
+        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
+        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments          = &attachment;
+        rendering.colorAttachmentCount       = 1;
+
+
+        vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
+        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_computeBRDFPipeline->m_pipeline);
+        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_computeBRDFPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
+        m_pushConstants.data[0] = m_envMap->GetSlot();
+        vkCmdPushConstants(cb.GetCommandBuffer(), m_computeBRDFPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        vkCmdDraw(cb.GetCommandBuffer(), 3, 1, 0, 0);
+        vkCmdEndRendering(cb.GetCommandBuffer());
+        cb.SubmitIdle();
+
+        AddTexture(m_BRDFLUT.get());
+    }
 }
 
 std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)

@@ -2,6 +2,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_nonuniform_qualifier : require
 layout (set = 0, binding = 0) uniform sampler2D textures[];
 layout (set = 0, binding = 0) uniform sampler2DArrayShadow shadowTextures[];
 layout (set = 0, binding = 0) uniform samplerCube cubemapTextures[];
@@ -17,6 +18,8 @@ layout(push_constant) uniform PC
     mat4 viewProj;
     vec3 cameraPos;
     int debugMode;
+
+    float[4] data;
 
     ShaderData shaderDataPtr; // we leave this as uint64_t because each shader declares their own ShaderData struct, and some shaders might not want to use any ShaderData
     Transforms transformsPtr; // accessed with objectId

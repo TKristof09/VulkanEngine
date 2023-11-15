@@ -83,6 +83,7 @@ private:
         glm::mat4 viewProj;
         glm::vec3 cameraPos;
         int32_t debugMode;
+        float data[4];
         uint64_t shaderDataPtr;
         uint64_t transformBufferPtr;
         uint64_t objectIdMapPtr;
@@ -218,8 +219,14 @@ private:
 
     std::unique_ptr<Pipeline> m_skyboxPipeline;
 
-    std::unique_ptr<Pipeline> m_equiToCubePipeline;
     std::unique_ptr<Image> m_envMap;
+    std::unique_ptr<Image> m_convEnvMap;
+    std::unique_ptr<Image> m_prefilteredEnvMap;
+    std::unique_ptr<Image> m_BRDFLUT;
+    std::unique_ptr<Pipeline> m_equiToCubePipeline;
+    std::unique_ptr<Pipeline> m_convoltionPipeline;
+    std::unique_ptr<Pipeline> m_prefilterPipeline;
+    std::unique_ptr<Pipeline> m_computeBRDFPipeline;
 
 
     // TODO temp

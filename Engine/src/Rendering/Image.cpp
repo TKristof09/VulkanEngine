@@ -13,7 +13,6 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
                                                                             m_height(height),
                                                                             m_format(createInfo.format),
                                                                             m_image(createInfo.image),
-                                                                            m_imageView(VK_NULL_HANDLE),
                                                                             m_layout(VK_IMAGE_LAYOUT_UNDEFINED),
                                                                             m_aspect(createInfo.aspectFlags),
                                                                             m_onlyHandleImageView(createInfo.image != VK_NULL_HANDLE)
@@ -23,6 +22,9 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 
     if(createInfo.isCubeMap)
         createInfo.layerCount = 6;
+
+    m_layerCount = createInfo.layerCount;
+    m_isCubeMap  = createInfo.isCubeMap;
 
     if(createInfo.image == VK_NULL_HANDLE)
     {
@@ -42,7 +44,7 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         ci.format            = createInfo.format;
         ci.tiling            = createInfo.tiling;
         ci.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-        m_usage              = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : createInfo.usage;  // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+        m_usage              = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT : createInfo.usage;  // TODO possibly add transfer dst bit to not need to specify it when constructing an image
         ci.usage             = m_usage;
         ci.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         ci.samples           = createInfo.msaaSamples;  // msaa
@@ -70,17 +72,20 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 
     viewCreateInfo.subresourceRange.aspectMask     = createInfo.aspectFlags;
     viewCreateInfo.subresourceRange.baseMipLevel   = 0;
-    viewCreateInfo.subresourceRange.levelCount     = 1;
+    viewCreateInfo.subresourceRange.levelCount     = VK_REMAINING_MIP_LEVELS;
     viewCreateInfo.subresourceRange.baseArrayLayer = 0;
     viewCreateInfo.subresourceRange.layerCount     = createInfo.layerCount;
 
-    VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageView), "Failed to create image views!");
+    m_imageViews.push_back({});
+    VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageViews[0]), "Failed to create image views!");
 
     if(createInfo.layout != VK_IMAGE_LAYOUT_UNDEFINED)
         TransitionLayout(createInfo.layout);
 
+#ifdef VDEBUG
     if(!createInfo.debugName.empty())
     {
+        m_debugName                        = createInfo.debugName;
         // TODO load vulkan functions better
         auto* fn                           = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"));
         VkDebugUtilsObjectNameInfoEXT info = {};
@@ -90,10 +95,13 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         info.pObjectName                   = createInfo.debugName.c_str();
         fn(VulkanContext::GetDevice(), &info);
 
-        info.objectHandle = (uint64_t)m_imageView;
-        info.objectType   = VK_OBJECT_TYPE_IMAGE_VIEW;
+        info.objectHandle     = (uint64_t)m_imageViews[0];
+        info.objectType       = VK_OBJECT_TYPE_IMAGE_VIEW;
+        createInfo.debugName += " image view 0";
+        info.pObjectName      = createInfo.debugName.c_str();
         fn(VulkanContext::GetDevice(), &info);
     }
+#endif
 }
 
 Image::Image(VkExtent2D extent, ImageCreateInfo createInfo) : Image(extent.width, extent.height, createInfo)
@@ -111,11 +119,14 @@ Image::~Image()
 
 void Image::Free()
 {
-    if(m_image == VK_NULL_HANDLE || m_imageView == VK_NULL_HANDLE)
+    if(m_image == VK_NULL_HANDLE || m_imageViews[0] == VK_NULL_HANDLE)
         return;
 
-    vkDestroyImageView(VulkanContext::GetDevice(), m_imageView, nullptr);
-    m_imageView = VK_NULL_HANDLE;
+    for(auto& imageView : m_imageViews)
+    {
+        vkDestroyImageView(VulkanContext::GetDevice(), imageView, nullptr);
+        imageView = VK_NULL_HANDLE;
+    }
 
     if(!m_onlyHandleImageView)
     {
@@ -123,6 +134,53 @@ void Image::Free()
         m_image = VK_NULL_HANDLE;
     }
 }
+
+VkImageView Image::CreateImageView(uint32_t mip)
+{
+    VkImageViewCreateInfo viewCreateInfo = {};
+    viewCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewCreateInfo.image                 = m_image;
+    if(m_isCubeMap)
+        viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    else
+        viewCreateInfo.viewType = m_layerCount > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    viewCreateInfo.format       = m_format;
+    // stick to default color mapping(probably could leave this as default)
+    viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    viewCreateInfo.subresourceRange.aspectMask     = m_aspect;
+    viewCreateInfo.subresourceRange.baseMipLevel   = mip;
+    viewCreateInfo.subresourceRange.levelCount     = 1;
+    viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    viewCreateInfo.subresourceRange.layerCount     = m_layerCount;
+
+    m_imageViews.push_back({});
+    VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageViews.back()), "Failed to create image views!");
+
+#ifdef VDEBUG
+    if(m_debugName.empty())
+    {
+        // TODO load vulkan functions better
+        auto* fn                           = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"));
+        VkDebugUtilsObjectNameInfoEXT info = {};
+        info.sType                         = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        fn(VulkanContext::GetDevice(), &info);
+
+        info.objectHandle = (uint64_t)m_imageViews[0];
+        info.objectType   = VK_OBJECT_TYPE_IMAGE_VIEW;
+        std::string name  = m_debugName + " image view " + std::to_string(m_imageViews.size() - 1);
+        info.pObjectName  = name.c_str();
+        fn(VulkanContext::GetDevice(), &info);
+    }
+#endif
+
+
+    return m_imageViews.back();
+}
+
 
 // TODO add layer support for other functions
 
@@ -197,7 +255,7 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
     barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
     barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount     = 1;
+    barrier.subresourceRange.layerCount     = m_layerCount;
     barrier.subresourceRange.levelCount     = 1;
 
     // Transition first mip level to transfer source for read during blit
@@ -236,14 +294,14 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
         blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.mipLevel       = i - 1;
         blit.srcSubresource.baseArrayLayer = 0;
-        blit.srcSubresource.layerCount     = 1;
+        blit.srcSubresource.layerCount     = m_layerCount;
 
         blit.dstOffsets[0]                 = {0, 0, 0};
         blit.dstOffsets[1]                 = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1};
         blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.mipLevel       = i;
         blit.dstSubresource.baseArrayLayer = 0;
-        blit.dstSubresource.layerCount     = 1;
+        blit.dstSubresource.layerCount     = m_layerCount;
 
         vkCmdBlitImage(commandBuffer.GetCommandBuffer(),
                        m_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

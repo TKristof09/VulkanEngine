@@ -1,7 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 
-#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_debug_printf : enable
 #include "bindings.glsl"
 #include "common.glsl"
@@ -43,7 +42,11 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     ShadowMatricesBuffer shadowMatricesBuffer;
 
     ShadowMapIndices shadowMapIds;
-    uint32_t shadowMapCount;
+    uint shadowMapCount;
+
+    uint irradianceMapIndex;
+    uint prefilteredEnvMapIndex;
+    uint BRDFLUTIndex;
 };
 
 // tonemap from https://64.github.io/tonemapping/
@@ -140,27 +143,31 @@ float CalculateAttenuation(Light light)
 // Normal Distribution function (Distribution of microfacets that face the correct normal)
 float NDF_GGX(float NdotH, float roughness)
 {
-	float alpha = roughness * roughness;
-	float alpha2 = alpha * alpha;
-	float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
-	return (alpha2)/(denom*denom)*INVPI;
+    float alpha = roughness * roughness;
+    float alpha2 = alpha * alpha;
+    float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
+    return (alpha2)/(denom*denom)*INVPI;
 }
 
 // Geometric Shadowing function (Microfacet shadowing and masking)
 float G_SchlickSmithGGX(float NdotL, float NdotV, float roughness)
 {
-	float r = (roughness + 1.0);
-	float k = (r*r) / 8.0;
-	return NdotL / (NdotL * (1.0 - k) + k) * NdotV / (NdotV * (1.0 - k) + k);
+    float r = (roughness + 1.0);
+    float k = (r*r) / 8.0;
+    return NdotL / (NdotL * (1.0 - k) + k) * NdotV / (NdotV * (1.0 - k) + k);
 }
 
 // Fresnel function
 vec3 F_Schlick(float cosTheta, vec3 F0)
 {
 
-	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
+vec3 F_SchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
 
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
 
 vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metallic, float roughness, uint tileIndex, uint lightNum)
 {
@@ -194,6 +201,17 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
         }
     }
     return Lo;
+}
+
+vec3 CalcPrefilteredReflection(vec3 r, float roughness)
+{
+    const float MAX_REFLECTION_LOD = 9.0; // todo: param/const
+	float lod = roughness * MAX_REFLECTION_LOD;
+	float lodf = floor(lod);
+	float lodc = ceil(lod);
+	vec3 a = textureLod(cubemapTextures[shaderDataPtr.prefilteredEnvMapIndex], r, lodf).rgb;
+	vec3 b = textureLod(cubemapTextures[shaderDataPtr.prefilteredEnvMapIndex], r, lodc).rgb;
+	return mix(a, b, lod - lodf);
 }
 
 // code from http://www.thetenthplanet.de/archives/1180
@@ -231,12 +249,12 @@ void main() {
     uint tileLightNum = shaderDataPtr.visibleLightsBuffer.data[tileIndex].count;
 
     /* TODO
-    if(tileLightNum == 0)
-    {
-        outColor = vec4(0.0);
-        return;
-    }
-    */
+       if(tileLightNum == 0)
+       {
+       outColor = vec4(0.0);
+       return;
+       }
+     */
 
     //vec3 normal = GetNormalFromMap();
     vec3 viewDir = normalize(cameraPos - worldPos);
@@ -247,14 +265,28 @@ void main() {
 
     vec3 albedo = pow(texture(textures[materialsPtr[ID].albedoMap], fragTexCoord).rgb, vec3(2.2));
 
+    vec3 irradiance = texture(cubemapTextures[shaderDataPtr.irradianceMapIndex], normal).rgb;
+
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = CookTorrance(viewDir, normal, F0, albedo, metallic, roughness, tileIndex, tileLightNum);
+    vec3 r = reflect(-viewDir, normal);
+    vec3 reflection = CalcPrefilteredReflection(r, roughness);
 
-    Lo += vec3(0.03) * albedo;
+    vec2 brdf = texture(textures[shaderDataPtr.BRDFLUTIndex], vec2(clamp(dot(normal, viewDir), 0.0, 1.0), roughness)).rg;
+
+
+    // ambient lighting
+    vec3 kS = F_SchlickRoughness(max(dot(normal, viewDir), 0.0), F0, roughness);
+    vec3 kD = 1.0 - kS;
+    kD *= 1.0 - metallic;
+    vec3 diffuse = irradiance * albedo;
+    vec3 specular = reflection * (kS * brdf.x + brdf.y);
+
+    vec3 ambient = (kD * diffuse + specular);
+    Lo += ambient;
 
     Lo = pow(uncharted2_filmic(Lo), vec3(1.0/2.2));
-
 
     outColor = vec4(Lo, 1.0);
 }
