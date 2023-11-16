@@ -69,6 +69,33 @@ vec3 uncharted2_filmic(vec3 v)
     return uncharted2_tonemap_partial(v * exposure_bias) * white_scale;
 }
 
+// code from http://www.thetenthplanet.de/archives/1180
+mat3 cotangent_frame( vec3 N, vec3 p, vec2 uv )
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( uv );
+    vec2 duv2 = dFdy( uv );
+
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // construct a scale-invariant frame
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
+}
+vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord )
+{
+    vec3 n = textureLod(textures[materialsPtr[ID].normalMap],fragTexCoord, 0.0).xyz; // TODO see TODO in the main function
+    n = n * 2.0 - 1.0;
+    mat3 TBN = cotangent_frame( N, -V, texcoord );
+    return normalize( TBN * n );
+}
+
 
 
 float PCF(vec3 coords, int slot, int cascadeIndex, float radius)
@@ -214,33 +241,6 @@ vec3 CalcPrefilteredReflection(vec3 r, float roughness)
 	return mix(a, b, lod - lodf);
 }
 
-// code from http://www.thetenthplanet.de/archives/1180
-mat3 cotangent_frame( vec3 N, vec3 p, vec2 uv )
-{
-    // get edge vectors of the pixel triangle
-    vec3 dp1 = dFdx( p );
-    vec3 dp2 = dFdy( p );
-    vec2 duv1 = dFdx( uv );
-    vec2 duv2 = dFdy( uv );
-
-    // solve the linear system
-    vec3 dp2perp = cross( dp2, N );
-    vec3 dp1perp = cross( N, dp1 );
-    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-
-    // construct a scale-invariant frame
-    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-    return mat3( T * invmax, B * invmax, N );
-}
-vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord )
-{
-    vec3 n = texture(textures[materialsPtr[ID].normalMap],fragTexCoord).xyz;
-    n = n * 2.0 - 1.0;
-    mat3 TBN = cotangent_frame( N, -V, texcoord );
-    return normalize( TBN * n );
-}
-
 
 void main() {
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
@@ -260,33 +260,30 @@ void main() {
     vec3 viewDir = normalize(cameraPos - worldPos);
     vec3 normal = perturb_normal(normalize(inNormal), viewDir, fragTexCoord);
 
-    float metallic = texture(textures[materialsPtr[ID].metalicnessMap], fragTexCoord).r;
-    float roughness = texture(textures[materialsPtr[ID].roughnessMap], fragTexCoord).r;
-
+    float metallic = textureLod(textures[materialsPtr[ID].metalicnessMap], fragTexCoord, 0.0).r; // TODO in the future we will stop generating mipmaps for every loaded texture, until then use textureLod 0.0
+    float roughness = textureLod(textures[materialsPtr[ID].roughnessMap], fragTexCoord, 0.0).r; // for textures that shouldnt have mips as a workaround
     vec3 albedo = pow(texture(textures[materialsPtr[ID].albedoMap], fragTexCoord).rgb, vec3(2.2));
-
-    vec3 irradiance = texture(cubemapTextures[shaderDataPtr.irradianceMapIndex], normal).rgb;
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = CookTorrance(viewDir, normal, F0, albedo, metallic, roughness, tileIndex, tileLightNum);
+
+    vec3 irradiance = texture(cubemapTextures[shaderDataPtr.irradianceMapIndex], normal).rgb;
     vec3 r = reflect(-viewDir, normal);
     vec3 reflection = CalcPrefilteredReflection(r, roughness);
-
-    vec2 brdf = texture(textures[shaderDataPtr.BRDFLUTIndex], vec2(clamp(dot(normal, viewDir), 0.0, 1.0), roughness)).rg;
-
+    vec2 brdf = texture(textures[shaderDataPtr.BRDFLUTIndex], vec2(clamp(dot(normal, viewDir), 0.0, 1.0), 1.0 - roughness)).rg; // use 1-roughness because of vulkan's flipped y uv coordinate
 
     // ambient lighting
-    vec3 kS = F_SchlickRoughness(max(dot(normal, viewDir), 0.0), F0, roughness);
-    vec3 kD = 1.0 - kS;
+    vec3 F = F_SchlickRoughness(clamp(dot(normal, viewDir), 0.0, 1.0), F0, roughness);
+    vec3 kD = 1.0 - F;
     kD *= 1.0 - metallic;
     vec3 diffuse = irradiance * albedo;
-    vec3 specular = reflection * (kS * brdf.x + brdf.y);
+    vec3 specular = reflection * (F0 * brdf.x + brdf.y);
 
     vec3 ambient = (kD * diffuse + specular);
-    Lo += ambient;
+    vec3 color = Lo + ambient;
 
-    Lo = pow(uncharted2_filmic(Lo), vec3(1.0/2.2));
+    color = pow(uncharted2_filmic(color), vec3(1.0/2.2));
 
-    outColor = vec4(Lo, 1.0);
+    outColor = vec4(color, 1.0);
 }

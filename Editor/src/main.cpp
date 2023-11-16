@@ -31,9 +31,6 @@ void sponza_test(ECSEngine* ecs)
     t->pos = {0.0f, 60.0f, -10.0f};
     //t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
-    t->pos = {5.0f, 6.0f, -15.0f};
-    t->rot = glm::rotate(t->rot, glm::radians(-40.f), glm::vec3(0, 1, 0));
-    t->rot = glm::rotate(t->rot, glm::radians(-35.f), glm::vec3(1, 0, 0));
 
     Entity* e2                           = AssimpImporter::LoadFile("models/sponza_smooth.fbx", ecs);
     e2->GetComponent<Transform>()->scale = {0.1f, 0.1f, 0.1f};
@@ -50,7 +47,7 @@ void sponza_test(ECSEngine* ecs)
     Entity* lightParent                        = ecs->entityManager->CreateEntity();
     lightParent->GetComponent<NameTag>()->name = "point lights";
     std::vector<Color> colors                  = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int gridSize                     = 5;
+    constexpr int gridSize                     = 0;
     for(int i = 0; i < gridSize; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
@@ -83,7 +80,7 @@ void sponza_test(ECSEngine* ecs)
 
 
     ecs->systemManager->AddSystem<TestSystem>(5, 5);
-
+    /*
     Entity* dlight                        = ecs->entityManager->CreateEntity();
     dlight->GetComponent<NameTag>()->name = "DLight";
     auto dl                               = dlight->AddComponent<DirectionalLight>();
@@ -102,7 +99,7 @@ void sponza_test(ECSEngine* ecs)
     sl->cutoff                            = glm::cos(glm::radians(45.f));
     Transform* ts                         = slight->GetComponent<Transform>();
     // ts->rot                               = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-    ts->pos                               = {3.0f, 1.f, 0.0f};
+    ts->pos                               = {3.0f, 1.f, 0.0f};*/
 }
 
 void pbr_spheres(ECSEngine* ecs)
@@ -164,7 +161,7 @@ void pbr_spheres(ECSEngine* ecs)
         }
     }
     ecs->systemManager->AddSystem<TestSystem>(2, 2);
-    
+ 
      Entity* dlight                        = ecs->entityManager->CreateEntity();
      dlight->GetComponent<NameTag>()->name = "DLight";
      auto dl                               = dlight->AddComponent<DirectionalLight>();
@@ -172,7 +169,7 @@ void pbr_spheres(ECSEngine* ecs)
      dl->intensity                         = 5.0f;
      Transform* t2 = dlight->GetComponent<Transform>();
      t2->rot       = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-
+     
      Entity* slight                        = ecs->entityManager->CreateEntity();
      slight->GetComponent<NameTag>()->name = "SLight";
      auto sl                               = slight->AddComponent<SpotLight>();

@@ -1241,9 +1241,9 @@ void Renderer::CreateSampler()
     createInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     createInfo.magFilter               = VK_FILTER_LINEAR;
     createInfo.minFilter               = VK_FILTER_LINEAR;
-    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     createInfo.anisotropyEnable        = VK_TRUE;
     createInfo.maxAnisotropy           = 16.f;
     createInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -1305,6 +1305,7 @@ void Renderer::RefreshShaderDataOffsets()
 {
 }
 
+// TODO: make it possible to specifiy sampler parameters per texture (for example we want to use clamp to edge for the brdf texture while using repeat for the material textures)
 void Renderer::AddTexture(Image* texture, bool isShadow)
 {
     if(m_freeTextureSlots.empty())

@@ -68,6 +68,8 @@ void main()
     float envMapDim = float(textureSize(cubemapTextures[int(data[0])], 0).s);
 
     float roughness = data[1];
+    // Solid angle of 1 pixel across all cube faces
+    float omegaP = 4.0 * PI / (6.0 * envMapDim * envMapDim);
 
     const uint numSamples = 128; // article says this can be as low as 32
     for(uint i = 0u; i < numSamples; i++) {
@@ -78,14 +80,11 @@ void main()
         if(NdotL > 0.0) {
 
             float NdotH = clamp(dot(normal, H), 0.0, 1.0);
-            float VdotH = clamp(dot(viewDir, H), 0.0, 1.0);
 
-            // Probability Distribution Function
-            float pdf = NDF_GGX(NdotH, roughness) * NdotH / (4.0 * VdotH) + 0.0001;
+            // Probability Distribution Function N = V so NdotH = VdotH so they cancel out
+            float pdf = NDF_GGX(NdotH, roughness) / 4.0;
             // Solid angle of current smple
-            float omegaS = 1.0 / (float(numSamples) * pdf);
-            // Solid angle of 1 pixel across all cube faces
-            float omegaP = 4.0 * PI / (6.0 * envMapDim * envMapDim);
+            float omegaS = 1.0 / (float(numSamples) * pdf + 0.0001);
             // Biased (+1.0) mip level for better result
             float mipLevel = roughness == 0.0 ? 0.0 : max(0.5 * log2(omegaS / omegaP) + 1.0, 0.0f);
             color += textureLod(cubemapTextures[int(data[0])], lightDir, mipLevel).rgb * NdotL;

@@ -5,7 +5,7 @@
 
 layout(location = 0) in vec2 uv;
 
-layout(location = 0) out vec2 outColor;
+layout(location = 0) out vec4 outColor;
 
 // Based omn http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
 float Random(vec2 co)
@@ -49,19 +49,10 @@ vec3 ImportanceSample_GGX(vec2 Xi, float roughness, vec3 normal)
     return normalize(tangentX * H.x + tangentY * H.y + normal * H.z);
 }
 
-// Normal Distribution function (Distribution of microfacets that face the correct normal)
-float NDF_GGX(float NdotH, float roughness)
-{
-    float alpha = roughness * roughness;
-    float alpha2 = alpha * alpha;
-    float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
-    return (alpha2)/(denom*denom)*INVPI;
-}
 // Geometric Shadowing function (Microfacet shadowing and masking)
 float G_SchlickSmithGGX(float NdotL, float NdotV, float roughness)
 {
-    float r = (roughness + 1.0);
-    float k = (r*r) / 8.0;
+    float k = (roughness*roughness) / 2.0;
     return NdotL / (NdotL * (1.0 - k) + k) * NdotV / (NdotV * (1.0 - k) + k);
 }
 
@@ -70,7 +61,7 @@ void main()
     // Normal always points along z-axis for the 2D lookup
 	const vec3 normal = vec3(0.0, 0.0, 1.0);
 
-    float NdotV = uv.x;
+    float NdotV = max(uv.x, 0.001); // to avoid divisions by zero
     float roughness = uv.y;
 
 	vec3 viewDir = vec3(sqrt(1.0 - NdotV*NdotV), 0.0, NdotV);
@@ -84,7 +75,7 @@ void main()
 		vec3 lightDir = 2.0 * dot(viewDir, H) * H - viewDir;
 
 		float NdotL = max(dot(normal, lightDir), 0.0);
-		float NdotV = max(dot(normal, viewDir), 0.0);
+		// float NdotV = max(dot(normal, viewDir), 0.0); this is useless calculation
 		float VdotH = max(dot(viewDir, H), 0.0);
 		float NdotH = max(dot(normal, H), 0.0);
 
@@ -95,5 +86,5 @@ void main()
 			LUT += vec2((1.0 - Fc) * G_Vis, Fc * G_Vis);
 		}
 	}
-	outColor = LUT / float(numSamples);
+	outColor = vec4(LUT / float(numSamples), 0.0, 1.0);
 }
