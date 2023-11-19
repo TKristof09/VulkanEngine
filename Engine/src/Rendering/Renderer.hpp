@@ -21,7 +21,7 @@
 #include "ECS/CoreComponents/Lights.hpp"
 
 #define SHADOWMAP_SIZE   2048
-#define MAX_SHADOW_DEPTH 200
+#define MAX_SHADOW_DEPTH 1000
 #define NUM_CASCADES     4
 
 class Renderer

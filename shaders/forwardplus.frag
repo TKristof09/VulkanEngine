@@ -117,16 +117,15 @@ float PCF(vec3 coords, int slot, int cascadeIndex, float radius)
 float CalculateShadow(Light light)
 {
     int cascadeIndex = 0;
-    const float cascadeSplits[4] = {0.1, 500.0, 1000.0, 1500.0};
-    for(int i = 0; i < NUM_CASCADES-1; ++i)
+    ShadowMatrices shadowMatrices = shaderDataPtr.shadowMatricesBuffer.data[light.matricesSlot];
+    for(int i = 0; i < NUM_CASCADES; ++i)
     {
-        if(gl_FragCoord.z <= 0.1 / cascadeSplits[i] && gl_FragCoord.z > 0.1 / cascadeSplits[i+1])
+        if(gl_FragCoord.z <= shadowMatrices.zPlanes[i].x && gl_FragCoord.z > shadowMatrices.zPlanes[i].y)
         {
             cascadeIndex = i;
             break;
         }
     }
-    ShadowMatrices shadowMatrices = shaderDataPtr.shadowMatricesBuffer.data[light.matricesSlot];
 
     //float lightSize = 0.001; //0.1 / light.lightSpaceMatrices[cascadeIndex][0][0];
     //float NEAR_PLANE = shadowMatrices.zPlanes[cascadeIndex].y;

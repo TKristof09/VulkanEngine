@@ -1655,10 +1655,29 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
     float maxDepthNDC  = zNear / maxDepth;
     float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
     float step         = maxDepth / NUM_CASCADES;
+
+    const float lambda = 0.3f;
+
+    // https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-10-parallel-split-shadow-maps-programmable-gpus
+    std::vector<float> cascadeSplits;
     for(int i = 0; i < NUM_CASCADES; ++i)
     {
-        float cascadeDepthStart = zNear / glm::max(zNear, (i * step));
-        float cascadeDepthEnd   = zNear / ((i + 1) * step);
+        float t = static_cast<float>(i) / static_cast<float>(NUM_CASCADES);
+
+        // Logarithmic split for near cascades, linear split for far cascades
+        float logSplit    = zNear * std::pow(maxDepth / zNear, t);
+        float linearSplit = zNear + t * (maxDepth - zNear);
+
+        // Blend between logarithmic and linear splits
+        float splitDistance = logSplit + lambda * (linearSplit - logSplit);
+        cascadeSplits.push_back(splitDistance);
+    }
+    cascadeSplits.push_back(maxDepth);
+
+    for(int i = 0; i < NUM_CASCADES; ++i)
+    {
+        float cascadeDepthStart = zNear / cascadeSplits[i];
+        float cascadeDepthEnd   = zNear / cascadeSplits[i + 1];
 
         glm::vec3 min(std::numeric_limits<float>::infinity());
         glm::vec3 max(-std::numeric_limits<float>::infinity());
@@ -1721,7 +1740,7 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
         // glm::mat4 proj = glm::ortho(-500.f, 500.f, -500.f, 500.f, 500.f, -500.f);
         resV[i]    = lightView;
         resVP[i]   = glm::ortho(min.x, max.x, min.y, max.y, max.z, min.z) * lightView;  // for z we do max for near and min for far because of reverse z
-        zPlanes[i] = glm::vec2(max.z, min.z);
+        zPlanes[i] = glm::vec2(cascadeDepthStart, cascadeDepthEnd);
     }
     return {resVP, resV, zPlanes};
 }
