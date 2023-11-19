@@ -122,6 +122,10 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
     mat2->shaderName  = "forwardplus";
     aiMaterial* aiMat = scene->mMaterials[mesh->mMaterialIndex];
     aiString tempPath;
+    /* for(int i = 0; i < aiTextureType_UNKNOWN; ++i)
+    {
+        LOG_INFO("{0} textures for type {1}", aiMat->GetTextureCount((aiTextureType)i), aiTextureTypeToString((aiTextureType)i));
+    }*/
     if(aiMat->GetTexture(aiTextureType_DIFFUSE, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();

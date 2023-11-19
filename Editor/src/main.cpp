@@ -111,12 +111,12 @@ void pbr_spheres(ECSEngine* ecs)
     t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1, 0, 0));
 
 
-    //Entity* ground                           = AssimpImporter::LoadFile("models/cube.obj", ecs);
-    //ground->GetComponent<NameTag>()->name    = "Ground";
-    //auto gt                                  = ground->GetComponent<Transform>();
-    //gt->scale                                = {20.f, 0.1f, 20.f};
-    //gt->pos                                  = {0.f, -2.f, 0.f};
-    //ground->GetComponent<Material>()->albedo = glm::vec3(0.1f, 0.7f, 0.05f);
+    Entity* ground                           = AssimpImporter::LoadFile("models/cube.obj", ecs);
+    ground->GetComponent<NameTag>()->name    = "Ground";
+    auto gt                                  = ground->GetComponent<Transform>();
+    gt->scale                                = {20.f, 0.1f, 20.f};
+    gt->pos                                  = {0.f, -2.f, 0.f};
+    ground->GetComponent<Material>()->albedo = glm::vec3(0.1f, 0.7f, 0.05f);
 
 
     Entity* parent                        = ecs->entityManager->CreateEntity();
@@ -181,7 +181,7 @@ void pbr_spheres(ECSEngine* ecs)
         }
     }
     ecs->systemManager->AddSystem<TestSystem>(2, 2);
-    /*
+    
      Entity* dlight                        = ecs->entityManager->CreateEntity();
      dlight->GetComponent<NameTag>()->name = "DLight";
      auto dl                               = dlight->AddComponent<DirectionalLight>();
@@ -189,7 +189,7 @@ void pbr_spheres(ECSEngine* ecs)
      dl->intensity                         = 1.0f;
      Transform* t2 = dlight->GetComponent<Transform>();
      t2->rot       = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-     */
+     
     Entity* slight                        = ecs->entityManager->CreateEntity();
     slight->GetComponent<NameTag>()->name = "SLight";
     auto sl                               = slight->AddComponent<SpotLight>();

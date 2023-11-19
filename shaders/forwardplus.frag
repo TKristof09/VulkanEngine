@@ -146,7 +146,7 @@ float CalculateShadow(Light light)
 float CalculateAttenuation(Light light)
 {
     if(light.type == DIRECTIONAL_LIGHT)
-        return 1.0;
+        return CalculateShadow(light);
 
     vec3 lightDir = worldPos - light.position;
     float distanceToLight = length(lightDir);
