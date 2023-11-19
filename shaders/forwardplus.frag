@@ -24,7 +24,11 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Mater
     uint albedoMap;
     uint normalMap;
     uint roughnessMap;
-    uint metalicnessMap;
+    uint metallicnessMap;
+
+    vec3 albedo;
+    float roughness;
+    float metallicness;
 };
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShadowMapIndices
 {
@@ -258,11 +262,12 @@ void main() {
 
     //vec3 normal = GetNormalFromMap();
     vec3 viewDir = normalize(cameraPos - worldPos);
-    vec3 normal = perturb_normal(normalize(inNormal), viewDir, fragTexCoord);
+    MaterialData mat = materialsPtr[ID];
+    vec3 normal = mat.normalMap == 0 ? normalize(inNormal) : perturb_normal(normalize(inNormal), viewDir, fragTexCoord);
 
-    float metallic = textureLod(textures[materialsPtr[ID].metalicnessMap], fragTexCoord, 0.0).r; // TODO in the future we will stop generating mipmaps for every loaded texture, until then use textureLod 0.0
-    float roughness = textureLod(textures[materialsPtr[ID].roughnessMap], fragTexCoord, 0.0).r; // for textures that shouldnt have mips as a workaround
-    vec3 albedo = pow(texture(textures[materialsPtr[ID].albedoMap], fragTexCoord).rgb, vec3(2.2));
+    float metallic = mat.metallicnessMap == 0 ? mat.metallicness : textureLod(textures[mat.metallicnessMap], fragTexCoord, 0.0).r; // TODO in the future we will stop generating mipmaps for every loaded texture, until then use textureLod 0.0
+    float roughness = mat.roughnessMap == 0 ? mat.roughness : textureLod(textures[mat.roughnessMap], fragTexCoord, 0.0).r; // for textures that shouldnt have mips as a workaround
+    vec3 albedo = mat.albedoMap == 0 ? pow(mat.albedo, vec3(2.2)) : pow(texture(textures[mat.albedoMap], fragTexCoord).rgb, vec3(2.2));
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 

@@ -20,7 +20,7 @@ Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine, 
 
 
     s_importer.SetPropertyBool("GLOB_MEASURE_TIME", true);
-    const aiScene* scene = s_importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality);
+    const aiScene* scene = s_importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_OptimizeGraph);
 
 
     if(!scene)
@@ -65,9 +65,16 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
     entity->AddComponent<NameTag>()->name = node->mName.C_Str();
 
 
-    for(int i = 0; i < node->mNumMeshes; ++i)
+    if(node->mNumMeshes == 1)
     {
-        LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecsEngine->entityManager->CreateChild(entity));
+        LoadMesh(scene->mMeshes[node->mMeshes[0]], scene, entity);
+    }
+    else
+    {
+        for(int i = 0; i < node->mNumMeshes; ++i)
+        {
+            LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecsEngine->entityManager->CreateChild(entity));
+        }
     }
 
     for(int i = 0; i < node->mNumChildren; ++i)
@@ -124,11 +131,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture(texturePath);
         mat2->textures["albedo"] = texturePath;
     }
-    else
-    {
-        TextureManager::LoadTexture("./textures/white.jpg");
-        mat2->textures["albedo"] = "./textures/white.jpg";
-    }
+
     if(aiMat->GetTexture(aiTextureType_NORMALS, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();
@@ -138,11 +141,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture(texturePath);
         mat2->textures["normal"] = texturePath;
     }
-    else
-    {
-        TextureManager::LoadTexture("./textures/normal.jpg");
-        mat2->textures["normal"] = "./textures/normal.jpg";
-    }
+
     // for some reason the roughness texture gets put into aiTextureType_SHININESS for fbx files
     if(aiMat->GetTexture(aiTextureType_SHININESS, 0, &tempPath) == aiReturn_SUCCESS)
     {
@@ -153,11 +152,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture(texturePath);
         mat2->textures["roughness"] = texturePath;
     }
-    else
-    {
-        TextureManager::LoadTexture("./textures/white.jpg");
-        mat2->textures["roughness"] = "./textures/white.jpg";
-    }
+
     if(aiMat->GetTexture(aiTextureType_METALNESS, 0, &tempPath) == aiReturn_SUCCESS)
     {
         std::string texturePath = tempPath.C_Str();
@@ -167,11 +162,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         TextureManager::LoadTexture(texturePath);
         mat2->textures["metallic"] = texturePath;
     }
-    else
-    {
-        TextureManager::LoadTexture("./textures/black.jpg");
-        mat2->textures["metallic"] = "./textures/black.jpg";
-    }
+
 
     if(mesh->mName.length > 0)
         entity->AddComponent<NameTag>()->name = mesh->mName.C_Str();

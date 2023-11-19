@@ -58,21 +58,42 @@ void MaterialSystem::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
     comp->_ubSlot   = slot;  // TODO
 
     ShaderMaterial mat{};
-    Texture& albedo = TextureManager::GetTexture(comp->textures["albedo"]);
-    m_renderer->AddTexture(&albedo);
-    mat.albedoTexture = albedo.GetSlot();
+    auto textureIt = comp->textures.find("albedo");
+    if(textureIt != comp->textures.end())
+    {
+        Texture& albedo = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&albedo);
+        mat.albedoTexture = albedo.GetSlot();
+    }
 
-    Texture& normal = TextureManager::GetTexture(comp->textures["normal"]);
-    m_renderer->AddTexture(&normal);
-    mat.normalTexture = normal.GetSlot();
+    textureIt = comp->textures.find("normal");
+    if(textureIt != comp->textures.end())
+    {
+        Texture& normal = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&normal);
+        mat.normalTexture = normal.GetSlot();
+    }
 
-    Texture& roughness = TextureManager::GetTexture(comp->textures["roughness"]); 
-    m_renderer->AddTexture(&roughness);
-    mat.roughnessTexture = roughness.GetSlot();
-     
-    Texture& metallic = TextureManager::GetTexture(comp->textures["metallic"]);
-    m_renderer->AddTexture(&metallic); 
-    mat.metallicTexture = metallic.GetSlot();
+    textureIt = comp->textures.find("roughness");
+    if(textureIt != comp->textures.end())
+    {
+        Texture& roughness = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&roughness);
+        mat.roughnessTexture = roughness.GetSlot();
+    }
+
+    textureIt = comp->textures.find("metallic");
+    if(textureIt != comp->textures.end())
+    {
+        Texture& metallic = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&metallic);
+        mat.metallicTexture = metallic.GetSlot();
+    }
+
+    mat.albedo    = comp->albedo;
+    mat.roughness = comp->roughness;
+    mat.metallic  = comp->metallic;
+
 
     materialIt.first->second.UploadData(slot, &mat);
 
