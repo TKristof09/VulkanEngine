@@ -1164,21 +1164,14 @@ void RenderGraph::AddSynchronization()
         {
         }
 
-        for(int i = 0; i < m_orderedPasses[i]->GetStorageBufferInputs().size(); ++i)
+        for(int j = 0; j < m_orderedPasses[i]->GetStorageBufferInputs().size(); ++j)
         {
             RenderingBufferResource* resource;
             // either the input or the output (or both) isnt nullptr, if both arent nullptr then they are the same resource so we only need to do one sync
-            if(m_orderedPasses[i]->GetStorageBufferInputs()[i])
-                resource = m_orderedPasses[i]->GetStorageBufferInputs()[i];
+            if(m_orderedPasses[i]->GetStorageBufferInputs()[j])
+                resource = m_orderedPasses[i]->GetStorageBufferInputs()[j];
             else
-                resource = m_orderedPasses[i]->GetStorageBufferOutputs()[i];
-
-            SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
-        }
-        for(auto* resource : m_orderedPasses[i]->GetStorageBufferInputs())
-        {
-            if(!resource)
-                continue;
+                resource = m_orderedPasses[i]->GetStorageBufferOutputs()[j];
 
             SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
@@ -1246,6 +1239,8 @@ void RenderGraph::InitialisePasses()
 
 void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 {
+    PROFILE_FUNCTION();
+
     assert(m_isBuilt);
     // we don't allow reading from the swapchain image, I don't think it makes sense
     /*
@@ -1331,7 +1326,18 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         pass->Execute(cb, frameIndex);
 
 
-        std::vector<VkImageMemoryBarrier2> imageBarriers(m_imageBarriers[pass->GetId()]);
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.dependencyFlags          = 0;
+        dependencyInfo.bufferMemoryBarrierCount = m_bufferBarriers[pass->GetId()].size();
+        dependencyInfo.pBufferMemoryBarriers    = m_bufferBarriers[pass->GetId()].data();
+        dependencyInfo.imageMemoryBarrierCount  = m_imageBarriers[pass->GetId()].size();
+        dependencyInfo.pImageMemoryBarriers     = m_imageBarriers[pass->GetId()].data();
+
+        if(dependencyInfo.bufferMemoryBarrierCount > 0 || dependencyInfo.imageMemoryBarrierCount > 0)
+            vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
+
+        std::vector<VkImageMemoryBarrier2> imageBarriers;
         // add the image array barriers to the list of image barriers
         // need to do it here because we dont know the size and the images of the array at build time
         for(const auto& [barrierTemplate, resource] : m_imageArrayBarriers[pass->GetId()])
@@ -1343,17 +1349,13 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
                 imageBarriers.push_back(imageBarrier);
             }
         }
-        VkDependencyInfo dependencyInfo{};
-        dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        dependencyInfo.dependencyFlags          = 0;
-        dependencyInfo.bufferMemoryBarrierCount = m_bufferBarriers[pass->GetId()].size();
-        dependencyInfo.pBufferMemoryBarriers    = m_bufferBarriers[pass->GetId()].data();
-        dependencyInfo.imageMemoryBarrierCount  = imageBarriers.size();
-        dependencyInfo.pImageMemoryBarriers     = imageBarriers.data();
-
-        if(dependencyInfo.bufferMemoryBarrierCount > 0 || dependencyInfo.imageMemoryBarrierCount > 0)
-            vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
-
+        VkDependencyInfo arrayDependencyInfo{};
+        arrayDependencyInfo.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        arrayDependencyInfo.dependencyFlags         = 0;
+        arrayDependencyInfo.imageMemoryBarrierCount = imageBarriers.size();
+        arrayDependencyInfo.pImageMemoryBarriers    = imageBarriers.data();
+        if(arrayDependencyInfo.imageMemoryBarrierCount > 0)
+            vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &arrayDependencyInfo);
 
         for(auto* event : m_eventSignals[pass->GetId()])
         {

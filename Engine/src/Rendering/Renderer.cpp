@@ -82,7 +82,7 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5),
       m_indexBuffer(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6),
 
-      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, false),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
+      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, true),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
 
       m_pushConstants({}),
       m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS),
@@ -983,9 +983,8 @@ void Renderer::CreatePipeline()
         shadowPipeline.useMultiSampling = true;
         shadowPipeline.useColorBlend    = false;
         shadowPipeline.viewportExtent   = {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
-        shadowPipeline.viewMask         = 0b1111;  // NUM_CASCADES of 1s TODO make it not hardcoded
-
-        shadowPipeline.isGlobal = true;
+        shadowPipeline.viewMask         = (1 << NUM_CASCADES) - 1;  // NUM_CASCADES of 1s
+        shadowPipeline.isGlobal         = true;
 
         m_shadowPipeline = std::make_unique<Pipeline>("shadow", shadowPipeline);  // depth shader is fine for the shadow maps too since we only need the depth info from it
     }
@@ -1885,12 +1884,15 @@ void Renderer::UpdateLightMatrices(uint32_t index)
 
 void Renderer::Render(double dt)
 {
-    PROFILE_FUNCTION();
+    //PROFILE_FUNCTION();
     uint32_t imageIndex;
     VkResult result;
     {
         PROFILE_SCOPE("Pre frame stuff");
-        vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+        {
+            PROFILE_SCOPE("Wait for fences");
+            vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+        }
 
         result = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -1927,17 +1929,17 @@ void Renderer::Render(double dt)
 
         if(m_needDrawBufferReupload)
         {
-            for(auto* transform : cm->GetComponents<Transform>())
-            {
-                if(cm->HasComponent<Renderable>(transform->GetOwner()))
-                {
-                    glm::mat4 model = transform->GetTransform();
-
-                    for(auto& buffer : m_transformBuffers)
-                        buffer.UploadData(transform->ub_id, &model);
-                }
-            }
             RefreshDrawCommands();
+        }
+        for(auto* transform : cm->GetComponents<Transform>())
+        {
+            if(cm->HasComponent<Renderable>(transform->GetOwner()))
+            {
+                glm::mat4 model = transform->GetTransform();
+
+                for(auto& buffer : m_transformBuffers)
+                    buffer.UploadData(transform->ub_id, &model);
+            }
         }
     }
 

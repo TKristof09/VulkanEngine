@@ -137,6 +137,8 @@ float CalculateShadow(Light light)
     projectedCoords.y = 1 - projectedCoords.y;// not sure why we need the 1-coods.y but seems to work. Maybe beacuse of vulkan's weird y axis?
 
 
+
+
     return PCF(projectedCoords, shaderDataPtr.shadowMapIds[light.shadowSlot].id, cascadeIndex, 0.001);
 }
 
@@ -146,6 +148,7 @@ float CalculateAttenuation(Light light)
 {
     if(light.type == DIRECTIONAL_LIGHT)
         return CalculateShadow(light);
+
 
     vec3 lightDir = worldPos - light.position;
     float distanceToLight = length(lightDir);

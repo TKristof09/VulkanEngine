@@ -53,12 +53,13 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, bool mappable
     createInfo.usage              = usage;
     createInfo.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;  // TODO: apparently for buffers using concurrent is the same performance as exclusive, but it makes handling multiple queues easier
 
-    VmaAllocationCreateInfo allocInfo = {};
-    allocInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
+    VmaAllocationCreateInfo allocCreateInfo = {};
+    allocCreateInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
     if(mappable)
-        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;  // TODO: how to chose between sequential and random access
-
-    VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocInfo, &m_buffer, &m_allocation, nullptr), "Failed to create buffer");
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;  // TODO: how to chose between sequential and random access
+    VmaAllocationInfo allocInfo;
+    VK_CHECK(vmaCreateBuffer(VulkanContext::GetVmaBufferAllocator(), &createInfo, &allocCreateInfo, &m_buffer, &m_allocation, &allocInfo), "Failed to create buffer");
+    m_mappedMemory = allocInfo.pMappedData;
     VkMemoryPropertyFlags memPropFlags;
     vmaGetAllocationMemoryProperties(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memPropFlags);
     LOG_INFO("Memory type: {}", string_VkMemoryPropertyFlags(memPropFlags));
@@ -104,6 +105,12 @@ void Buffer::CopyToImage(VkImage image, uint32_t width, uint32_t height)
 
 void Buffer::Fill(void* data, uint64_t size, uint64_t offset)
 {
+    if(m_mappedMemory)
+    {
+        memcpy((void*)((uintptr_t)m_mappedMemory + offset), data, (size_t)size);
+        return;
+    }
+
     void* memory = nullptr;
     VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
 

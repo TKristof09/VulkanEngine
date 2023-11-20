@@ -74,6 +74,7 @@ protected:
     uint64_t m_nonCoherentAtomeSize;
 
     VmaAllocation m_allocation;
+    void* m_mappedMemory = nullptr;
 };
 
 // TODO add callbacks for when the buffer is resized

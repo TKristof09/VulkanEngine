@@ -80,7 +80,7 @@ void sponza_test(ECSEngine* ecs)
 
 
     ecs->systemManager->AddSystem<TestSystem>(5, 5);
-    /*
+    
     Entity* dlight                        = ecs->entityManager->CreateEntity();
     dlight->GetComponent<NameTag>()->name = "DLight";
     auto dl                               = dlight->AddComponent<DirectionalLight>();
@@ -99,7 +99,7 @@ void sponza_test(ECSEngine* ecs)
     sl->cutoff                            = glm::cos(glm::radians(45.f));
     Transform* ts                         = slight->GetComponent<Transform>();
     // ts->rot                               = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-    ts->pos                               = {3.0f, 1.f, 0.0f};*/
+    ts->pos                               = {3.0f, 1.f, 0.0f};
 }
 
 void pbr_spheres(ECSEngine* ecs)
