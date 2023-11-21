@@ -11,6 +11,7 @@ set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/${CMAKE_SYSTEM_NAM
 set (CMAKE_VS_JUST_MY_CODE_DEBUGGING ON)
 
 
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 #SPIRV CROSS
@@ -27,6 +28,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/yaml-cpp)
 
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/flecs)
+
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/Engine)
 add_subdirectory(${CMAKE_SOURCE_DIR}/shaders)
@@ -39,3 +42,5 @@ set_property(TARGET Engine PROPERTY CXX_STANDARD 17)
 set_property(TARGET Engine PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET Engine PROPERTY LINK_FLAGS "/PROFILE")
 set_property(TARGET Editor PROPERTY LINK_FLAGS "/PROFILE")
+
+
