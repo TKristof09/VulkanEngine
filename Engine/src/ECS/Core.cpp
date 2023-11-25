@@ -1,8 +1,10 @@
 #include "ECS/Core.hpp"
+#include "ECS/CoreSystems/TransformSystem.hpp"
 
 
 ECS::ECS()
 {
+    AddSystem<TransformSystem>();
 }
 
 ECS::~ECS()
@@ -16,12 +18,15 @@ void ECS::Update(float dt)
 
 Entity ECS::CreateEntity(const std::string& name)
 {
-    return {m_world, name};
+    Entity e{m_world, name};
+    return e;
 }
 
 Entity ECS::CreateChildEntity(Entity* parent, const std::string& name)
 {
-    return {m_world, name, parent};
+    Entity e{m_world, name, parent};
+    e.AddComponent<Transform>();
+    return e;
 }
 
 void ECS::DestroyEntity(Entity& entity)

@@ -7,13 +7,12 @@
 
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
-#include "ECS/EntityManager.hpp"
 #include "Rendering/TextureManager.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
 Assimp::Importer AssimpImporter::s_importer = {};
 
-Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine, Entity* parent)
+Entity AssimpImporter::LoadFile(const std::string& file, ECS* ecs, Entity* parent)
 {
     auto* assimpLogger = Assimp::DefaultLogger::create("DebugTools/AssimpLogger.txt", Assimp::Logger::VERBOSE);
     assimpLogger->info("Test info call");
@@ -26,19 +25,11 @@ Entity* AssimpImporter::LoadFile(const std::string& file, ECSEngine* ecsEngine, 
     if(!scene)
     {
         LOG_ERROR(s_importer.GetErrorString());
-        return nullptr;
+        return {flecs::entity::null()};  // invalid entity
     }
-    Entity* rootEntity;
-    if(!parent)
-    {
-        rootEntity = ecsEngine->entityManager->CreateEntity();
-    }
-    else
-    {
-        rootEntity = ecsEngine->entityManager->CreateChild(parent);
-    }
+    Entity rootEntity = parent ? ecs->CreateChildEntity(parent, scene->mRootNode->mName.C_Str()) : ecs->CreateEntity(scene->mRootNode->mName.C_Str());
 
-    ProcessNode(scene->mRootNode, scene, ecsEngine, rootEntity);
+    ProcessNode(scene->mRootNode, scene, ecs, rootEntity);
     LOG_TRACE("Loaded {0}", file);
 
     Assimp::DefaultLogger::kill();
@@ -50,20 +41,17 @@ glm::vec3 ToGLM(const aiVector3D& v) { return {v.x, v.y, v.z}; }
 glm::vec2 ToGLM(const aiVector2D& v) { return {v.x, v.y}; }
 glm::quat ToGLM(const aiQuaternion& q) { return {q.w, q.x, q.y, q.z}; }
 
-void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEngine* ecsEngine, Entity* entity)
+void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECS* ecs, Entity entity)
 {
     aiVector3D pos;
     aiVector3D scale;
     aiQuaternion rot;
     node->mTransformation.Decompose(scale, rot, pos);
 
-    Transform* transform = entity->GetComponent<Transform>();
-    transform->pos       = ToGLM(pos);
-    transform->rot       = ToGLM(rot);
-    transform->scale     = ToGLM(scale);
-
-    entity->AddComponent<NameTag>()->name = node->mName.C_Str();
-
+    auto tpos   = ToGLM(pos);
+    auto trot   = ToGLM(rot);
+    auto tscale = ToGLM(scale);
+    entity.SetComponent<Transform>({tpos, trot, tscale});
 
     if(node->mNumMeshes == 1)
     {
@@ -73,17 +61,18 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECSEn
     {
         for(int i = 0; i < node->mNumMeshes; ++i)
         {
-            LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecsEngine->entityManager->CreateChild(entity));
+            auto name = scene->mMeshes[node->mMeshes[i]]->mName.length == 0 ? std::string(node->mName.C_Str()) + std::to_string(i) : scene->mMeshes[node->mMeshes[i]]->mName.C_Str();
+            LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecs->CreateChildEntity(&entity, name));
         }
     }
 
     for(int i = 0; i < node->mNumChildren; ++i)
     {
-        ProcessNode(node->mChildren[i], scene, ecsEngine, ecsEngine->entityManager->CreateChild(entity));
+        ProcessNode(node->mChildren[i], scene, ecs, ecs->CreateChildEntity(&entity, node->mChildren[i]->mName.C_Str()));
     }
 }
 
-void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* entity)
+void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity entity)
 {
     std::vector<Vertex> vertices;
     vertices.resize(mesh->mNumVertices);
@@ -118,8 +107,8 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         }
     }
 
-    Material* mat2    = entity->AddComponent<Material>();
-    mat2->shaderName  = "forwardplus";
+    Material mat{};
+    mat.shaderName    = "forwardplus";
     aiMaterial* aiMat = scene->mMaterials[mesh->mMaterialIndex];
     aiString tempPath;
     /* for(int i = 0; i < aiTextureType_UNKNOWN; ++i)
@@ -133,7 +122,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         auto it                 = texturePath.find('\\');
         texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
-        mat2->textures["albedo"] = texturePath;
+        mat.textures["albedo"] = texturePath;
     }
 
     if(aiMat->GetTexture(aiTextureType_NORMALS, 0, &tempPath) == aiReturn_SUCCESS)
@@ -143,7 +132,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
-        mat2->textures["normal"] = texturePath;
+        mat.textures["normal"] = texturePath;
     }
 
     // for some reason the roughness texture gets put into aiTextureType_SHININESS for fbx files
@@ -154,7 +143,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
-        mat2->textures["roughness"] = texturePath;
+        mat.textures["roughness"] = texturePath;
     }
 
     if(aiMat->GetTexture(aiTextureType_METALNESS, 0, &tempPath) == aiReturn_SUCCESS)
@@ -164,11 +153,10 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity* 
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
         TextureManager::LoadTexture(texturePath);
-        mat2->textures["metallic"] = texturePath;
+        mat.textures["metallic"] = texturePath;
     }
 
-
-    if(mesh->mName.length > 0)
-        entity->AddComponent<NameTag>()->name = mesh->mName.C_Str();
-    entity->AddComponent<Mesh>(vertices, indices);
+    entity.Print();
+    entity.EmplaceComponent<Mesh>(vertices, indices);
+    entity.SetComponent<Material>(mat);
 }

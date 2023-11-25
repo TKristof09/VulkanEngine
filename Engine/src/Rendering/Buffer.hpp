@@ -50,10 +50,10 @@ public:
     void Free();
     void Copy(Buffer* dst, VkDeviceSize size);
     void CopyToImage(VkImage image, uint32_t width, uint32_t height);
-    void Fill(void* data, uint64_t size, uint64_t offset = 0);
+    void Fill(const void* data, uint64_t size, uint64_t offset = 0);
 
     // offsets must be sorted in ascending order
-    void Fill(const std::vector<void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets);
+    void Fill(const std::vector<const void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets);
     void Bind(const CommandBuffer& commandBuffer);
     [[nodiscard]] const VkBuffer& GetVkBuffer() const { return m_buffer; }
     [[nodiscard]] VkDeviceSize GetSize() const { return m_size; }
@@ -109,8 +109,8 @@ public:
 
 
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
-    void UploadData(uint64_t slot, void* data);
-    void UploadData(const std::vector<uint64_t>& slots, const std::vector<void*>& datas);
+    void UploadData(uint64_t slot, const void* data);
+    void UploadData(const std::vector<uint64_t>& slots, const std::vector<const void*>& datas);
 
     void Free(uint64_t slot);
 

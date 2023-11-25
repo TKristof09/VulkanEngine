@@ -1,9 +1,9 @@
 #pragma once
 
+#include "Core/Events/CoreEvents.hpp"
 #include "ECS/System.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 #include "ECS/CoreComponents/Material.hpp"
-#include "ECS/CoreEvents/SystemEvents.hpp"
 #include "Buffer.hpp"
 #include <queue>
 
@@ -14,21 +14,19 @@ class Renderer;
 class MaterialSystem
 {
 public:
-    MaterialSystem(Scene* scene, Renderer* renderer);
+    MaterialSystem();
     ~MaterialSystem();
 
-    void UpdateMaterial(Material* mat);
+    void OnMaterialComponentAdded(ComponentAdded<Material> e);
+    void OnMaterialComponentRemoved(ComponentRemoved<Material> e);
 
-    void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
-    void OnMaterialComponentRemoved(const ComponentRemoved<Material>* e);
+    void OnSceneSwitched(SceneSwitchedEvent e);
 
 private:
-    void AllocateDescriptorSets(Pipeline* pipeline, Material* comp);
-
     std::unordered_map<std::string, uint32_t> m_registry;
     std::unordered_map<std::string, VkSampler> m_samplers;                     // key is materialName + name of sampler
     std::unordered_map<std::string, std::queue<uint32_t>> m_freeTextureSlots;  // key is materialName
     std::unordered_map<std::string, DynamicBufferAllocator> m_materialDatas;
     Renderer* m_renderer;
-    ECSEngine* m_ecs;
+    ECS* m_ecs;
 };

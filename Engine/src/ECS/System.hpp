@@ -11,6 +11,10 @@ enum class SystemPhase
     PostUpdate,
     PreRender,
 };
+
+template<typename... Components>
+using SystemBuilder = flecs::system_builder<Components...>;
+
 class System
 {
 public:
@@ -23,57 +27,44 @@ protected:
     // Add a singleton component to the ecs that serves as a context for this system
     // This can be retrived by capturing the component in the system's registered function and specifying which term of the function is the context
     template<typename T>
-    void AddContextSingleton(T& context)
-    {
-        m_world->set<T>(context);
-    }
+    void AddContextSingleton(T context);
 
+    // contextTerm is indexed from 1
     template<class... Components>
-    void Register(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components&... args), int8_t contextTerm = -1)
-    {
-        assert(contextTerm <= sizeof...(Components));
+    void Register(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args), uint8_t contextTerm = 0);
 
-        auto builder = m_world->system<Components...>()
-                           .kind(ConvertPhase(phase));
-        if(contextTerm >= 0)
-            builder = builder.term_at(contextTerm + 1).singleton();  // +1 because term_at isn't zero indexed
-        builder.each(fn);
-    }
+    // contextTerm is indexed from 1
     template<class... Components>
-    void Register(SystemPhase phase, void (*fn)(flecs::entity e, Components&... args), int8_t contextTerm = -1)
-    {
-        assert(contextTerm <= sizeof...(Components));
+    void Register(SystemPhase phase, void (*fn)(flecs::entity e, Components... args), uint8_t contextTerm = 0);
 
-        auto builder = m_world->system<Components...>()
-                           .kind(ConvertPhase(phase));
-        if(contextTerm >= 0)
-            builder = builder.term_at(contextTerm + 1).singleton();  // +1 because term_at isn't zero indexed
-
-        builder.each(fn);
-    }
-
+    // contextTerm is indexed from 1
     template<class... Components>
-    void Register(SystemPhase phase, void (*fn)(Components&... args), int8_t contextTerm = -1)
-    {
-        assert(contextTerm < sizeof...(Components));
+    void Register(SystemPhase phase, void (*fn)(Components... args), uint8_t contextTerm = 0);
 
-        auto builder = m_world->system<Components...>()
-                           .kind(ConvertPhase(phase));
-        if(contextTerm >= 0)
-            builder = builder.term_at(contextTerm + 1).singleton();  // +1 because term_at isn't zero indexed
+    // contextTerm is indexed from 1
+    template<class... Components>
+    void RegisterFixed(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args), uint32_t framerate, uint8_t contextTerm = 0);
 
-        builder.each(fn);
-    }
+    // contextTerm is indexed from 1
+    template<class... Components>
+    void RegisterFixed(SystemPhase phase, void (*fn)(flecs::entity e, Components... args), uint32_t framerate, uint8_t contextTerm = 0);
 
+    // contextTerm is indexed from 1
+    template<class... Components>
+    void RegisterFixed(SystemPhase phase, void (*fn)(Components... args), uint32_t framerate, uint8_t contextTerm = 0);
 
     // expose this for systems that want to do more advanced queries, such as traversing the entity hierarchy,etc...
+    // we put the function as a parameter to be able to deduce the template parameters so we dont have to specify them one by one when calling this function
     template<class... Components>
-    flecs::system_builder<Components...> StartSystemBuilder()
-    {
-        return m_world->system<Components...>();
-    }
+    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args));
+    template<class... Components>
+    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::entity e, Components... args));
+    template<class... Components>
+    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(Components... args));
 
 private:
+    virtual const char* GetName() const { return nullptr; };
+
     friend class ECS;
     flecs::world* m_world = nullptr;
     static flecs::entity_t ConvertPhase(SystemPhase phase)
@@ -92,6 +83,118 @@ private:
             return flecs::PostUpdate;
         case SystemPhase::PreRender:
             return flecs::PreStore;
+        default:
+            LOG_ERROR("Unknown system phase");
+            assert(false);
+            return flecs::OnStart;
         }
     }
 };
+
+template<typename T>
+void System::AddContextSingleton(T context)
+{
+    m_world->set<T>(context);
+}
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::Register(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args), uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase));
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();  // +1 because term_at isn't zero indexed
+    builder.each(fn);
+}
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::Register(SystemPhase phase, void (*fn)(flecs::entity e, Components... args), uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase));
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();  // +1 because term_at isn't zero indexed
+
+    builder.each(fn);
+}
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::Register(SystemPhase phase, void (*fn)(Components... args), uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase));
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();
+    builder.each(fn);
+}
+
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::RegisterFixed(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args), uint32_t framerate, uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase))
+                       .interval(1.0f / framerate);
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();  // +1 because term_at isn't zero indexed
+    builder.each(fn);
+}
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::RegisterFixed(SystemPhase phase, void (*fn)(flecs::entity e, Components... args), uint32_t framerate, uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase))
+                       .interval(1.0f / framerate);
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();  // +1 because term_at isn't zero indexed
+
+    builder.each(fn);
+}
+
+// contextTerm is indexed from 1
+template<class... Components>
+void System::RegisterFixed(SystemPhase phase, void (*fn)(Components... args), uint32_t framerate, uint8_t contextTerm)
+{
+    assert(contextTerm <= sizeof...(Components));
+
+    auto builder = m_world->system<Components...>(GetName())
+                       .kind(ConvertPhase(phase))
+                       .interval(1.0f / framerate);
+    if(contextTerm > 0)
+        builder = builder.term_at(contextTerm).singleton();
+    builder.each(fn);
+}
+
+// expose this for systems that want to do more advanced queries, such as traversing the entity hierarchy,etc...
+// we put the function as a parameter to be able to deduce the template parameters so we dont have to specify them one by one when calling this function
+template<class... Components>
+flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args))
+{
+    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
+}
+template<class... Components>
+flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::entity e, Components... args))
+{
+    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
+}
+template<class... Components>
+flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(Components... args))
+{
+    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
+}

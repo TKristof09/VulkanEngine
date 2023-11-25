@@ -1,5 +1,9 @@
 #pragma once
 
+#include "Core/Events/CoreEvents.hpp"
+#include "ECS/CoreComponents/Camera.hpp"
+#include "ECS/CoreComponents/InternalTransform.hpp"
+#include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 
 #include <vulkan/vulkan.h>
@@ -14,11 +18,11 @@
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "Utils/DebugUI.hpp"
+#include "Pipeline.hpp"
+#include "ECS/Core.hpp"
+#include "ECS/CoreComponents/Lights.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Material.hpp"
-#include "Pipeline.hpp"
-#include "ECS/ECS.hpp"
-#include "ECS/CoreComponents/Lights.hpp"
 
 #define SHADOWMAP_SIZE   2048
 #define MAX_SHADOW_DEPTH 1000
@@ -27,7 +31,7 @@
 class Renderer
 {
 public:
-    Renderer(std::shared_ptr<Window> window, Scene* scene);
+    Renderer(std::shared_ptr<Window> window);
     ~Renderer();
     void Render(double dt);
 
@@ -35,12 +39,14 @@ public:
 
     void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
 
-    void OnMeshComponentAdded(const ComponentAdded<Mesh>* e);
-    void OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e);
-    void OnMaterialComponentAdded(const ComponentAdded<Material>* e);
-    void OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e);
-    void OnPointLightAdded(const ComponentAdded<PointLight>* e);
-    void OnSpotLightAdded(const ComponentAdded<SpotLight>* e);
+    void OnSceneSwitched(SceneSwitchedEvent e);
+
+    void OnMeshComponentAdded(ComponentAdded<Mesh> e);
+    void OnMeshComponentRemoved(ComponentRemoved<Mesh> e);
+    void OnMaterialComponentAdded(ComponentAdded<Material> e);
+    void OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e);
+    void OnPointLightAdded(ComponentAdded<PointLight> e);
+    void OnSpotLightAdded(ComponentAdded<SpotLight> e);
 
     void AddTexture(Image* texture, bool isShadow = false);
     void RemoveTexture(Image* texture);
@@ -80,8 +86,8 @@ private:
 
     struct PushConstants
     {
-        glm::mat4 viewProj;
-        glm::vec3 cameraPos;
+        glm::mat4 viewProj;   // this is set by the renderer, not each pass (might change in the future if we start needing multiple cameras for things like reflections or idk)
+        glm::vec3 cameraPos;  // this is set by the renderer, not each pass (might change in the future if we start needing multiple cameras for things like reflections or idk)
         int32_t debugMode;
         float data[4];
         uint64_t shaderDataPtr;
@@ -96,7 +102,7 @@ private:
     std::vector<std::unique_ptr<DynamicBufferAllocator>> m_lightsBuffers;
     std::vector<std::unique_ptr<Buffer>> m_visibleLightsBuffers;
     VkBuffer m_visibleLightsBuffer;
-    std::unordered_map<ComponentID, Light> m_lightMap;
+    std::unordered_map<uint32_t, Light> m_lightMap;
     std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
     void UpdateLights(uint32_t index);
     void UpdateLightMatrices(uint32_t index);
@@ -151,7 +157,7 @@ private:
     void CreateEnvironmentMap();
 
 
-    ECSEngine* m_ecs;
+    ECS* m_ecs;
 
     std::shared_ptr<Window> m_window;
 
@@ -239,6 +245,13 @@ private:
     DynamicBufferAllocator m_shadowIndices;
     uint32_t m_numShadowIndices = 0;
 
-    // TODO remove
-    Entity* m_frustrumEntity;
+
+    // ECS queries
+    Query<const Camera, const InternalTransform> m_mainCameraQuery;
+    Query<const InternalTransform, const Renderable> m_transformsQuery;
+    Query<const Renderable> m_renderablesQuery;
+
+    Query<const DirectionalLight, const InternalTransform> m_directionalLightsQuery;
+    Query<const PointLight, const InternalTransform> m_pointLightsQuery;
+    Query<const SpotLight, const InternalTransform> m_spotLightsQuery;
 };

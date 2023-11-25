@@ -2,6 +2,9 @@
 
 #include "flecs.h"
 #include "ECS/Entity.hpp"
+#include "ECS/Query.hpp"
+#include "ECS/Observer.hpp"
+
 
 class ECS
 {
@@ -20,17 +23,30 @@ public:
     // Do we want to be able to remove systems?
 
     template<typename... Components>
-    flecs::query<Components...> StartQueryBuilder()
+    QueryBuilder<Components...> StartQueryBuilder(const std::string& name = "")
     {
-        return m_world.query_builder<Components...>();
+        return m_world.query_builder<Components...>(name.empty() ? nullptr : name.c_str());
     }
 
+    template<typename Component>
+    Observer AddObserver(ECSEvent eventType, std::function<void(flecs::entity, Component&)> callback)
+    {
+        switch(eventType)
+        {
+        case ECSEvent::OnAdd:
+            return m_world.observer<Component>().event(flecs::OnAdd).each(callback);
+        case ECSEvent::OnSet:
+            return m_world.observer<Component>().event(flecs::OnSet).each(callback);
+        case ECSEvent::OnRemove:
+            return m_world.observer<Component>().event(flecs::OnRemove).each(callback);
+        }
+    }
     void EnableRESTEditor()
     {
         m_world.set<flecs::Rest>({});
         // clang-format off
         m_world.import<flecs::monitor>(); // clang formats this weirdly because if the import keyword
-        // clang-format on
+                                           // clang-format on
     }
 
 private:

@@ -1,6 +1,6 @@
 #pragma once
-#include "ECS/Component.hpp"
-struct NameTag : public Component<NameTag>
+// possibly redundant since entities can be named by default in flecs
+struct NameTag
 {
-	std::string name;
+    std::string name;
 };
