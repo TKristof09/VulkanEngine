@@ -25,7 +25,6 @@ Entity ECS::CreateEntity(const std::string& name)
 Entity ECS::CreateChildEntity(Entity* parent, const std::string& name)
 {
     Entity e{m_world, name, parent};
-    e.AddComponent<Transform>();
     return e;
 }
 

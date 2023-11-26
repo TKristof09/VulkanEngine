@@ -6,8 +6,8 @@
 class TransformSystem : public System
 {
 public:
+    //static void CalculateWorldTransforms(const Transform* transform, const InternalTransform* parentTransform, InternalTransform* internalTransform);
     static void CalculateWorldTransforms(const Transform& transform, const InternalTransform* parentTransform, InternalTransform& internalTransform);
-
     void Initialize() override;
 
 private:

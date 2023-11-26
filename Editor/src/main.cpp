@@ -116,7 +116,7 @@ void pbr_spheres(ECS* ecs)
 
 
     Entity parent                  = ecs->CreateEntity("Spheres");
-    constexpr int gridSize         = 0;
+    constexpr int gridSize         = 1;
     std::vector<std::string> names = {
         "models/rusty_sphere.fbx",
         "models/grassy_sphere.fbx",
@@ -138,7 +138,7 @@ void pbr_spheres(ECS* ecs)
         }
     }
     parent = ecs->CreateEntity("Cubes");
-    for(int i = 0; i < gridSize; ++i)
+    for(int i = 0; i < gridSize*0; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
         {

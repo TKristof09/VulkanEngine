@@ -1,6 +1,4 @@
 #pragma once
-#include "ECS/CoreComponents/InternalTransform.hpp"
-#include "ECS/CoreComponents/Transform.hpp"
 #include "flecs.h"
 
 class ECS;
@@ -96,19 +94,6 @@ private:
 
 inline const Entity Entity::INVALID_ENTITY = Entity{flecs::entity::null()};
 
-inline Entity::Entity(const flecs::world& world, const std::string& name, const Entity* parent)
-{
-    if(parent)
-    {
-        m_entity = world.entity(name.c_str()).child_of(parent->m_entity);
-    }
-    else
-    {
-        m_entity = world.entity(name.c_str());
-    }
-    AddComponent<Transform>();
-    AddComponent<InternalTransform>();
-}
 
 // implement std hash for entity by using hash on its member m_entity.id()
 namespace std
@@ -174,27 +159,4 @@ template<typename T>
 void Entity::RemoveComponent()
 {
     m_entity.remove<T>();
-}
-
-inline Entity Entity::CreateChild(const std::string& name) const
-{
-    Entity e{m_entity.world(), name, this};
-    return e;
-}
-
-inline void Entity::IterateChildren(EntityIterFn f)
-{
-    m_entity.children(f);
-}
-
-inline void Entity::SetStatic(bool isStatic)
-{
-    if(isStatic)
-    {
-        m_entity.add<Static>();
-    }
-    else
-    {
-        m_entity.remove<Static>();
-    }
 }

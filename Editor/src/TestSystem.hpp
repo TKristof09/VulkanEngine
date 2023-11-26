@@ -23,14 +23,19 @@ public:
     void Initialize() override
     {
         AddContextSingleton<TestSystemContext>({m_distance, m_speed});
-        StartSystemBuilder(SystemPhase::OnUpdate, FixedUpdate)
-            .with<PointLight>()
-            .term_at(3)
-            .singleton()
-            .each(FixedUpdate);
+        StartSystemBuilder<Transform, const TestSystemContext>(
+            SystemPhase::OnUpdate,
+            [](auto& builder)
+            {
+                builder
+                    .with<PointLight>()
+                    .term_at(2)
+                    .singleton()
+                    .each(FixedUpdate);
+            });
     }
 
-    static void FixedUpdate(flecs::entity e, Transform& transform, TestSystemContext& ctx)
+    static void FixedUpdate(flecs::entity e, Transform& transform, const TestSystemContext& ctx)
     {
         float s           = glm::sin((float)Time::GetTime());
         uint64_t id       = e.id();

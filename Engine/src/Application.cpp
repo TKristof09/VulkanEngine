@@ -36,6 +36,10 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
 Application::~Application()
 {
     vkDeviceWaitIdle(VulkanContext::GetDevice());
+    m_renderer.reset();
+    m_materialSystem.reset();
+    m_currentScene.reset();
+    m_eventHandler.reset();
 
     VulkanContext::Cleanup();
 

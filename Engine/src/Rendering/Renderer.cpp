@@ -1870,6 +1870,7 @@ void Renderer::Render(double dt)
         UpdateLights(imageIndex);
         UpdateLightMatrices(imageIndex);
         m_pushConstants.cameraPos = cameraPos;
+        m_pushConstants.viewProj  = vp;
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
 
         if(m_needDrawBufferReupload)

@@ -33,7 +33,7 @@ private:
             return;
 
         m_propertiesWindow.AddElement(std::make_shared<Separator>());
-        m_propertyDrawFunctions[typeid(Transform)](entity.GetComponentMut<Transform>(), &m_propertiesWindow);
+        m_propertyDrawFunctions[typeid(T)](entity.GetComponentMut<T>(), &m_propertiesWindow);
         m_propertiesWindow.AddElement(std::make_shared<Separator>());
     }
 

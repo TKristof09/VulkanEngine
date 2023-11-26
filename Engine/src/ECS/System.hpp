@@ -56,17 +56,14 @@ protected:
     // expose this for systems that want to do more advanced queries, such as traversing the entity hierarchy,etc...
     // we put the function as a parameter to be able to deduce the template parameters so we dont have to specify them one by one when calling this function
     template<class... Components>
-    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args));
-    template<class... Components>
-    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::entity e, Components... args));
-    template<class... Components>
-    SystemBuilder<Components...> StartSystemBuilder(SystemPhase phase, void (*fn)(Components... args));
+    void StartSystemBuilder(SystemPhase phase, void (*buildFn)(SystemBuilder<Components...>& builder));
+
 
 private:
     virtual const char* GetName() const { return nullptr; };
 
-    friend class ECS;
     flecs::world* m_world = nullptr;
+    friend class ECS;
     static flecs::entity_t ConvertPhase(SystemPhase phase)
     {
         switch(phase)
@@ -184,17 +181,7 @@ void System::RegisterFixed(SystemPhase phase, void (*fn)(Components... args), ui
 // expose this for systems that want to do more advanced queries, such as traversing the entity hierarchy,etc...
 // we put the function as a parameter to be able to deduce the template parameters so we dont have to specify them one by one when calling this function
 template<class... Components>
-flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::iter& it, size_t i, Components... args))
+void System::StartSystemBuilder(SystemPhase phase, void (*buildFn)(SystemBuilder<Components...>& builder))
 {
-    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
-}
-template<class... Components>
-flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(flecs::entity e, Components... args))
-{
-    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
-}
-template<class... Components>
-flecs::system_builder<Components...> System::StartSystemBuilder(SystemPhase phase, void (*fn)(Components... args))
-{
-    return m_world->system<Components...>(GetName()).kind(ConvertPhase(phase));
+    buildFn(m_world->system<Components...>(GetName()).kind(ConvertPhase(phase)));
 }

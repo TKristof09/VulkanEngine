@@ -7,8 +7,3 @@ struct EntityCreated : public Event
 {
     Entity entity;
 };
-
-struct EntityDestroyed : public Event
-{
-    Entity entity;
-};
