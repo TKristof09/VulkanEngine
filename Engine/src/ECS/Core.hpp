@@ -15,7 +15,7 @@ public:
     void Update(float dt);
 
     Entity CreateEntity(const std::string& name = "Entity");
-    Entity CreateChildEntity(Entity* parent, const std::string& name = "Entity");
+    Entity CreateChildEntity(const Entity* parent, const std::string& name = "Entity");
     void DestroyEntity(Entity& entity);
 
     template<typename T, typename... Args>
@@ -50,7 +50,9 @@ public:
     }
 
 private:
+    friend class Entity;
     flecs::world m_world;
+    std::unordered_map<std::string, uint32_t> m_entityNames;
 };
 
 template<typename T, typename... Args>

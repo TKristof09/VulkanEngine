@@ -1,6 +1,6 @@
 #include "ECS/Core.hpp"
 #include "ECS/CoreSystems/TransformSystem.hpp"
-
+#include <format>
 
 ECS::ECS()
 {
@@ -18,13 +18,16 @@ void ECS::Update(float dt)
 
 Entity ECS::CreateEntity(const std::string& name)
 {
-    Entity e{m_world, name};
+    uint32_t count = m_entityNames[name]++;
+    Entity e{this, count > 0 ? std::format("{}_({})", name, count) : name};
     return e;
 }
 
-Entity ECS::CreateChildEntity(Entity* parent, const std::string& name)
+Entity ECS::CreateChildEntity(const Entity* parent, const std::string& name)
 {
-    Entity e{m_world, name, parent};
+    std::string scopedName = std::format("{}::{}", parent->m_entity.name().c_str(), name);
+    uint32_t count         = m_entityNames[scopedName]++;
+    Entity e{this, count > 0 ? std::format("{}_({})", scopedName, count) : scopedName, parent};
     return e;
 }
 

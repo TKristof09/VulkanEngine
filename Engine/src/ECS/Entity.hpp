@@ -87,9 +87,10 @@ public:
 private:
     friend class ECS;
     friend struct std::hash<Entity>;
-    Entity(const flecs::world& world, const std::string& name, const Entity* parent = nullptr);
+    Entity(ECS* ecs, const std::string& name, const Entity* parent = nullptr);
 
     flecs::entity m_entity;
+    ECS* m_ecs = nullptr;
 };
 
 inline const Entity Entity::INVALID_ENTITY = Entity{flecs::entity::null()};

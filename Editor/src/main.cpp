@@ -116,7 +116,7 @@ void pbr_spheres(ECS* ecs)
 
 
     Entity parent                  = ecs->CreateEntity("Spheres");
-    constexpr int gridSize         = 1;
+    constexpr int gridSize         = 5;
     std::vector<std::string> names = {
         "models/rusty_sphere.fbx",
         "models/grassy_sphere.fbx",
@@ -138,10 +138,11 @@ void pbr_spheres(ECS* ecs)
         }
     }
     parent = ecs->CreateEntity("Cubes");
-    for(int i = 0; i < gridSize*0; ++i)
+    for(int i = 0; i < gridSize; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
         {
+            
             int index      = i * gridSize + j;
             Entity e       = AssimpImporter::LoadFile("models/cube.obj", ecs, &parent);
             auto* tt       = e.GetComponentMut<Transform>();
@@ -149,15 +150,15 @@ void pbr_spheres(ECS* ecs)
             tt->scale      = {1, 1, 1};
             auto* mat      = e.GetComponentMut<Material>();
             mat->albedo    = glm::vec3(1.0f, 0.0f, 0.0f);
-            mat->roughness = glm::clamp(i / ((float)gridSize - 1), 0.05f, 1.0f);  // roughness 0 looks odd in direct lighting
-            mat->metallic  = j / ((float)gridSize - 1);
+            mat->roughness = glm::clamp(i / ((float)gridSize), 0.05f, 1.0f);  // roughness 0 looks odd in direct lighting
+            mat->metallic  = j / ((float)gridSize);
         }
     }
 
 
     Entity lightParent        = ecs->CreateEntity("point lights");
     std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int lgridSize   = 1;
+    constexpr int lgridSize   = 2;
     for(int i = 0; i < lgridSize; ++i)
     {
         for(int j = 0; j < lgridSize; ++j)

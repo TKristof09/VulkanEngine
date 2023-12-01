@@ -38,7 +38,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/Editor)
 
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 
-set_property(TARGET Engine PROPERTY CXX_STANDARD 17)
+set_property(TARGET Engine PROPERTY CXX_STANDARD 20)
 set_property(TARGET Engine PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET Engine PROPERTY LINK_FLAGS "/PROFILE")
 set_property(TARGET Editor PROPERTY LINK_FLAGS "/PROFILE")

@@ -7,15 +7,16 @@
 #include "ECS/CoreComponents/Transform.hpp"
 
 
-Entity::Entity(const flecs::world& world, const std::string& name, const Entity* parent)
+Entity::Entity(ECS* ecs, const std::string& name, const Entity* parent)
+    : m_ecs(ecs)
 {
     if(parent)
     {
-        m_entity = world.entity(name.c_str()).child_of(parent->m_entity);
+        m_entity = m_ecs->m_world.entity(name.c_str()).child_of(parent->m_entity);
     }
     else
     {
-        m_entity = world.entity(name.c_str());
+        m_entity = m_ecs->m_world.entity(name.c_str());
     }
     AddComponent<Transform>();
     AddComponent<InternalTransform>();
@@ -27,8 +28,7 @@ Entity::Entity(const flecs::world& world, const std::string& name, const Entity*
 
 Entity Entity::CreateChild(const std::string& name) const
 {
-    Entity e{m_entity.world(), name, this};
-    return e;
+    return m_ecs->CreateChildEntity(this, name);
 }
 
 void Entity::IterateChildren(EntityIterFn f)
