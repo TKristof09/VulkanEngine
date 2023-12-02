@@ -60,6 +60,10 @@ public:
         vkDestroyInstance(m_instance, nullptr);
     }
 
+    inline static PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT = nullptr;
+    inline static PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXT = nullptr;
+    inline static PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXT     = nullptr;
+
 private:
     friend class Renderer;
 
@@ -105,3 +109,51 @@ private:
     inline static VmaAllocator m_vmaImageAllocator  = VK_NULL_HANDLE;
     inline static VmaAllocator m_vmaBufferAllocator = VK_NULL_HANDLE;
 };
+
+
+#ifdef VDEBUG
+// NOLINTBEGIN (cppcoreguidelines-pro-type-cstyle-cast)
+#define VK_SET_DEBUG_NAME(obj, objType, name)                                                        \
+    {                                                                                                \
+        if(VulkanContext::vkSetDebugUtilsObjectNameEXT == nullptr)                                   \
+        {                                                                                            \
+            VulkanContext::vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)         \
+                vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"); \
+        }                                                                                            \
+        VkDebugUtilsObjectNameInfoEXT nameInfo = {};                                                 \
+        nameInfo.sType                         = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT; \
+        nameInfo.objectType                    = objType;                                            \
+        nameInfo.objectHandle                  = (uint64_t)(obj);                                    \
+        nameInfo.pObjectName                   = name;                                               \
+        VulkanContext::vkSetDebugUtilsObjectNameEXT(VulkanContext::GetDevice(), &nameInfo);          \
+    }
+
+#define VK_START_DEBUG_LABEL(cmdBuffer, name)                                                        \
+    {                                                                                                \
+        if(VulkanContext::vkCmdBeginDebugUtilsLabelEXT == nullptr)                                   \
+        {                                                                                            \
+            VulkanContext::vkCmdBeginDebugUtilsLabelEXT = (PFN_vkCmdBeginDebugUtilsLabelEXT)         \
+                vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkCmdBeginDebugUtilsLabelEXT"); \
+        }                                                                                            \
+        VkDebugUtilsLabelEXT label = {};                                                             \
+        label.sType                = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;                        \
+        label.pLabelName           = name;                                                           \
+        VulkanContext::vkCmdBeginDebugUtilsLabelEXT(cmdBuffer.GetCommandBuffer(), &label);           \
+    }
+
+#define VK_END_DEBUG_LABEL(cmdBuffer)                                                              \
+    {                                                                                              \
+        if(VulkanContext::vkCmdEndDebugUtilsLabelEXT == nullptr)                                   \
+        {                                                                                          \
+            VulkanContext::vkCmdEndDebugUtilsLabelEXT = (PFN_vkCmdEndDebugUtilsLabelEXT)           \
+                vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkCmdEndDebugUtilsLabelEXT"); \
+        }                                                                                          \
+        VulkanContext::vkCmdEndDebugUtilsLabelEXT(cmdBuffer.GetCommandBuffer());                   \
+    }
+
+// NOLINTEND (cppcoreguidelines-pro-type-cstyle-cast)
+#else
+#define VK_SET_DEBUG_NAME(obj, objType, name)
+#define VK_START_DEBUG_LABEL(cmdBuffer, name)
+#define VK_END_DEBUG_LABEL(cmdBuffer)
+#endif

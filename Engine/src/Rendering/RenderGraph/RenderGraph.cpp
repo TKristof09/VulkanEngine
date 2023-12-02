@@ -407,7 +407,7 @@ void RenderGraph::CreatePhysicalResources()
         }
     }
 
-    // TODO merge the usages of the virtual resources that have been merged together into the same physical resource
+
     for(const auto& info : imageInfos)
     {
         std::unordered_map<uint32_t, std::pair<VkPipelineStageFlags2, VkAccessFlags2>> usages;
@@ -1243,71 +1243,61 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 
     assert(m_isBuilt);
     // we don't allow reading from the swapchain image, I don't think it makes sense
-    /*
-    for(uint32_t passId : m_resourceWrites[SWAPCHAIN_RESOURCE_NAME])
-    {
-        m_renderPasses[passId]->SetSwapchainImageView(m_swapchainImages[frameIndex].GetImageView());
-    }
-    */
 
     auto& renderTarget = m_transientImages[m_resources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]]->GetPhysicalId()];
 
 
-    // transfer swapchain image to transfer dst layout because we will blit to it
     {
-        VkImageMemoryBarrier swapchainBarrier{};
-        swapchainBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        swapchainBarrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-        swapchainBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        swapchainBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        swapchainBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        swapchainBarrier.image                           = m_swapchainImages[frameIndex].GetImage();
-        swapchainBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        swapchainBarrier.subresourceRange.baseMipLevel   = 0;
-        swapchainBarrier.subresourceRange.baseArrayLayer = 0;
-        swapchainBarrier.subresourceRange.layerCount     = 1;
-        swapchainBarrier.subresourceRange.levelCount     = 1;
-        swapchainBarrier.srcAccessMask                   = 0;
-        swapchainBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        std::array<VkImageMemoryBarrier2, 2> barriers{};
 
-        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &swapchainBarrier);
-    }
+        // transfer swapchain image to transfer dst layout because we will blit to it
+        barriers[0].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        barriers[0].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        barriers[0].newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barriers[0].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barriers[0].image                           = m_swapchainImages[frameIndex].GetImage();
+        barriers[0].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        barriers[0].subresourceRange.baseMipLevel   = 0;
+        barriers[0].subresourceRange.baseArrayLayer = 0;
+        barriers[0].subresourceRange.layerCount     = 1;
+        barriers[0].subresourceRange.levelCount     = 1;
+        barriers[0].srcAccessMask                   = 0;
+        barriers[0].dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barriers[0].srcStageMask                    = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        barriers[0].dstStageMask                    = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
-    // transfer the render target back to color attachment layout
-    {
-        VkImageMemoryBarrier renderTargetBarrier{};
-        renderTargetBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        renderTargetBarrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-        renderTargetBarrier.newLayout                       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        renderTargetBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        renderTargetBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        renderTargetBarrier.image                           = renderTarget.GetImage();
-        renderTargetBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        renderTargetBarrier.subresourceRange.baseMipLevel   = 0;
-        renderTargetBarrier.subresourceRange.baseArrayLayer = 0;
-        renderTargetBarrier.subresourceRange.layerCount     = 1;
-        renderTargetBarrier.subresourceRange.levelCount     = 1;
-        renderTargetBarrier.srcAccessMask                   = 0;
-        renderTargetBarrier.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-        // TODO remove
-        VkImageMemoryBarrier tmpDepthBarrier{};
-        tmpDepthBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        tmpDepthBarrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
-        tmpDepthBarrier.newLayout                       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        tmpDepthBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        tmpDepthBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        tmpDepthBarrier.image                           = m_transientImages[m_resources[m_resourceIds["depthImage"]]->GetPhysicalId()].GetImage();
-        tmpDepthBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
-        tmpDepthBarrier.subresourceRange.baseMipLevel   = 0;
-        tmpDepthBarrier.subresourceRange.baseArrayLayer = 0;
-        tmpDepthBarrier.subresourceRange.layerCount     = 1;
-        tmpDepthBarrier.subresourceRange.levelCount     = 1;
-        tmpDepthBarrier.srcAccessMask                   = 0;
-        tmpDepthBarrier.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        // transfer the render target back to color attachment layout
+        barriers[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        barriers[1].oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        barriers[1].newLayout                       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        barriers[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barriers[1].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        barriers[1].image                           = renderTarget.GetImage();
+        barriers[1].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        barriers[1].subresourceRange.baseMipLevel   = 0;
+        barriers[1].subresourceRange.baseArrayLayer = 0;
+        barriers[1].subresourceRange.layerCount     = 1;
+        barriers[1].subresourceRange.levelCount     = 1;
+        barriers[1].srcAccessMask                   = 0;
+        barriers[1].dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barriers[1].srcStageMask                    = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        barriers[1].dstStageMask                    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &renderTargetBarrier);
-        // vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr, 0, nullptr, 1, &tmpDepthBarrier);
+
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.dependencyFlags          = 0;
+        dependencyInfo.bufferMemoryBarrierCount = 0;
+        dependencyInfo.pBufferMemoryBarriers    = nullptr;
+        dependencyInfo.imageMemoryBarrierCount  = 2;
+        dependencyInfo.pImageMemoryBarriers     = barriers.data();
+        dependencyInfo.memoryBarrierCount       = 0;
+        dependencyInfo.pMemoryBarriers          = nullptr;
+
+
+        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
     }
 
     for(auto& pass : m_orderedPasses)
@@ -1323,8 +1313,9 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
             vkCmdWaitEvents2(cb.GetCommandBuffer(), events.size(), events.data(), dependencies.data());
 
 
+        VK_START_DEBUG_LABEL(cb, pass->GetName().c_str());
         pass->Execute(cb, frameIndex);
-
+        VK_END_DEBUG_LABEL(cb);
 
         VkDependencyInfo dependencyInfo{};
         dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -1381,8 +1372,8 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 
     // Transfer the render target into transfer src optimal layout
     {
-        VkImageMemoryBarrier renderTargetBarrier{};
-        renderTargetBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        VkImageMemoryBarrier2 renderTargetBarrier{};
+        renderTargetBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
         renderTargetBarrier.oldLayout                       = m_finalRenderTargetLayout;
         renderTargetBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         renderTargetBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
@@ -1395,8 +1386,16 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         renderTargetBarrier.subresourceRange.levelCount     = 1;
         renderTargetBarrier.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         renderTargetBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        renderTargetBarrier.srcStageMask                    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        renderTargetBarrier.dstStageMask                    = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
-        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &renderTargetBarrier);
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers    = &renderTargetBarrier;
+
+
+        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
     }
 
     VkImageBlit blitRegion{};
@@ -1422,8 +1421,8 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
 
     // transition swapchain image to present leayout
     {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        VkImageMemoryBarrier2 barrier{};
+        barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
         barrier.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.newLayout                       = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
@@ -1436,7 +1435,15 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         barrier.subresourceRange.levelCount     = 1;
         barrier.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier(cb.GetCommandBuffer(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        barrier.srcStageMask                    = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        barrier.dstStageMask                    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers    = &barrier;
+
+        vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
     }
 }
 

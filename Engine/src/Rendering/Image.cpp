@@ -44,10 +44,10 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
         ci.format            = createInfo.format;
         ci.tiling            = createInfo.tiling;
         ci.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-        m_usage              = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT : createInfo.usage;  // TODO possibly add transfer dst bit to not need to specify it when constructing an image
+        m_usage              = createInfo.useMips ? createInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT : createInfo.usage;
         ci.usage             = m_usage;
         ci.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
-        ci.samples           = createInfo.msaaSamples;  // msaa
+        ci.samples           = createInfo.msaaSamples;
         ci.flags             = createInfo.isCubeMap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 
 
@@ -85,21 +85,11 @@ Image::Image(uint32_t width, uint32_t height, ImageCreateInfo createInfo) : m_wi
 #ifdef VDEBUG
     if(!createInfo.debugName.empty())
     {
-        m_debugName                        = createInfo.debugName;
-        // TODO load vulkan functions better
-        auto* fn                           = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"));
-        VkDebugUtilsObjectNameInfoEXT info = {};
-        info.sType                         = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-        info.objectHandle                  = (uint64_t)m_image;
-        info.objectType                    = VK_OBJECT_TYPE_IMAGE;
-        info.pObjectName                   = createInfo.debugName.c_str();
-        fn(VulkanContext::GetDevice(), &info);
+        m_debugName = createInfo.debugName;
+        VK_SET_DEBUG_NAME(m_image, VK_OBJECT_TYPE_IMAGE, createInfo.debugName.c_str());
 
-        info.objectHandle     = (uint64_t)m_imageViews[0];
-        info.objectType       = VK_OBJECT_TYPE_IMAGE_VIEW;
         createInfo.debugName += " image view 0";
-        info.pObjectName      = createInfo.debugName.c_str();
-        fn(VulkanContext::GetDevice(), &info);
+        VK_SET_DEBUG_NAME(m_imageViews[0], VK_OBJECT_TYPE_IMAGE_VIEW, createInfo.debugName.c_str());
     }
 #endif
 }
@@ -161,19 +151,11 @@ VkImageView Image::CreateImageView(uint32_t mip)
     VK_CHECK(vkCreateImageView(VulkanContext::GetDevice(), &viewCreateInfo, nullptr, &m_imageViews.back()), "Failed to create image views!");
 
 #ifdef VDEBUG
-    if(m_debugName.empty())
+    if(!m_debugName.empty())
     {
-        // TODO load vulkan functions better
-        auto* fn                           = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(VulkanContext::GetInstance(), "vkSetDebugUtilsObjectNameEXT"));
-        VkDebugUtilsObjectNameInfoEXT info = {};
-        info.sType                         = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-        fn(VulkanContext::GetDevice(), &info);
+        std::string name = m_debugName + " image view " + std::to_string(m_imageViews.size() - 1);
 
-        info.objectHandle = (uint64_t)m_imageViews[0];
-        info.objectType   = VK_OBJECT_TYPE_IMAGE_VIEW;
-        std::string name  = m_debugName + " image view " + std::to_string(m_imageViews.size() - 1);
-        info.pObjectName  = name.c_str();
-        fn(VulkanContext::GetDevice(), &info);
+        VK_SET_DEBUG_NAME(m_imageViews.back(), VK_OBJECT_TYPE_IMAGE_VIEW, name.c_str());
     }
 #endif
 
@@ -213,7 +195,6 @@ void Image::TransitionLayout(VkImageLayout newLayout)
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
 
-    // TODO need to understand barriers better
     barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     sourceStage           = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;

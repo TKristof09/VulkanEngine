@@ -256,6 +256,25 @@ uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, bool& didResize, 
     return slot;
 }
 
+uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, void* pUserData)
+{
+    bool temp = false;
+    return Allocate(numObjects, temp, pUserData);
+}
+
+void DynamicBufferAllocator::Free(uint64_t slot)
+{
+    auto it = m_allocations.find(slot);
+    if(it == m_allocations.end())
+    {
+        LOG_ERROR("Trying to free from slot which has no associated allocation");
+        return;
+    }
+
+    vmaVirtualFree(m_block, it->second);
+    m_allocations.erase(it);
+}
+
 void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data)
 {
     auto it = m_allocations.find(slot);
@@ -390,6 +409,8 @@ void DynamicBufferAllocator::Resize()
 
     cb.Submit(VulkanContext::GetGraphicsQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
     vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
+
+    m_resizeCallback(this);
 }
 
 void DynamicBufferAllocator::DeleteOldIfNeeded()

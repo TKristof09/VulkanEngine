@@ -78,7 +78,7 @@ private:
         std::array<glm::vec2, NUM_CASCADES> zPlanes;
     };
 
-    struct TileLights  // TODO
+    struct TileLights
     {
         glm::uint count;
         glm::uint indices[1024];
@@ -186,8 +186,6 @@ private:
 
     std::multiset<Pipeline> m_pipelines;
     std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
-
-    // std::unordered_map<std::string, std::unique_ptr<BufferAllocator>> m_ubAllocators;  // key: pipelineName + uboName(from shader) and "transforms" -> ub for storing the model matrices and "camera" -> VP matrix TODO: dont need one for the camera since its a global thing
 
 
     VkCommandPool& m_commandPool;

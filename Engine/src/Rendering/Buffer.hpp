@@ -77,10 +77,12 @@ protected:
     void* m_mappedMemory = nullptr;
 };
 
-// TODO add callbacks for when the buffer is resized
+
 class DynamicBufferAllocator
 {
 public:
+    using ResizeCallback = std::function<void(DynamicBufferAllocator*)>;
+
     // stagingBufferSize is ignored if mappable is true
     DynamicBufferAllocator(uint64_t startingSize, uint32_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, bool mappable = false)
         : m_currentSize(startingSize * elementSize),
@@ -88,6 +90,15 @@ public:
           m_stagingBufferSize(stagingBufferSize * elementSize),
           m_mappable(mappable),
           m_usage(usage)
+    {
+    }
+    DynamicBufferAllocator(uint64_t startingSize, uint32_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, ResizeCallback callback, bool mappable = false)
+        : m_currentSize(startingSize * elementSize),
+          m_elementSize(elementSize),
+          m_stagingBufferSize(stagingBufferSize * elementSize),
+          m_mappable(mappable),
+          m_usage(usage),
+          m_resizeCallback(callback)
     {
     }
 
@@ -109,6 +120,7 @@ public:
 
 
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
+    uint64_t Allocate(uint64_t numObjects, void* pUserData = nullptr);
     void UploadData(uint64_t slot, const void* data);
     void UploadData(const std::vector<uint64_t>& slots, const std::vector<const void*>& datas);
 
@@ -168,6 +180,8 @@ private:
     uint64_t m_stagingBufferSize;  // in bytes
     VkBufferUsageFlags m_usage;
     bool m_mappable;
+    ResizeCallback m_resizeCallback;
+
     Buffer m_buffer;
     Buffer m_stagingBuffer;
     Buffer m_tempBuffer;  // used when resizing in order to not destroy the old buffer while the gpu is working

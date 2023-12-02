@@ -228,8 +228,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
                     data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
                     //  data.shadowMapIds
                     //  data.shadowMapCount
-                    bool tmp                  = false;
-                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData));
                     m_shaderDataBuffer.UploadData(offset, &data);
                     // store the offset somewhere
                     m_shaderDataOffsets[i]["forwardplus"] = offset;
@@ -387,8 +386,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
                     data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
                     //  data.shadowMapIds
                     //  data.shadowMapCount
-                    bool tmp         = false;
-                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
+                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData));
                     m_shaderDataBuffer.UploadData(offset, &data);
                     // store the offset somewhere
                     m_shaderDataOffsets[i]["lightCull"] = offset;
@@ -397,24 +395,6 @@ Renderer::Renderer(std::shared_ptr<Window> window)
         lightCullPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                /*
-                // TODO this barrier should be done automatically by the rendergraph, also probably wrong src masks
-                VkBufferMemoryBarrier2 barrierBefore = {};
-                barrierBefore.sType                  = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-                barrierBefore.srcStageMask           = VK_PIPELINE_STAGE_2_HOST_BIT;
-                barrierBefore.srcAccessMask          = VK_ACCESS_2_HOST_WRITE_BIT;
-                barrierBefore.dstStageMask           = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-                barrierBefore.dstAccessMask          = VK_ACCESS_2_SHADER_READ_BIT;
-                barrierBefore.buffer                 = m_lightsBuffers[imageIndex]->GetBuffer(0);
-                barrierBefore.size                   = m_lightsBuffers[imageIndex]->GetSize();
-
-                VkDependencyInfo dependencyInfo         = {};
-                dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                dependencyInfo.bufferMemoryBarrierCount = 1;
-                dependencyInfo.pBufferMemoryBarriers    = &barrierBefore;
-
-                vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &dependencyInfo);
-                */
                 ShaderData data          = {};
                 data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
                 data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
@@ -1979,8 +1959,7 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
     uint32_t slot = 0;
     for(auto& buffer : m_transformBuffers)
     {
-        bool didResize = false;
-        slot           = buffer.Allocate(1, didResize);
+        slot = buffer.Allocate(1);
     }
     comp.objectID = slot;
 
@@ -2017,9 +1996,8 @@ void Renderer::OnMaterialComponentAdded(ComponentAdded<Material> e)
 void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 {
     uint32_t slot = 0;
-    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<DirectionalLight>();
     comp->_slot = slot;
@@ -2029,7 +2007,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 
     uint32_t matricesSlot = 0;
     for(auto& buffer : m_shadowMatricesBuffers)
-        matricesSlot = buffer.Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+        matricesSlot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     light->matricesSlot = matricesSlot;
 
@@ -2062,7 +2040,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     Image* img = m_shadowmaps[0].back().get();
     AddTexture(img, true);
     m_shadowMaps->AddImagePointer(img);
-    uint32_t shadowSlot = m_shadowIndices.Allocate(1, tmp);
+    uint32_t shadowSlot = m_shadowIndices.Allocate(1);
     uint32_t imgSlot    = img->GetSlot();
     m_shadowIndices.UploadData(shadowSlot, &imgSlot);
     m_numShadowIndices++;
@@ -2089,9 +2067,8 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
 {
     uint32_t slot = 0;
-    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<PointLight>();
     comp->_slot = slot;
@@ -2108,9 +2085,8 @@ void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
 void Renderer::OnSpotLightAdded(ComponentAdded<SpotLight> e)
 {
     uint32_t slot = 0;
-    bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<SpotLight>();
     comp->_slot = slot;
