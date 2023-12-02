@@ -53,6 +53,8 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     uint BRDFLUTIndex;
 };
 
+const float HORIZON_FADE_FACTOR = 1.3;
+
 // tonemap from https://64.github.io/tonemapping/
 vec3 uncharted2_tonemap_partial(vec3 x)
 {
@@ -221,6 +223,10 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
         float NdotL = clamp(dot(normal, lightDir), 0.0, 1.0);
         float VdotH = clamp(dot(viewDir, H), 0.0, 1.0);
 
+        // horizon fade https://marmosetco.tumblr.com/post/81245981087
+        float horizonFade = clamp(1.0 + HORIZON_FADE_FACTOR * dot(normalize(inNormal), lightDir), 0.0, 1.0);
+        horizonFade *= horizonFade;
+
 
         float attenuation = CalculateAttenuation(light);
         if (NdotL > 0.0 && attenuation > 0.0) {
@@ -230,7 +236,7 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
 
             vec3 spec = NDF * F * G / (4.0 * NdotL * NdotV + 0.0001);
             vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-            Lo += (kD * albedo * INVPI + spec) * NdotL * attenuation * light.color * light.intensity;
+            Lo += (kD * albedo * INVPI + spec * horizonFade) * NdotL * attenuation * light.color * light.intensity;
         }
     }
     return Lo;
@@ -279,6 +285,7 @@ void main() {
     vec3 r = reflect(-viewDir, normal);
     vec3 reflection = CalcPrefilteredReflection(r, roughness);
     vec2 brdf = texture(textures[shaderDataPtr.BRDFLUTIndex], vec2(clamp(dot(normal, viewDir), 0.0, 1.0), 1.0 - roughness)).rg; // use 1-roughness because of vulkan's flipped y uv coordinate
+
 
     // ambient lighting
     vec3 F = F_SchlickRoughness(clamp(dot(normal, viewDir), 0.0, 1.0), F0, roughness);

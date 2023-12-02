@@ -104,7 +104,7 @@ void pbr_spheres(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
     camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
-    camera.GetComponentMut<Transform>()->pos = {0.0f, 4.0f, -10.0f};
+    camera.GetComponentMut<Transform>()->pos = {0.0f, 4.0f, 10.0f};
     // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
 
@@ -158,7 +158,7 @@ void pbr_spheres(ECS* ecs)
 
     Entity lightParent        = ecs->CreateEntity("point lights");
     std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int lgridSize   = 2;
+    constexpr int lgridSize   = 1;
     for(int i = 0; i < lgridSize; ++i)
     {
         for(int j = 0; j < lgridSize; ++j)
@@ -176,7 +176,7 @@ void pbr_spheres(ECS* ecs)
             dt->pos  = {(i - lgridSize / 2.f) * 3, 1.5f, (j - lgridSize / 2.f) * 3};
         }
     }
-    ecs->AddSystem<TestSystem>(2, 2);
+    //ecs->AddSystem<TestSystem>(2, 2);
 
     Entity dlight = ecs->CreateEntity("DLight");
     DirectionalLight dl{};
