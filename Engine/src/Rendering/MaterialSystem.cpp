@@ -66,45 +66,7 @@ void MaterialSystem::OnMaterialComponentAdded(ComponentAdded<Material> e)
     uint64_t slot   = materialIt.first->second.Allocate(1, didResize, nullptr);
     comp->_ubSlot   = slot;  // TODO
 
-    ShaderMaterial mat{};
-    auto textureIt = comp->textures.find("albedo");
-    if(textureIt != comp->textures.end())
-    {
-        Texture& albedo = TextureManager::GetTexture(textureIt->second);
-        m_renderer->AddTexture(&albedo);
-        mat.albedoTexture = albedo.GetSlot();
-    }
-
-    textureIt = comp->textures.find("normal");
-    if(textureIt != comp->textures.end())
-    {
-        Texture& normal = TextureManager::GetTexture(textureIt->second);
-        m_renderer->AddTexture(&normal);
-        mat.normalTexture = normal.GetSlot();
-    }
-
-    textureIt = comp->textures.find("roughness");
-    if(textureIt != comp->textures.end())
-    {
-        Texture& roughness = TextureManager::GetTexture(textureIt->second);
-        m_renderer->AddTexture(&roughness);
-        mat.roughnessTexture = roughness.GetSlot();
-    }
-
-    textureIt = comp->textures.find("metallic");
-    if(textureIt != comp->textures.end())
-    {
-        Texture& metallic = TextureManager::GetTexture(textureIt->second);
-        m_renderer->AddTexture(&metallic);
-        mat.metallicTexture = metallic.GetSlot();
-    }
-
-    mat.albedo    = comp->albedo;
-    mat.roughness = comp->roughness;
-    mat.metallic  = comp->metallic;
-
-
-    materialIt.first->second.UploadData(slot, &mat);
+    UpdateMaterial(comp);
 
     // add transform ptr + material info ptr to the pipeline's object data buffer
     if(pipeline->m_materialBufferPtr == 0)
@@ -146,4 +108,54 @@ void MaterialSystem::OnMaterialComponentRemoved(ComponentRemoved<Material> e)
         }
     }
     m_freeTextureSlots[shaderName].push(comp->_textureSlot);
+}
+
+void MaterialSystem::UpdateMaterial(Material* material)
+{
+    auto materialIt = m_materialDatas.find(material->shaderName);
+    if(materialIt == m_materialDatas.end())
+    {
+        LOG_ERROR("Trying to update material with name {} which does not exist", material->shaderName);
+        return;
+    }
+
+    ShaderMaterial mat{};
+    auto textureIt = material->textures.find("albedo");
+    if(textureIt != material->textures.end())
+    {
+        Texture& albedo = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&albedo);
+        mat.albedoTexture = albedo.GetSlot();
+    }
+
+    textureIt = material->textures.find("normal");
+    if(textureIt != material->textures.end())
+    {
+        Texture& normal = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&normal);
+        mat.normalTexture = normal.GetSlot();
+    }
+
+    textureIt = material->textures.find("roughness");
+    if(textureIt != material->textures.end())
+    {
+        Texture& roughness = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&roughness);
+        mat.roughnessTexture = roughness.GetSlot();
+    }
+
+    textureIt = material->textures.find("metallic");
+    if(textureIt != material->textures.end())
+    {
+        Texture& metallic = TextureManager::GetTexture(textureIt->second);
+        m_renderer->AddTexture(&metallic);
+        mat.metallicTexture = metallic.GetSlot();
+    }
+
+    mat.albedo    = material->albedo;
+    mat.roughness = material->roughness;
+    mat.metallic  = material->metallic;
+
+
+    materialIt->second.UploadData(material->_ubSlot, &mat);
 }

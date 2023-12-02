@@ -43,12 +43,13 @@ HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* mater
             {
                 auto nameText = std::make_shared<Text>("\t" + name);
                 auto file     = std::make_shared<FileSelector>(&path);
-                file->RegisterCallback([comp, materialSystem](FileSelector* fileSelector)
-                                       {
-                                           TextureManager::LoadTexture(fileSelector->GetPath());
-                                           // TODO
-                                           // materialSystem->UpdateMaterial(comp);
-                                       });
+                file->RegisterCallback(
+                    [comp, materialSystem](FileSelector* fileSelector)
+                    {
+                        TextureManager::LoadTexture(fileSelector->GetPath());
+                        materialSystem->UpdateMaterial(comp);
+                    });
+
                 table->AddElement(nameText, row, 1);
                 table->AddElement(file, row, 2);
                 row++;

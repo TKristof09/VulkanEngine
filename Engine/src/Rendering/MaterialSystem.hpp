@@ -22,6 +22,8 @@ public:
 
     void OnSceneSwitched(SceneSwitchedEvent e);
 
+    void UpdateMaterial(Material* material);
+
 private:
     std::unordered_map<std::string, uint32_t> m_registry;
     std::unordered_map<std::string, VkSampler> m_samplers;                     // key is materialName + name of sampler
