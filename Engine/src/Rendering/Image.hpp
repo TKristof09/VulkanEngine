@@ -56,6 +56,9 @@ public:
     {
         if(this == &other)
             return *this;
+        if(m_image != VK_NULL_HANDLE)
+            Free();
+
         m_mipLevels           = other.m_mipLevels;
         m_width               = other.m_width;
         m_height              = other.m_height;

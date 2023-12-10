@@ -12,6 +12,13 @@ struct Camera
     Camera(float fovDeg, float aspect, float zNear) : fovRadians(glm::radians(fovDeg)), aspect(aspect), zNear(zNear) {}
 };
 
+struct MainCameraData
+{
+    glm::mat4 viewProj;
+    glm::vec3 pos;
+    float zNear;
+};
+
 inline glm::mat4 GetProjection(const Camera& camera)
 {
     float f = 1.0f / tan(camera.fovRadians / 2.0f);

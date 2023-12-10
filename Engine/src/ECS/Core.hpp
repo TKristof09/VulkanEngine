@@ -14,6 +14,7 @@ public:
 
     void Update(float dt);
 
+
     Entity CreateEntity(const std::string& name = "Entity");
     Entity CreateChildEntity(const Entity* parent, const std::string& name = "Entity");
     void DestroyEntity(Entity& entity);
@@ -21,6 +22,36 @@ public:
     template<typename T, typename... Args>
     void AddSystem(Args&&... args);
     // Do we want to be able to remove systems?
+
+    template<typename T>
+    const T* GetSingleton()
+    {
+        return m_world.get<T>();
+    }
+
+    template<typename T>
+    T* GetSingletonMut()
+    {
+        return m_world.get_mut<T>();
+    }
+
+    template<typename T>
+    void AddSingleton()
+    {
+        m_world.add<T>();
+    }
+    template<typename T>
+    void SetSingleton(const T& singleton)
+    {
+        m_world.set<T>(singleton);
+    }
+
+    template<typename T, typename... Args>
+    void EmplaceSingleton(Args&&... args)
+    {
+        m_world.emplace<T>(std::forward<Args>(args)...);
+    }
+
 
     template<typename... Components>
     QueryBuilder<Components...> StartQueryBuilder(const std::string& name = "")

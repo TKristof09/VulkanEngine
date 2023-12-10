@@ -1,6 +1,5 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-#include "bindings.glsl"
 #include "common.glsl"
 
 layout(location = 0) in vec2 uv;

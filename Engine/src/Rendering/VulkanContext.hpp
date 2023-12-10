@@ -3,7 +3,10 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
+#define NUM_FRAMES_IN_FLIGHT 2
 static const uint32_t NUM_TEXTURE_DESCRIPTORS = 65535;
+
+class Pipeline;
 class VulkanContext
 {
 public:
@@ -60,9 +63,11 @@ public:
         vkDestroyInstance(m_instance, nullptr);
     }
 
+#ifdef VDEBUG
     inline static PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT = nullptr;
     inline static PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXT = nullptr;
     inline static PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXT     = nullptr;
+#endif
 
 private:
     friend class Renderer;
@@ -138,6 +143,10 @@ private:
         VkDebugUtilsLabelEXT label = {};                                                             \
         label.sType                = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;                        \
         label.pLabelName           = name;                                                           \
+        label.color[0]             = 0.0f;                                                           \
+        label.color[1]             = 1.0f;                                                           \
+        label.color[2]             = 0.0f;                                                           \
+        label.color[3]             = 1.0f;                                                           \
         VulkanContext::vkCmdBeginDebugUtilsLabelEXT(cmdBuffer.GetCommandBuffer(), &label);           \
     }
 

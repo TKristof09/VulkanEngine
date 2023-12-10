@@ -65,6 +65,9 @@ void MaterialSystem::OnMaterialComponentAdded(ComponentAdded<Material> e)
     uint64_t slot   = materialIt.first->second.Allocate(1, nullptr);
     comp->_ubSlot   = slot;  // TODO
 
+    if(materialIt.second)
+        VK_SET_DEBUG_NAME(materialIt.first->second.GetVkBuffer(), VK_OBJECT_TYPE_BUFFER, std::format("{}_materialBuffer", comp->shaderName).c_str());
+
     UpdateMaterial(comp);
 
     // add transform ptr + material info ptr to the pipeline's object data buffer
@@ -97,15 +100,7 @@ void MaterialSystem::OnMaterialComponentRemoved(ComponentRemoved<Material> e)
 
     uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
 
-    for(int i = 0; i < numSwapchainImages; ++i)
-    {
-        for(auto& [name, bufferInfo] : pipeline->m_uniformBuffers)
-        {
-            if(bufferInfo.set != materialDescriptorSetIndex)
-                continue;
-            // m_renderer->m_ubAllocators[shaderName + name + std::to_string(i)]->Free(comp->_ubSlot);
-        }
-    }
+
     m_freeTextureSlots[shaderName].push(comp->_textureSlot);
 }
 

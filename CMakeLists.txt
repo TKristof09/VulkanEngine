@@ -33,7 +33,6 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/external/flecs)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/Engine)
 add_subdirectory(${CMAKE_SOURCE_DIR}/shaders)
-add_subdirectory(${CMAKE_SOURCE_DIR}/Application)
 add_subdirectory(${CMAKE_SOURCE_DIR}/Editor)
 
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)

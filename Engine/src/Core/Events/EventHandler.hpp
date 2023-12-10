@@ -11,6 +11,8 @@
 #include "ECS/CoreEvents/ComponentEvents.hpp"
 #include "Memory/LinearAllocator.hpp"
 #include "Application.hpp"
+#include "ECS/Core.hpp"
+#include "ECS/Observer.hpp"
 
 #define EVENT_BUFFER_SIZE 4194304  // 4 MB
 class EventHandler

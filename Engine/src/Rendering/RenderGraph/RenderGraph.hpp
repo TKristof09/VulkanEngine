@@ -5,7 +5,6 @@
 #include "Rendering/Buffer.hpp"
 #include "Rendering/Synchronization.hpp"
 #include "RenderingResource.hpp"
-#include "vulkan/vulkan_core.h"
 #include <stack>
 #include <unordered_set>
 #include <vulkan/vulkan.h>
@@ -27,7 +26,6 @@ struct Node
 };*/
 
 #define SWAPCHAIN_RESOURCE_NAME "__swapchain"
-#define NUM_FRAMES_IN_FLIGHT    2
 
 class RenderPass;
 class Renderer;

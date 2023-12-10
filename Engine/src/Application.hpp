@@ -1,12 +1,12 @@
 #pragma once
 #include "Rendering/Window.hpp"
-#include "Rendering/Renderer.hpp"
 #include "Core/Scene/Scene.hpp"
 #include "Core/Events/CoreEvents.hpp"
 
 class ECS;
 class MaterialSystem;
 class EventHandler;
+class Renderer;
 
 class Application
 {

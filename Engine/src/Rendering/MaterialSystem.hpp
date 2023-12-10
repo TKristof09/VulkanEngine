@@ -24,6 +24,18 @@ public:
 
     void UpdateMaterial(Material* material);
 
+    uint64_t GetMaterialBufferAddress(const std::string& materialName)
+    {
+        auto it = m_materialDatas.find(materialName);
+        if(it == m_materialDatas.end())
+        {
+            LOG_ERROR("Trying to get material buffer address for material {} which does not exist", materialName);
+            return 0;
+        }
+
+        return it->second.GetDeviceAddress(0);
+    }
+
 private:
     std::unordered_map<std::string, uint32_t> m_registry;
     std::unordered_map<std::string, VkSampler> m_samplers;                     // key is materialName + name of sampler

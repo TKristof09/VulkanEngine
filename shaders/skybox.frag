@@ -6,7 +6,13 @@
 layout(location = 0) in vec3 eyeDirection;
 
 layout(location = 0) out vec4 outColor;
-//
+
+
+layout(push_constant) uniform PushConstants {
+   mat4 viewProj;
+   int envMapSlot;
+};
+
 // tonemap from https://64.github.io/tonemapping/
 vec3 uncharted2_tonemap_partial(vec3 x)
 {
@@ -27,6 +33,6 @@ vec3 uncharted2_filmic(vec3 v)
     return uncharted2_tonemap_partial(v * exposure_bias) * white_scale;
 }
 void main() {
-    vec3 color = texture(cubemapTextures[int(data[0])], eyeDirection).rgb;
+    vec3 color = texture(cubemapTextures[envMapSlot], eyeDirection).rgb;
     outColor = vec4(uncharted2_filmic(color), 1.0);
 }

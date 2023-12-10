@@ -7,6 +7,7 @@
 #include "ECS/Core.hpp"
 #include "Utils/Time.hpp"
 #include "Core/Events/EventHandler.hpp"
+#include "Rendering/Renderer.hpp"
 
 Application* Application::s_instance = nullptr;
 
@@ -31,6 +32,9 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
     m_renderer = std::make_unique<Renderer>(m_window);
 
     m_materialSystem = std::make_unique<MaterialSystem>();
+
+
+    m_renderer->InitilizeRenderGraph();
 }
 
 Application::~Application()

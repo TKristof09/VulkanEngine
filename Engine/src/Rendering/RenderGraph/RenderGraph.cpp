@@ -54,6 +54,11 @@ RenderingTextureResource& RenderGraph::GetTextureResource(const std::string& nam
     if(it != m_resourceIds.end())
         return static_cast<RenderingTextureResource&>(*m_resources[it->second]);
 
+    if(m_isBuilt)
+    {
+        LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
+        assert(false);
+    }
     m_resourceIds[name] = m_resources.size();
     m_resources.push_back(std::make_unique<RenderingTextureResource>(name));
     return static_cast<RenderingTextureResource&>(*m_resources.back());
@@ -65,6 +70,11 @@ RenderingBufferResource& RenderGraph::GetBufferResource(const std::string& name)
     if(it != m_resourceIds.end())
         return static_cast<RenderingBufferResource&>(*m_resources[it->second]);
 
+    if(m_isBuilt)
+    {
+        LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
+        assert(false);
+    }
     m_resourceIds[name] = m_resources.size();
     m_resources.push_back(std::make_unique<RenderingBufferResource>(name));
     return static_cast<RenderingBufferResource&>(*m_resources.back());
@@ -76,6 +86,11 @@ RenderingTextureArrayResource& RenderGraph::GetTextureArrayResource(const std::s
     if(it != m_resourceIds.end())
         return static_cast<RenderingTextureArrayResource&>(*m_resources[it->second]);
 
+    if(m_isBuilt)
+    {
+        LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
+        assert(false);
+    }
     m_resourceIds[name] = m_resources.size();
     m_resources.push_back(std::make_unique<RenderingTextureArrayResource>(name));
     return static_cast<RenderingTextureArrayResource&>(*m_resources.back());

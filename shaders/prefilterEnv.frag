@@ -7,6 +7,10 @@ layout(location = 0) in vec3 pos;
 
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform PushConstants {
+    uint envMapSlot;
+    float roughness;
+};
 
 // Based omn http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0/
 float Random(vec2 co)
@@ -65,9 +69,8 @@ void main()
     vec3 viewDir = normal;
     vec3 color = vec3(0.0);
     float totalWeight = 0.0;
-    float envMapDim = float(textureSize(cubemapTextures[int(data[0])], 0).s);
+    float envMapDim = float(textureSize(cubemapTextures[envMapSlot], 0).s);
 
-    float roughness = data[1];
     // Solid angle of 1 pixel across all cube faces
     float omegaP = 4.0 * PI / (6.0 * envMapDim * envMapDim);
 
@@ -87,7 +90,7 @@ void main()
             float omegaS = 1.0 / (float(numSamples) * pdf + 0.0001);
             // Biased (+1.0) mip level for better result
             float mipLevel = roughness == 0.0 ? 0.0 : max(0.5 * log2(omegaS / omegaP) + 1.0, 0.0f);
-            color += textureLod(cubemapTextures[int(data[0])], lightDir, mipLevel).rgb * NdotL;
+            color += textureLod(cubemapTextures[envMapSlot], lightDir, mipLevel).rgb * NdotL;
             totalWeight += NdotL;
 
         }

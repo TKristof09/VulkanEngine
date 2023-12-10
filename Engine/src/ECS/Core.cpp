@@ -1,10 +1,13 @@
 #include "ECS/Core.hpp"
+#include "ECS/CoreSystems/MainCameraSystem.hpp"
 #include "ECS/CoreSystems/TransformSystem.hpp"
 #include <format>
 
 ECS::ECS()
 {
+    m_world.add<MainCameraData>();
     AddSystem<TransformSystem>();
+    AddSystem<MainCameraSystem>();
 }
 
 ECS::~ECS()

@@ -18,7 +18,6 @@
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "Utils/DebugUI.hpp"
-#include "Pipeline.hpp"
 #include "ECS/Core.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
@@ -28,11 +27,16 @@
 #define MAX_SHADOW_DEPTH 1000
 #define NUM_CASCADES     4
 
+class Pipeline;
+struct PipelineCreateInfo;
+struct TransformBuffers;
+
 class Renderer
 {
 public:
     Renderer(std::shared_ptr<Window> window);
     ~Renderer();
+    void InitilizeRenderGraph();
     void Render(double dt);
 
     Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
@@ -50,6 +54,8 @@ public:
 
     void AddTexture(Image* texture, bool isShadow = false);
     void RemoveTexture(Image* texture);
+
+    DynamicBufferAllocator& GetShaderDataBuffer() { return *m_shaderDataBuffer; }
 
 private:
     struct Light
@@ -96,12 +102,8 @@ private:
         uint64_t materialDataPtr;
     };
 
-    PushConstants m_pushConstants;
 
     std::unique_ptr<Pipeline> m_compute;
-    std::vector<std::unique_ptr<DynamicBufferAllocator>> m_lightsBuffers;
-    std::vector<std::unique_ptr<Buffer>> m_visibleLightsBuffers;
-    VkBuffer m_visibleLightsBuffer;
     std::unordered_map<uint32_t, Light> m_lightMap;
     std::vector<std::unordered_map<uint32_t, Light*>> m_changedLights;
     void UpdateLights(uint32_t index);
@@ -110,11 +112,6 @@ private:
     std::shared_ptr<Image> m_lightCullDebugImage;
 
     std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps;  // non point lights, store NUM_CASCADES images for each light
-    std::unique_ptr<Pipeline> m_shadowPipeline;
-    // std::vector<std::unique_ptr<Image>> m_pointLightShadowmaps; //cube maps
-
-
-    std::unique_ptr<Pipeline> m_depthPipeline;
 
     friend class MaterialSystem;
 
@@ -210,43 +207,29 @@ private:
 
     RenderGraph m_renderGraph;
 
-    DynamicBufferAllocator m_vertexBuffer;
-    DynamicBufferAllocator m_indexBuffer;
+    std::unique_ptr<DynamicBufferAllocator> m_vertexBuffer;
+    std::unique_ptr<DynamicBufferAllocator> m_indexBuffer;
 
-    DynamicBufferAllocator m_shaderDataBuffer;
-    std::array<std::unordered_map<std::string, uint64_t>, NUM_FRAMES_IN_FLIGHT> m_shaderDataOffsets;  // shader name -> offset in the shader data buffer
+    std::unique_ptr<DynamicBufferAllocator> m_shaderDataBuffer;
 
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
 
-    std::vector<DynamicBufferAllocator> m_shadowMatricesBuffers;
-
-
-    std::unique_ptr<Pipeline> m_skyboxPipeline;
-
-    std::unique_ptr<Image> m_envMap;
-    std::unique_ptr<Image> m_convEnvMap;
-    std::unique_ptr<Image> m_prefilteredEnvMap;
-    std::unique_ptr<Image> m_BRDFLUT;
     std::unique_ptr<Pipeline> m_equiToCubePipeline;
     std::unique_ptr<Pipeline> m_convoltionPipeline;
     std::unique_ptr<Pipeline> m_prefilterPipeline;
     std::unique_ptr<Pipeline> m_computeBRDFPipeline;
 
 
+    // TODO
+    std::vector<void*> m_renderPasses;
+
     // TODO temp
-    Buffer m_drawBuffer;
-    uint32_t m_numDrawCommands;
     bool m_needDrawBufferReupload = false;
-    std::vector<DynamicBufferAllocator> m_transformBuffers;
 
     RenderingTextureArrayResource* m_shadowMaps;
-    DynamicBufferAllocator m_shadowIndices;
-    uint32_t m_numShadowIndices = 0;
-
 
     // ECS queries
-    Query<const Camera, const InternalTransform> m_mainCameraQuery;
-    Query<const InternalTransform, const Renderable> m_transformsQuery;
+    Query<const InternalTransform, const Renderable, TransformBuffers> m_transformsQuery;
     Query<const Renderable> m_renderablesQuery;
 
     Query<const DirectionalLight, const InternalTransform> m_directionalLightsQuery;

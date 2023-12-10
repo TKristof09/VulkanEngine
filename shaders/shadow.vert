@@ -21,7 +21,10 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     ShadowMatricesBuffer shadowMatricesBuffer;
 };
 
+layout(push_constant) uniform PushConstants {
+    int lightIndex;
+    ShaderData shaderDataPtr;
+    Transforms transformsPtr;
+};
 void main() {
-    // TODO: in the future maybe pass the light index in some other way than just using debugMode
-    gl_Position = shaderDataPtr.shadowMatricesBuffer.data[shaderDataPtr.lightBuffer.data[debugMode].matricesSlot].lightSpaceMatrices[gl_ViewIndex] * transformsPtr.m[gl_DrawID] * vec4(inPosition, 1.0);
-}
+    gl_Position = shaderDataPtr.shadowMatricesBuffer.data[shaderDataPtr.lightBuffer.data[lightIndex].matricesSlot].lightSpaceMatrices[gl_ViewIndex] * transformsPtr.m[gl_DrawID] * vec4(inPosition, 1.0);}

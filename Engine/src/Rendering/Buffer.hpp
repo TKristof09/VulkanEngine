@@ -36,6 +36,10 @@ public:
     {
         if(this == &other)
             return *this;
+
+        if(m_buffer != VK_NULL_HANDLE)
+            Free();
+
         m_type                 = other.m_type;
         m_buffer               = other.m_buffer;
         m_size                 = other.m_size;
@@ -54,6 +58,7 @@ public:
 
     // offsets must be sorted in ascending order
     void Fill(const std::vector<const void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets);
+    void ZeroFill();
     void Bind(const CommandBuffer& commandBuffer);
     [[nodiscard]] const VkBuffer& GetVkBuffer() const { return m_buffer; }
     [[nodiscard]] VkDeviceSize GetSize() const { return m_size; }
@@ -91,6 +96,7 @@ public:
           m_mappable(mappable),
           m_usage(usage)
     {
+        Initialize();
     }
     DynamicBufferAllocator(uint64_t startingSize, uint32_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, ResizeCallback callback, bool mappable = false)
         : m_currentSize(startingSize * elementSize),
@@ -100,6 +106,7 @@ public:
           m_usage(usage),
           m_resizeCallback(callback)
     {
+        Initialize();
     }
 
     ~DynamicBufferAllocator()
@@ -121,8 +128,9 @@ public:
 
     uint64_t Allocate(uint64_t numObjects, bool& didResize, void* pUserData = nullptr);
     uint64_t Allocate(uint64_t numObjects, void* pUserData = nullptr);
-    void UploadData(uint64_t slot, const void* data);
+    void UploadData(uint64_t slot, const void* data, uint64_t offset = 0, uint64_t size = 0);
     void UploadData(const std::vector<uint64_t>& slots, const std::vector<const void*>& datas);
+
 
     void Free(uint64_t slot);
 
@@ -130,13 +138,8 @@ public:
 
     void Bind(CommandBuffer& cb) { m_buffer.Bind(cb); }
 
-    [[nodiscard]] uint64_t GetDeviceAddress(uint64_t slot)
+    [[nodiscard]] uint64_t GetDeviceAddress(uint64_t slot) const
     {
-        // TODO make initialisation not messy
-        if(m_buffer.GetVkBuffer() == VK_NULL_HANDLE)
-        {
-            Initialize();
-        }
         VkBufferDeviceAddressInfo info = {};
         info.sType                     = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         info.buffer                    = m_buffer.GetVkBuffer();
@@ -154,6 +157,8 @@ public:
         }
         return infos;
     }
+
+    [[nodiscard]] VkBuffer GetVkBuffer() const { return m_buffer.GetVkBuffer(); }
 
 private:
     void Resize();
@@ -173,6 +178,11 @@ private:
         VkFenceCreateInfo fenceCreateInfo = {};
         fenceCreateInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         VK_CHECK(vkCreateFence(VulkanContext::GetDevice(), &fenceCreateInfo, nullptr, &m_fence), "Failed to create fence");
+
+        if(m_mappable)
+        {
+            m_buffer.ZeroFill();
+        }
     }
 
     uint64_t m_currentSize;        // in bytes

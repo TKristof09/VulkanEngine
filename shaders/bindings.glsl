@@ -13,6 +13,7 @@ layout(buffer_reference, buffer_reference_align=4) readonly buffer Transforms {
 // TODO look at alignment
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData;
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer MaterialData;
+/*
 layout(push_constant) uniform PC
 {
     mat4 viewProj;
@@ -21,8 +22,9 @@ layout(push_constant) uniform PC
 
     float[4] data;
 
-    ShaderData shaderDataPtr; // we leave this as uint64_t because each shader declares their own ShaderData struct, and some shaders might not want to use any ShaderData
+    ShaderData shaderDataPtr;
     Transforms transformsPtr; // accessed with objectId
     uint64_t drawIdToObjectIdPtr; // used to access transforms, converts glDrawId to objectId
     MaterialData materialsPtr; // accessed with glDrawId
 };
+*/

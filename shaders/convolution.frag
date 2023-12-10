@@ -8,6 +8,10 @@ layout(location = 0) in vec3 pos;
 
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform PushConstants {
+    uint envMapSlot;
+};
+
 void main()
 {
     // the sample direction equals the hemisphere's orientation
@@ -31,7 +35,7 @@ void main()
             // tangent space to world
             vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * normal;
 
-            irradiance += texture(cubemapTextures[int(data[0])], sampleVec).rgb * cos(theta) * sin(theta);
+            irradiance += texture(cubemapTextures[envMapSlot], sampleVec).rgb * cos(theta) * sin(theta);
             sampleCount++;
         }
     }

@@ -107,14 +107,14 @@ void Buffer::Fill(const void* data, uint64_t size, uint64_t offset)
 {
     if(m_mappedMemory)
     {
-        memcpy((void*)((uintptr_t)m_mappedMemory + offset), data, (size_t)size);
+        memcpy((void*)((uint8_t*)m_mappedMemory + offset), data, (size_t)size);
         return;
     }
 
     void* memory = nullptr;
     VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
 
-    memcpy((void*)((uintptr_t)memory + offset), data, (size_t)size);
+    memcpy((void*)((uint8_t*)memory + offset), data, (size_t)size);
 
     /* On desktop hardware host visible memory is also always host coherent
     if(!m_isHostCoherent)
@@ -162,6 +162,25 @@ void Buffer::Fill(const std::vector<const void*>& datas, const std::vector<uint6
     vmaUnmapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation);
 }
 
+void Buffer::ZeroFill()
+{
+    if(m_mappedMemory)
+    {
+        memset(m_mappedMemory, 0, (size_t)m_size);
+        return;
+    }
+
+    void* memory = nullptr;
+    VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
+
+    memset(memory, 0, (size_t)m_size);
+
+    /* On desktop hardware host visible memory is also always host coherent
+    if(!m_isHostCoherent)
+        VK_CHECK(vmaFlushAllocation(VulkanContext::GetVmaAllocator(), m_allocation, offset, size), "Failed to flush memory");
+*/
+    vmaUnmapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation);
+}
 void Buffer::Bind(const CommandBuffer& commandBuffer)
 {
     switch(m_type)
@@ -205,6 +224,10 @@ DynamicBufferAllocator& DynamicBufferAllocator::operator=(DynamicBufferAllocator
 {
     if(this == &other)
         return *this;
+
+    if(m_fence != VK_NULL_HANDLE)
+        vkDestroyFence(VulkanContext::GetDevice(), m_fence, nullptr);
+
     m_currentSize       = other.m_currentSize;
     m_elementSize       = other.m_elementSize;
     m_stagingBufferSize = other.m_stagingBufferSize;
@@ -275,7 +298,7 @@ void DynamicBufferAllocator::Free(uint64_t slot)
     m_allocations.erase(it);
 }
 
-void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data)
+void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data, uint64_t offset, uint64_t size)
 {
     auto it = m_allocations.find(slot);
     if(it == m_allocations.end())
@@ -288,17 +311,22 @@ void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data)
     vmaGetVirtualAllocationInfo(m_block, it->second, &allocInfo);
 
     Buffer* dst = m_needDelete ? &m_tempBuffer : &m_buffer;
+
+    size = size == 0 ? allocInfo.size : size;
+    data = (void*)((uint8_t*)data + offset);
+
+    uint64_t memOffset = allocInfo.offset + offset;
     if(m_mappable)
     {
-        dst->Fill(data, allocInfo.size, allocInfo.offset);
+        dst->Fill(data, size, memOffset);
     }
     else
     {
-        m_stagingBuffer.Fill(data, allocInfo.size, 0);
+        m_stagingBuffer.Fill(data, size, 0);
         VkBufferCopy copyRegion = {};
         copyRegion.srcOffset    = 0;
-        copyRegion.dstOffset    = allocInfo.offset;
-        copyRegion.size         = allocInfo.size;
+        copyRegion.dstOffset    = memOffset;
+        copyRegion.size         = size;
 
         CommandBuffer cb;
         vkDeviceWaitIdle(VulkanContext::GetDevice());
@@ -312,7 +340,6 @@ void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data)
 
 void DynamicBufferAllocator::UploadData(const std::vector<uint64_t>& slots, const std::vector<const void*>& datas)
 {
-    /*
     std::vector<uint64_t> sizes;
     std::vector<uint64_t> offsets;
 
@@ -338,35 +365,26 @@ void DynamicBufferAllocator::UploadData(const std::vector<uint64_t>& slots, cons
     }
     else
     {
-        m_stagingBuffer.Fill(datas, );
-        VkBufferCopy copyRegion = {};
-        copyRegion.srcOffset    = 0;
-        copyRegion.dstOffset    = allocInfo.offset;
-        copyRegion.size         = allocInfo.size;
+        m_stagingBuffer.Fill(datas, sizes, offsets);
+        std::vector<VkBufferCopy> copyRegions;
+        for(uint64_t i = 0; i < slots.size(); i++)
+        {
+            VkBufferCopy copyRegion = {};
+            copyRegion.srcOffset    = 0;
+            copyRegion.dstOffset    = offsets[i];
+            copyRegion.size         = sizes[i];
+            copyRegions.push_back(copyRegion);
+        }
 
         CommandBuffer cb;
         vkDeviceWaitIdle(VulkanContext::GetDevice());
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-        vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), 1, &copyRegion);
+        vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), copyRegions.size(), copyRegions.data());
 
         cb.Submit(VulkanContext::GetGraphicsQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
         vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
     }
 }
-void DynamicBufferAllocator::Free(uint64_t slot)
-{
-    auto it = m_allocations.find(slot);
-    if(it == m_allocations.end())
-    {
-        LOG_ERROR("Dynamic buffer: no allocation with this offset");
-        return;
-    }
-
-    vmaVirtualFree(m_block, it->second);
-    m_allocations.erase(it);
-    */
-}
-
 void DynamicBufferAllocator::Resize()
 {
     m_currentSize *= 2;

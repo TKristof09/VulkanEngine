@@ -13,6 +13,18 @@ layout(location = 2) out vec3 worldPos;
 layout(location = 3) out flat int ID;
 
 
+layout(push_constant) uniform PC
+{
+    mat4 viewProj;
+    vec3 cameraPos;
+    int debugMode;
+
+    ShaderData shaderDataPtr;
+    Transforms transformsPtr; // accessed with objectId
+    uint64_t drawIdToObjectIdPtr; // used to access transforms, converts glDrawId to objectId
+    MaterialData materialsPtr; // accessed with glDrawId
+};
+
 void main() {
     ID = int(gl_DrawID);
     mat4 model = transformsPtr.m[gl_DrawID];

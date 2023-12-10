@@ -1,16 +1,16 @@
 #include "Rendering/Renderer.hpp"
+#include "ECS/CoreComponents/SkyboxComponent.hpp"
 
 #include <memory>
 #include <numeric>
 #include <sstream>
 #include <optional>
 #include <set>
-#include <map>
 #include <limits>
 #include <chrono>
 #include <array>
 #include <string>
-#include <math.h>
+#include <utility>
 #include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
@@ -20,7 +20,6 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/ext/matrix_transform.hpp>
-#include <utility>
 
 #include "Application.hpp"
 #include "Core/Events/EventHandler.hpp"
@@ -30,6 +29,7 @@
 #include "Rendering/VulkanContext.hpp"
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/RenderGraph/RenderPass.hpp"
+#include "Rendering/Pipeline.hpp"
 
 
 #include "ECS/CoreComponents/Camera.hpp"
@@ -37,6 +37,13 @@
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
+#include "ECS/CoreComponents/RendererComponents.hpp"
+
+#include "Rendering/CoreRenderPasses/DepthPass.hpp"
+#include "Rendering/CoreRenderPasses/ShadowPass.hpp"
+#include "Rendering/CoreRenderPasses/LightCullPass.hpp"
+#include "Rendering/CoreRenderPasses/LightingPass.hpp"
+#include "Rendering/CoreRenderPasses/SkyboxPass.hpp"
 
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -85,17 +92,10 @@ Renderer::Renderer(std::shared_ptr<Window> window)
       m_graphicsQueue(VulkanContext::m_graphicsQueue),
       m_commandPool(VulkanContext::m_commandPool),
       m_renderGraph(RenderGraph(this)),
-      m_vertexBuffer(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5),
-      m_indexBuffer(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6),
 
-      m_shaderDataBuffer(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, true),  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
-
-      m_pushConstants({}),
-      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS),
-      m_shadowIndices(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false)
+      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS)
 {
-    m_mainCameraQuery        = m_ecs->StartQueryBuilder<const Camera, const InternalTransform>("MainCameraQuery").build();
-    m_transformsQuery        = m_ecs->StartQueryBuilder<const InternalTransform, const Renderable>("TransformsQuery").build();
+    m_transformsQuery        = m_ecs->StartQueryBuilder<const InternalTransform, const Renderable, TransformBuffers>("TransformsQuery").term_at(3).singleton().build();
     m_renderablesQuery       = m_ecs->StartQueryBuilder<const Renderable>("RenderablesQuery").build();
     m_directionalLightsQuery = m_ecs->StartQueryBuilder<const DirectionalLight, const InternalTransform>("DirectionalLightsQuery").build();
     m_pointLightsQuery       = m_ecs->StartQueryBuilder<const PointLight, const InternalTransform>("PointLightsQuery").build();
@@ -110,13 +110,6 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnPointLightAdded);
     Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnSpotLightAdded);
 
-    // m_shadowMatricesBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
-    // m_transformBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
-    for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-    {
-        m_shadowMatricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
-        m_transformBuffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
-    }
 
     // fill in the free texture slots
     std::iota(m_freeTextureSlots.begin(), m_freeTextureSlots.end(), 0);
@@ -156,299 +149,33 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
     AddDebugUIWindow(m_rendererDebugWindow.get());
 
+    m_vertexBuffer = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5);
+    m_indexBuffer  = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6);
 
-    m_drawBuffer.Allocate(1000 * sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, true);  // TODO change to non mappable and use staging buffer
+    m_shaderDataBuffer = std::make_unique<DynamicBufferAllocator>(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, true);  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
+    VK_SET_DEBUG_NAME(m_shaderDataBuffer->GetVkBuffer(), VK_OBJECT_TYPE_BUFFER, "ShaderDataBuffer");
 
-    // TODO: temporary, remove later
+
+    m_ecs->EmplaceSingleton<DrawCommandBuffer>(1000, sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, 0, true);  // TODO change to non mappable and use staging buffer
+
+    m_ecs->AddSingleton<TransformBuffers>();
+    m_ecs->AddSingleton<ShadowBuffers>();
+    m_ecs->AddSingleton<LightBuffers>();
+    auto* transformBuffers = m_ecs->GetSingletonMut<TransformBuffers>();
+    auto* shadowBuffers    = m_ecs->GetSingletonMut<ShadowBuffers>();
+    auto* lightBuffers     = m_ecs->GetSingletonMut<LightBuffers>();
+
+    uint32_t totaltiles = ceil(m_swapchainExtent.width / 16.f) * ceil(m_swapchainExtent.height / 16.f);
+    lightBuffers->visibleLightsBuffer.Allocate(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);  // MAX_LIGHTS_PER_TILE
+    for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
     {
-        auto& depthPass                   = m_renderGraph.AddRenderPass("depthPass", QueueTypeFlagBits::Graphics);
-        AttachmentInfo depthInfo          = {};
-        depthInfo.clear                   = true;
-        depthInfo.clearValue.depthStencil = {0.0f, 0};
-        depthPass.AddDepthOutput("depthImage", depthInfo);
-        depthPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
-            {
-                vkCmdBeginRendering(cb.GetCommandBuffer(), depthPass.GetRenderingInfo());
+        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
 
+        shadowBuffers->matricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
+        shadowBuffers->indicesBuffers.emplace_back(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false);
 
-                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
-                PROFILE_SCOPE("Prepass draw call loop");
-                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
-
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-                m_vertexBuffer.Bind(cb);
-                m_indexBuffer.Bind(cb);
-                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
-
-                vkCmdEndRendering(cb.GetCommandBuffer());
-            });
+        lightBuffers->buffers.emplace_back(100, sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0, true);  // MAX_LIGHTS_PER_TILE
     }
-    {
-        struct ShaderData
-        {
-            glm::ivec2 viewportSize;
-            glm::ivec2 tileNums;
-            uint64_t lightBuffer;
-            uint64_t visibleLightsBuffer;
-            uint64_t shadowMatricesBuffer;
-
-            uint64_t shadowMapIds;
-            uint32_t shadowMapCount;
-            uint32_t irradianceMapIndex;
-            uint32_t prefilteredEnvMapIndex;
-            uint32_t BRDFLUTIndex;
-        };
-        auto& lightingPass         = m_renderGraph.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
-        AttachmentInfo colorInfo   = {};
-        colorInfo.clear            = true;
-        colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
-        lightingPass.AddColorOutput("colorImage", colorInfo);
-        lightingPass.AddDepthInput("depthImage");
-        auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
-        visibleLightsBuffer.SetBufferPointer(m_visibleLightsBuffers[0].get());
-        auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
-        auto& shadowMaps           = lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-
-        lightingPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
-            {
-                ShaderData data             = {};
-                data.viewportSize           = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums               = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer    = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                // TODO temp
-                data.shadowMapIds           = m_shadowIndices.GetDeviceAddress(0);
-                data.irradianceMapIndex     = m_convEnvMap->GetSlot();
-                data.prefilteredEnvMapIndex = m_prefilteredEnvMap->GetSlot();
-                data.BRDFLUTIndex           = m_BRDFLUT->GetSlot();
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
-                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
-                    //  data.shadowMapIds
-                    //  data.shadowMapCount
-                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData));
-                    m_shaderDataBuffer.UploadData(offset, &data);
-                    // store the offset somewhere
-                    m_shaderDataOffsets[i]["forwardplus"] = offset;
-                }
-            });
-        lightingPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
-            {
-                // TODO temporary
-                ShaderData data             = {};
-                data.viewportSize           = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums               = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer    = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                // TODO temp
-                data.shadowMapIds           = m_shadowIndices.GetDeviceAddress(0);
-                data.irradianceMapIndex     = m_convEnvMap->GetSlot();
-                data.prefilteredEnvMapIndex = m_prefilteredEnvMap->GetSlot();
-                data.BRDFLUTIndex           = m_BRDFLUT->GetSlot();
-
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
-                    data.shadowMapCount       = m_numShadowIndices;
-                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
-                    m_shaderDataBuffer.UploadData(m_shaderDataOffsets[i]["forwardplus"], &data);
-                }
-
-                vkCmdBeginRendering(cb.GetCommandBuffer(), lightingPass.GetRenderingInfo());
-
-
-                auto* pipeline = m_pipelinesRegistry["forwardplus"];
-                // vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
-
-                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->m_pipeline);
-
-                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
-                m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["forwardplus"]);
-                m_pushConstants.materialDataPtr    = pipeline->GetMaterialBufferPtr();
-
-                vkCmdPushConstants(cb.GetCommandBuffer(), pipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-
-                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-
-                m_vertexBuffer.Bind(cb);
-                m_indexBuffer.Bind(cb);
-
-                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
-
-                vkCmdEndRendering(cb.GetCommandBuffer());
-            });
-    }
-    {
-        struct ShaderData
-        {
-            uint64_t lightBuffer;
-            uint64_t shadowMatricesBuffer;
-        };
-        auto& shadowPass = m_renderGraph.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
-        // auto& shadowMatricesBuffer = shadowPass.AddStorageBufferReadOnly("shadowMatrices", VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, true);
-
-        m_shadowMaps = &shadowPass.AddTextureArrayOutput("shadowMaps", VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-
-        m_shadowMaps->SetFormat(VK_FORMAT_D32_SFLOAT);
-        shadowPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
-            {
-                ShaderData data = {};
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer          = m_lightsBuffers[i]->GetDeviceAddress(0);
-                    data.shadowMatricesBuffer = m_shadowMatricesBuffers[i].GetDeviceAddress(0);
-                    //  data.shadowMapIds
-                    //  data.shadowMapCount
-                    bool tmp                  = false;
-                    uint64_t offset           = m_shaderDataBuffer.Allocate(sizeof(ShaderData), tmp);
-                    m_shaderDataBuffer.UploadData(offset, &data);
-                    // store the offset somewhere
-                    m_shaderDataOffsets[i]["shadow"] = offset;
-                }
-            });
-        shadowPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
-            {
-                // TODO: how would this work with multiple lights? we somehow need to associate light with the corresponding image
-                for(const auto* img : m_shadowMaps->GetImagePointers())
-                {
-                    // set up the renderingInfo struct
-                    VkRenderingInfo rendering          = {};
-                    rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
-                    rendering.renderArea.extent.width  = img->GetWidth();
-                    rendering.renderArea.extent.height = img->GetHeight();
-                    // rendering.layerCount               = 1;
-                    rendering.viewMask                 = m_shadowPipeline->GetViewMask();
-
-                    VkRenderingAttachmentInfo depthAttachment     = {};
-                    depthAttachment.sType                         = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-                    depthAttachment.imageView                     = img->GetImageView();
-                    depthAttachment.clearValue.depthStencil.depth = 0.0f;
-                    depthAttachment.loadOp                        = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                    depthAttachment.storeOp                       = VK_ATTACHMENT_STORE_OP_STORE;
-                    depthAttachment.imageLayout                   = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-                    rendering.pDepthAttachment                    = &depthAttachment;
-
-                    vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-
-                    // render the corresponding light
-
-                    vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
-
-                    m_pushConstants.debugMode          = 0;
-                    m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
-                    m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["shadow"]);
-                    m_pushConstants.materialDataPtr    = 0;
-
-                    vkCmdPushConstants(cb.GetCommandBuffer(), m_shadowPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-
-                    VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-                    vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-
-                    m_vertexBuffer.Bind(cb);
-                    m_indexBuffer.Bind(cb);
-
-                    vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), m_drawBuffer.GetVkBuffer(), 0, m_numDrawCommands, sizeof(DrawCommand));
-                    vkCmdEndRendering(cb.GetCommandBuffer());
-                }
-            });
-    }
-    {
-        struct ShaderData
-        {
-            glm::ivec2 viewportSize;
-            glm::ivec2 tileNums;
-            uint64_t lightBuffer;
-            uint64_t visibleLightsBuffer;
-
-            int lightNum;
-            int depthTextureId;
-            int debugTextureId;
-        };
-        auto& lightCullPass       = m_renderGraph.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
-        auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer", "", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, true);
-        auto& depthTexture        = lightCullPass.AddTextureInput("depthImage");
-        lightCullPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
-            {
-                ShaderData data          = {};
-                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                data.lightNum            = m_lightMap.size();
-                data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer = m_lightsBuffers[i]->GetDeviceAddress(0);
-                    //  data.shadowMapIds
-                    //  data.shadowMapCount
-                    uint64_t offset  = m_shaderDataBuffer.Allocate(sizeof(ShaderData));
-                    m_shaderDataBuffer.UploadData(offset, &data);
-                    // store the offset somewhere
-                    m_shaderDataOffsets[i]["lightCull"] = offset;
-                }
-            });
-        lightCullPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
-            {
-                ShaderData data          = {};
-                data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                data.lightNum            = m_lightMap.size();
-                data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
-                data.lightBuffer         = m_lightsBuffers[imageIndex]->GetDeviceAddress(0);
-                m_shaderDataBuffer.UploadData(m_shaderDataOffsets[imageIndex]["lightCull"], &data);
-
-                uint32_t offset = 0;
-                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
-
-                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &descSet, 0, nullptr);
-                m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
-                m_pushConstants.shaderDataPtr      = m_shaderDataBuffer.GetDeviceAddress(m_shaderDataOffsets[imageIndex]["lightCull"]);
-
-
-                auto viewportSize = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                auto tileNums     = glm::ivec2(ceil(viewportSize.x / 16.0f), ceil(viewportSize.y / 16.0f));
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_compute->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-                vkCmdDispatch(cb.GetCommandBuffer(), tileNums.x, tileNums.y, 1);
-            });
-    }
-    {
-        auto& skyboxPass = m_renderGraph.AddRenderPass("skyboxPass", QueueTypeFlagBits::Graphics);
-        skyboxPass.AddColorOutput("skyboxImage", {}, "colorImage");
-        skyboxPass.AddDepthInput("depthImage");
-        skyboxPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
-            {
-                vkCmdBeginRendering(cb.GetCommandBuffer(), skyboxPass.GetRenderingInfo());
-
-                vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_pipeline);
-                VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-                vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_skyboxPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-                m_pushConstants.data[0] = m_envMap->GetSlot();
-                vkCmdPushConstants(cb.GetCommandBuffer(), m_skyboxPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
-                vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
-                vkCmdEndRendering(cb.GetCommandBuffer());
-            });
-    }
-    {
-        auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
-        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "skyboxImage");
-        uiPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t frameIndex)
-            {
-                vkCmdBeginRendering(cb.GetCommandBuffer(), uiPass.GetRenderingInfo());
-                m_debugUI->Draw(&cb);
-                vkCmdEndRendering(cb.GetCommandBuffer());
-            });
-    }
-    m_renderGraph.Build();
 
 
     vkDeviceWaitIdle(VulkanContext::GetDevice());
@@ -606,9 +333,11 @@ void Renderer::CreateInstance()
     debugCreateInfo.pfnUserCallback                    = debugUtilsMessengerCallback;
 
 
-    // VkValidationFeatureEnableEXT enables[] = { VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT}
     // Disable sync validation for now because of false positive when using bindless texture array but not actually accessing a texture, workaround to this in the validation layer is coming in a future SDK release, see https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/3450
-    std::vector<VkValidationFeatureEnableEXT> enables = {VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT /*, VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT*/};
+    std::vector<VkValidationFeatureEnableEXT> enables;
+    enables.push_back(VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT);
+    // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);  // TODO reenable sync validation when it gets fixed
+    // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 
 
     VkValidationFeaturesEXT features       = {};
@@ -841,92 +570,6 @@ Pipeline* Renderer::AddPipeline(const std::string& name, PipelineCreateInfo crea
 void Renderer::CreatePipeline()
 {
     {
-        // Compute
-        PipelineCreateInfo compute = {};
-        compute.type               = PipelineType::COMPUTE;
-        m_compute                  = std::make_unique<Pipeline>("lightCulling", compute);
-    }
-    {
-        // Depth prepass pipeline
-        LOG_WARN("Creating depth pipeline");
-        PipelineCreateInfo depthPipeline;
-        depthPipeline.type             = PipelineType::GRAPHICS;
-        depthPipeline.useColor         = false;
-        // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
-        depthPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
-        depthPipeline.depthWriteEnable = true;
-        depthPipeline.useDepth         = true;
-        depthPipeline.depthClampEnable = false;
-        depthPipeline.msaaSamples      = m_msaaSamples;
-        depthPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
-        depthPipeline.useMultiSampling = true;
-        depthPipeline.useColorBlend    = false;
-        depthPipeline.viewportExtent   = m_swapchainExtent;
-
-        depthPipeline.isGlobal = true;
-
-        // m_depthPipeline = AddPipeline("depth", depthPipeline, 0);
-        m_depthPipeline = std::make_unique<Pipeline>("depth", depthPipeline, 0);
-    }
-    uint32_t totaltiles = ceil(m_swapchainExtent.width / 16.f) * ceil(m_swapchainExtent.height / 16.f);
-
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        for(auto& [name, bufferInfo] : m_depthPipeline->m_uniformBuffers)
-        {
-            /*
-            if(m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] == nullptr)
-                m_ubAllocators[m_depthPipeline->m_name + name + std::to_string(i)] = std::move(std::make_unique<BufferAllocator>(bufferInfo.size, OBJECTS_PER_DESCRIPTOR_CHUNK, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT));
-            */
-        }
-
-        // TODO
-        m_lightsBuffers.emplace_back(std::make_unique<DynamicBufferAllocator>(100, sizeof(Light), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0, true));  // MAX_LIGHTS_PER_TILE
-        m_visibleLightsBuffers.emplace_back(std::make_unique<Buffer>(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT));       // MAX_LIGHTS_PER_TILE
-    }
-
-    {
-        // Shadow prepass pipeline
-        LOG_WARN("Creating shadow pipeline");
-        PipelineCreateInfo shadowPipeline;
-        shadowPipeline.type             = PipelineType::GRAPHICS;
-        shadowPipeline.useColor         = false;
-        // depthPipeline.parent			= const_cast<Pipeline*>(&(*mainIter));
-        shadowPipeline.depthCompareOp   = VK_COMPARE_OP_GREATER;
-        shadowPipeline.depthWriteEnable = true;
-        shadowPipeline.useDepth         = true;
-        shadowPipeline.depthClampEnable = false;
-        shadowPipeline.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
-        shadowPipeline.stages           = VK_SHADER_STAGE_VERTEX_BIT;
-        shadowPipeline.useMultiSampling = true;
-        shadowPipeline.useColorBlend    = false;
-        shadowPipeline.viewportExtent   = {SHADOWMAP_SIZE, SHADOWMAP_SIZE};
-        shadowPipeline.viewMask         = (1 << NUM_CASCADES) - 1;  // NUM_CASCADES of 1s
-        shadowPipeline.isGlobal         = true;
-
-        m_shadowPipeline = std::make_unique<Pipeline>("shadow", shadowPipeline);  // depth shader is fine for the shadow maps too since we only need the depth info from it
-    }
-
-    {
-        // Skybox pipeline
-        LOG_WARN("Creating skybox pipeline");
-        PipelineCreateInfo ci;
-        ci.type             = PipelineType::GRAPHICS;
-        ci.useColor         = true;
-        ci.depthCompareOp   = VK_COMPARE_OP_EQUAL;  // only write to pixels with depth = 0 which is infinitely far away
-        ci.depthWriteEnable = false;
-        ci.useDepth         = true;
-        ci.depthClampEnable = false;
-        ci.msaaSamples      = VK_SAMPLE_COUNT_1_BIT;
-        ci.stages           = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        ci.useMultiSampling = true;
-        ci.useColorBlend    = true;
-        ci.viewportExtent   = VulkanContext::GetSwapchainExtent();
-
-        m_skyboxPipeline = std::make_unique<Pipeline>("skybox", ci);
-    }
-
-    {
         // Equirectangular to cubemap pipeline
         LOG_WARN("Creating equiToCube pipeline");
         PipelineCreateInfo ci;
@@ -1025,7 +668,7 @@ void Renderer::CreateCommandBuffers()
 {
     for(size_t i = 0; i < m_swapchainImages.size(); i++)
     {
-        m_mainCommandBuffers.push_back(CommandBuffer());
+        m_mainCommandBuffers.emplace_back();
     }
 }
 
@@ -1195,8 +838,38 @@ void Renderer::CreateSampler()
     VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_shadowSampler), "Failed to create sampler");
 }
 
+
+void Renderer::InitilizeRenderGraph()
+{
+    {
+        auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
+        uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "skyboxImage");
+        uiPass.SetExecutionCallback(
+            [&](CommandBuffer& cb, uint32_t frameIndex)
+            {
+                vkCmdBeginRendering(cb.GetCommandBuffer(), uiPass.GetRenderingInfo());
+                m_debugUI->Draw(&cb);
+                vkCmdEndRendering(cb.GetCommandBuffer());
+            });
+    }
+
+    auto slot     = m_shaderDataBuffer->Allocate(4);
+    uint32_t data = 69;
+    m_shaderDataBuffer->UploadData(slot, &data);
+
+    m_renderPasses.push_back(new DepthPass(m_renderGraph));
+    m_renderPasses.push_back(new LightCullPass(m_renderGraph));
+    m_renderPasses.push_back(new ShadowPass(m_renderGraph));
+    m_renderPasses.push_back(new LightingPass(m_renderGraph));
+    m_renderPasses.push_back(new SkyboxPass(m_renderGraph));
+
+
+    m_renderGraph.Build();
+}
+
 void Renderer::RefreshDrawCommands()
 {
+    auto* draws = m_ecs->GetSingletonMut<DrawCommandBuffer>();
     std::vector<DrawCommand> drawCommands;
     m_renderablesQuery.each(
         [&](const Renderable& renderable)
@@ -1210,9 +883,22 @@ void Renderer::RefreshDrawCommands()
             // dc.objectID      = renderable->objectID;
 
             drawCommands.push_back(dc);
+
+            draws->buffer.Allocate(1);
         });
-    m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
-    m_numDrawCommands = drawCommands.size();
+
+    // TODO: find a nicer wayto do the upload
+    std::vector<uint64_t> slots;
+    std::vector<const void*> datas;
+
+    for(int i = 0; i < drawCommands.size(); ++i)
+    {
+        slots.push_back(i);
+        datas.push_back(&drawCommands[i]);
+    }
+
+    draws->buffer.UploadData(slots, datas);
+    draws->count = drawCommands.size();
 
     m_needDrawBufferReupload = false;
 }
@@ -1307,6 +993,8 @@ void Renderer::RemoveTexture(Image* texture)
 
 void Renderer::CreateEnvironmentMap()
 {
+    CommandBuffer cb;
+    Image* envMap = nullptr;
     {
         // CONVERT TO CUBEMAP
 
@@ -1318,9 +1006,9 @@ void Renderer::CreateEnvironmentMap()
         ci.isCubeMap   = true;
         ci.debugName   = "Environment Map";
 
-        m_envMap = std::make_unique<Image>(512, 512, ci);
+        m_ecs->EmplaceSingleton<SkyboxComponent>(512u, 512u, ci);
 
-        CommandBuffer cb;
+        envMap = &m_ecs->GetSingletonMut<SkyboxComponent>()->skybox;
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         // set up the renderingInfo struct
         VkRenderingInfo rendering          = {};
@@ -1332,7 +1020,7 @@ void Renderer::CreateEnvironmentMap()
 
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        attachment.imageView                 = m_envMap->CreateImageView(0);
+        attachment.imageView                 = envMap->CreateImageView(0);
         attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
         attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1345,34 +1033,34 @@ void Renderer::CreateEnvironmentMap()
         AddTexture(&img);
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_pipeline);
-        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_equiToCubePipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-        m_pushConstants.data[0] = img.GetSlot();
-        vkCmdPushConstants(cb.GetCommandBuffer(), m_equiToCubePipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        m_equiToCubePipeline->Bind(cb);
+        uint32_t textureSlot = img.GetSlot();
+        m_equiToCubePipeline->SetPushConstants(cb, &textureSlot, sizeof(uint32_t));
         vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
         vkCmdEndRendering(cb.GetCommandBuffer());
         cb.SubmitIdle();
 
-        m_envMap->GenerateMipmaps(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        cb.Reset();
 
-        AddTexture(m_envMap.get());
+        envMap->GenerateMipmaps(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+
+        AddTexture(envMap);
     }
 
+
+    // CONVOLUTION
+    ImageCreateInfo ci{};
+    ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
+    ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    ci.isCubeMap   = true;
+    ci.useMips     = false;
+    ci.debugName   = "Convoluted Environment Map";
+
+    Image convEnvMap(512, 512, ci);
+
     {
-        // CONVOLUTION
-        ImageCreateInfo ci{};
-        ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
-        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-        ci.isCubeMap   = true;
-        ci.useMips     = false;
-        ci.debugName   = "Convoluted Environment Map";
-
-        m_convEnvMap = std::make_unique<Image>(512, 512, ci);
-
-        CommandBuffer cb;
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         // set up the renderingInfo struct
         VkRenderingInfo rendering          = {};
@@ -1384,7 +1072,7 @@ void Renderer::CreateEnvironmentMap()
 
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        attachment.imageView                 = m_convEnvMap->GetImageView();
+        attachment.imageView                 = convEnvMap.GetImageView();
         attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
         attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1394,33 +1082,36 @@ void Renderer::CreateEnvironmentMap()
 
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_convoltionPipeline->m_pipeline);
-        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_convoltionPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-        m_pushConstants.data[0] = m_envMap->GetSlot();
-        vkCmdPushConstants(cb.GetCommandBuffer(), m_convoltionPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        m_convoltionPipeline->Bind(cb);
+        uint32_t envMapSlot = envMap->GetSlot();
+        m_convoltionPipeline->SetPushConstants(cb, &envMapSlot, sizeof(uint32_t));
         vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
         vkCmdEndRendering(cb.GetCommandBuffer());
         cb.SubmitIdle();
 
-        AddTexture(m_convEnvMap.get());
+        cb.Reset();
+        AddTexture(&convEnvMap);
     }
+    // PREFILTER ENVIRONMENT MAP
+    ci             = {};
+    ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
+    ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    ci.isCubeMap   = true;
+    ci.useMips     = true;
+    ci.debugName   = "Prefiltered Environment Map";
+
+    Image prefilteredEnvMap(512, 512, ci);
     {
-        // PREFILTER ENVIRONMENT MAP
-        ImageCreateInfo ci{};
-        ci.format      = VK_FORMAT_R32G32B32A32_SFLOAT;
-        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-        ci.isCubeMap   = true;
-        ci.useMips     = true;
-        ci.debugName   = "Prefiltered Environment Map";
+        struct PushConstants
+        {
+            uint32_t envMapSlot;
+            float roughness;
+        };
+        PushConstants pc{};
+        uint32_t mipLevels = prefilteredEnvMap.GetMipLevels();
 
-        m_prefilteredEnvMap = std::make_unique<Image>(512, 512, ci);
-
-        uint32_t mipLevels = m_prefilteredEnvMap->GetMipLevels();
-
-        CommandBuffer cb;
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
         // for the first mip we just copy the environment map
@@ -1485,7 +1176,7 @@ void Renderer::CreateEnvironmentMap()
 
             VkRenderingAttachmentInfo attachment = {};
             attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-            attachment.imageView                 = m_prefilteredEnvMap->CreateImageView(i);
+            attachment.imageView                 = prefilteredEnvMap.CreateImageView(i);
             attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
             attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1495,40 +1186,39 @@ void Renderer::CreateEnvironmentMap()
 
 
             vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-            vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_prefilterPipeline->m_pipeline);
+            m_prefilterPipeline->Bind(cb);
 
             VkViewport viewport = VulkanContext::GetViewport(mipWidth, mipHeight);
 
             vkCmdSetViewport(cb.GetCommandBuffer(), 0, 1, &viewport);
             vkCmdSetScissor(cb.GetCommandBuffer(), 0, 1, &rendering.renderArea);
 
-            VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-            vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_prefilterPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-            m_pushConstants.data[0] = m_envMap->GetSlot();
-            m_pushConstants.data[1] = (float)i / (float)(mipLevels - 1);
-            vkCmdPushConstants(cb.GetCommandBuffer(), m_prefilterPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+
+            pc.envMapSlot = envMap->GetSlot();
+            pc.roughness  = (float)i / (float)(mipLevels - 1);
+            m_prefilterPipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
             vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
             vkCmdEndRendering(cb.GetCommandBuffer());
         }
 
         cb.SubmitIdle();
+        cb.Reset();
 
-        AddTexture(m_prefilteredEnvMap.get());
+        AddTexture(&prefilteredEnvMap);
     }
 
+    // GENERATE BRDF LUT
+    ci             = {};
+    ci.format      = VK_FORMAT_R16G16_SFLOAT;
+    ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    ci.useMips     = false;
+    ci.debugName   = "BRDF LUT";
+
+    Image BRDFLUT(512, 512, ci);
+
     {
-        // GENERATE BRDF LUT
-        ImageCreateInfo ci{};
-        ci.format      = VK_FORMAT_R16G16_SFLOAT;
-        ci.usage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        ci.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-        ci.useMips     = false;
-        ci.debugName   = "BRDF LUT";
-
-        m_BRDFLUT = std::make_unique<Image>(512, 512, ci);
-
-        CommandBuffer cb;
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         // set up the renderingInfo struct
         VkRenderingInfo rendering          = {};
@@ -1539,7 +1229,7 @@ void Renderer::CreateEnvironmentMap()
 
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        attachment.imageView                 = m_BRDFLUT->GetImageView();
+        attachment.imageView                 = BRDFLUT.GetImageView();
         attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
         attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1549,17 +1239,16 @@ void Renderer::CreateEnvironmentMap()
 
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
-        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_computeBRDFPipeline->m_pipeline);
-        VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
-        vkCmdBindDescriptorSets(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_computeBRDFPipeline->m_layout, 0, 1, &descSet, 0, nullptr);
-        m_pushConstants.data[0] = m_envMap->GetSlot();
-        vkCmdPushConstants(cb.GetCommandBuffer(), m_computeBRDFPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
+        m_computeBRDFPipeline->Bind(cb);
         vkCmdDraw(cb.GetCommandBuffer(), 3, 1, 0, 0);
         vkCmdEndRendering(cb.GetCommandBuffer());
         cb.SubmitIdle();
+        cb.Reset();
 
-        AddTexture(m_BRDFLUT.get());
+        AddTexture(&BRDFLUT);
     }
+
+    m_ecs->EmplaceSingleton<PBREnvironment>(std::move(convEnvMap), std::move(prefilteredEnvMap), std::move(BRDFLUT));
 }
 
 std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
@@ -1762,11 +1451,12 @@ void Renderer::UpdateLights(uint32_t index)
             });
     }
 
+    auto* lightBuffers = m_ecs->GetSingletonMut<LightBuffers>();
     std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
     for(auto& [slot, newLight] : m_changedLights[index])
     {
         slotsAndDatas.emplace_back(slot, newLight);
-        m_lightsBuffers[index]->UploadData(slot, newLight);  // TODO batch the upload together
+        lightBuffers->buffers[index].UploadData(slot, newLight);  // TODO batch the upload together
     }
     m_changedLights[index].clear();
 
@@ -1775,29 +1465,23 @@ void Renderer::UpdateLights(uint32_t index)
 
 void Renderer::UpdateLightMatrices(uint32_t index)
 {
-    glm::mat4 inverseVP;
-    float zNear = NAN;
-    // TODO implement a function for inverse projection matrix instead of using generic inverse
-    m_mainCameraQuery.each(
-        [&](const Camera& camera, const InternalTransform& transform)
-        {
-            // TODO implement a function for inverse projection matrix instead of using generic inverse
-            inverseVP = transform.worldTransform * glm::inverse(GetProjection(camera));
-            zNear     = camera.zNear;
-        });
+    const auto* mainCamera = m_ecs->GetSingleton<MainCameraData>();
+    glm::mat4 inverseVP    = glm::inverse(mainCamera->viewProj);
+
+    auto* shadowBuffers = m_ecs->GetSingletonMut<ShadowBuffers>();
     for(const auto& [_, internalLight] : m_lightMap)
     {
         if(internalLight.type != LightType::Directional)
             continue;
 
-        auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, zNear, MAX_SHADOW_DEPTH);
+        auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, mainCamera->zNear, MAX_SHADOW_DEPTH);
 
         ShadowMatrices data{};
         data.lightSpaceMatrices = cascadesVP;
         data.lightViewMatrices  = cascadesV;
         data.zPlanes            = zPlanes;
 
-        m_shadowMatricesBuffers[index].UploadData(internalLight.matricesSlot, &data);
+        shadowBuffers->matricesBuffers[index].UploadData(internalLight.matricesSlot, &data);
     }
 }
 
@@ -1836,21 +1520,10 @@ void Renderer::Render(double dt)
 
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
 
-        glm::mat4 vp;
-        glm::vec3 cameraPos;
-
-        m_mainCameraQuery.each(
-            [&](const Camera& camera, const InternalTransform& transform)
-            {
-                vp        = GetProjection(camera) * glm::inverse(transform.worldTransform);
-                cameraPos = transform.worldTransform[3];
-            });
 
         //
         UpdateLights(imageIndex);
         UpdateLightMatrices(imageIndex);
-        m_pushConstants.cameraPos = cameraPos;
-        m_pushConstants.viewProj  = vp;
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
 
         if(m_needDrawBufferReupload)
@@ -1858,16 +1531,18 @@ void Renderer::Render(double dt)
             RefreshDrawCommands();
         }
         m_transformsQuery.each(
-            [&](const InternalTransform& transform, const Renderable& renderable)
+            [&](const InternalTransform& transform, const Renderable& renderable, TransformBuffers& transformBuffers)
             {
                 glm::mat4 model = transform.worldTransform;
-                for(auto& buffer : m_transformBuffers)
+                for(auto& buffer : transformBuffers.buffers)
                     buffer.UploadData(renderable.objectID, &model);
             });
     }
 
     m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
+    m_vertexBuffer->Bind(m_mainCommandBuffers[imageIndex]);
+    m_indexBuffer->Bind(m_mainCommandBuffers[imageIndex]);
     m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], imageIndex);
 
     VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -1891,6 +1566,8 @@ void Renderer::Render(double dt)
         PROFILE_SCOPE("Query results");
         // VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
     }
+    if(result == VK_ERROR_DEVICE_LOST)
+        VK_CHECK(result, "Queue present failed");
     if(result == VK_SUBOPTIMAL_KHR || m_window->IsResized())
     {
         m_window->SetResized(false);
@@ -1920,22 +1597,24 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
 
     // create the vertex and index buffers on the gpu
     bool didVBResize    = false;
-    uint64_t vertexSlot = m_vertexBuffer.Allocate(mesh->vertices.size(), didVBResize, (void*)&comp);
-    m_vertexBuffer.UploadData(vertexSlot, mesh->vertices.data());
+    uint64_t vertexSlot = m_vertexBuffer->Allocate(mesh->vertices.size(), didVBResize, (void*)&comp);
+
+    m_vertexBuffer->UploadData(vertexSlot, mesh->vertices.data());
 
     comp.vertexOffset = vertexSlot;
     comp.vertexCount  = mesh->vertices.size();
 
     bool didIBResize   = false;
-    uint64_t indexSlot = m_indexBuffer.Allocate(mesh->indices.size(), didIBResize, &comp);
-    m_indexBuffer.UploadData(indexSlot, mesh->indices.data());
+    uint64_t indexSlot = m_indexBuffer->Allocate(mesh->indices.size(), didIBResize, &comp);
+
+    m_indexBuffer->UploadData(indexSlot, mesh->indices.data());
 
     comp.indexOffset = indexSlot;
     comp.indexCount  = mesh->indices.size();
 
     if(didVBResize)
     {
-        for(const auto& [slot, info] : m_vertexBuffer.GetAllocationInfos())
+        for(const auto& [slot, info] : m_vertexBuffer->GetAllocationInfos())
         {
             auto* renderable         = (Renderable*)info.pUserData;  // TODO
             renderable->vertexOffset = slot;
@@ -1944,7 +1623,7 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
 
     if(didIBResize)
     {
-        for(const auto& [slot, info] : m_indexBuffer.GetAllocationInfos())
+        for(const auto& [slot, info] : m_indexBuffer->GetAllocationInfos())
         {
             auto* renderable        = (Renderable*)info.pUserData;
             renderable->indexOffset = slot;
@@ -1956,14 +1635,14 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
         // RecreateDrawBuffers();
     }
 
-    uint32_t slot = 0;
-    for(auto& buffer : m_transformBuffers)
+    uint32_t slot          = 0;
+    auto* transformBuffers = m_ecs->GetSingletonMut<TransformBuffers>();
+    for(auto& buffer : transformBuffers->buffers)
     {
         slot = buffer.Allocate(1);
     }
     comp.objectID = slot;
 
-    comp.objectID = slot;
 
     m_needDrawBufferReupload = true;
 
@@ -1995,9 +1674,11 @@ void Renderer::OnMaterialComponentAdded(ComponentAdded<Material> e)
 
 void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 {
+    auto* lightBuffers = m_ecs->GetSingletonMut<LightBuffers>();
+    ++lightBuffers->lightNum;
     uint32_t slot = 0;
-    for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+    for(auto& buffer : lightBuffers->buffers)
+        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<DirectionalLight>();
     comp->_slot = slot;
@@ -2005,8 +1686,9 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     m_lightMap[slot] = {LightType::Directional};  // 0 = DirectionalLight
     Light* light     = &m_lightMap[slot];
 
+    auto* shadowBuffers   = m_ecs->GetSingletonMut<ShadowBuffers>();
     uint32_t matricesSlot = 0;
-    for(auto& buffer : m_shadowMatricesBuffers)
+    for(auto& buffer : shadowBuffers->matricesBuffers)
         matricesSlot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     light->matricesSlot = matricesSlot;
@@ -2039,11 +1721,14 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     m_shadowmaps.push_back(std::move(vec));
     Image* img = m_shadowmaps[0].back().get();
     AddTexture(img, true);
-    m_shadowMaps->AddImagePointer(img);
-    uint32_t shadowSlot = m_shadowIndices.Allocate(1);
-    uint32_t imgSlot    = img->GetSlot();
-    m_shadowIndices.UploadData(shadowSlot, &imgSlot);
-    m_numShadowIndices++;
+    m_renderGraph.GetTextureArrayResource("shadowMaps").AddImagePointer(img);
+    for(auto& buffer : shadowBuffers->indicesBuffers)
+    {
+        uint32_t shadowSlot = buffer.Allocate(1);
+        uint32_t imgSlot    = img->GetSlot();
+        buffer.UploadData(shadowSlot, &imgSlot);
+    }
+    ++shadowBuffers->numIndices;
 
     // TODO
 
@@ -2066,9 +1751,11 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 
 void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
 {
+    auto* lightBuffers = m_ecs->GetSingletonMut<LightBuffers>();
+    ++lightBuffers->lightNum;
     uint32_t slot = 0;
-    for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+    for(auto& buffer : lightBuffers->buffers)
+        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<PointLight>();
     comp->_slot = slot;
@@ -2084,9 +1771,11 @@ void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
 
 void Renderer::OnSpotLightAdded(ComponentAdded<SpotLight> e)
 {
+    auto* lightBuffers = m_ecs->GetSingletonMut<LightBuffers>();
+    ++lightBuffers->lightNum;
     uint32_t slot = 0;
-    for(auto& buffer : m_lightsBuffers)
-        slot = buffer->Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+    for(auto& buffer : lightBuffers->buffers)
+        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<SpotLight>();
     comp->_slot = slot;
@@ -2412,6 +2101,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         LOG_ERROR(message.str());
+        assert(true); // just to be able to place a breakpoint :)
     }
 
 

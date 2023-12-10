@@ -6,7 +6,9 @@ layout(location = 0) in vec3 pos;
 
 layout(location = 0) out vec4 outColor;
 
-
+layout(push_constant) uniform PushConstants {
+    uint textureId;
+};
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
 
@@ -21,6 +23,6 @@ vec2 SampleSphericalMap(vec3 v)
 void main() {
   vec2 uv = SampleSphericalMap(normalize(pos));
   uv.y = 1.0 - uv.y;
-  outColor = vec4(texture(textures[int(data[0])], uv).rgb, 1.0);
+  outColor = vec4(texture(textures[textureId], uv).rgb, 1.0);
 }
 

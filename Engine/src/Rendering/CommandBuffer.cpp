@@ -1,7 +1,7 @@
 #include "CommandBuffer.hpp"
 #include <limits>
 
-CommandBuffer::CommandBuffer(VkCommandBufferLevel level) : m_running(false),
+CommandBuffer::CommandBuffer(VkCommandBufferLevel level) : m_recording(false),
                                                            m_commandBuffer(VK_NULL_HANDLE)
 {
     Allocate(level);
@@ -9,7 +9,7 @@ CommandBuffer::CommandBuffer(VkCommandBufferLevel level) : m_running(false),
 
 void CommandBuffer::Allocate(VkCommandBufferLevel level)
 {
-    m_running = false;
+    m_recording = false;
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -41,7 +41,7 @@ void CommandBuffer::Begin(VkCommandBufferUsageFlags usage)
     beginInfo.flags                    = usage;
 
     VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
-    m_running = true;
+    m_recording = true;
 }
 void CommandBuffer::Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo)
 {
@@ -51,21 +51,22 @@ void CommandBuffer::Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheri
     beginInfo.pInheritanceInfo         = &inheritanceInfo;  // this is ignore if its a primary command buffer
 
     VK_CHECK(vkBeginCommandBuffer(m_commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
-    m_running = true;
+    m_recording = true;
 }
 
 void CommandBuffer::End()
 {
-    if(!m_running)
+    if(!m_recording)
         return;
 
     VK_CHECK(vkEndCommandBuffer(m_commandBuffer), "Failed to record command buffer!");
-    m_running = false;
+    m_recording = false;
+    m_isGlobalDescSetBound.clear();
 }
 
 void CommandBuffer::SubmitIdle(VkQueue queue)
 {
-    if(m_running)
+    if(m_recording)
         End();
 
     VkSubmitInfo submitInfo       = {};
@@ -87,7 +88,7 @@ void CommandBuffer::SubmitIdle(VkQueue queue)
 void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence)
 {
     PROFILE_FUNCTION();
-    if(m_running)
+    if(m_recording)
         End();
 
     VkSubmitInfo submitInfo       = {};
@@ -119,7 +120,7 @@ void CommandBuffer::Submit(VkQueue queue, VkSemaphore waitSemaphore, VkPipelineS
 
 void CommandBuffer::Submit(VkQueue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence)
 {
-    if(m_running)
+    if(m_recording)
         End();
 
     VkSubmitInfo submitInfo       = {};
@@ -142,4 +143,20 @@ void CommandBuffer::Submit(VkQueue queue, const std::vector<VkSemaphore>& waitSe
     }
 
     VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), "Failed to submit command buffer");
+}
+
+void CommandBuffer::Reset()
+{
+    VK_CHECK(vkResetCommandBuffer(m_commandBuffer, 0), "Failed to reset command buffer!");
+    m_recording = false;
+}
+
+void CommandBuffer::BindGlobalDescSet(VkPipelineBindPoint bindPoint, VkPipelineLayout layout)
+{
+    if(m_isGlobalDescSetBound[bindPoint])
+        return;
+
+    VkDescriptorSet descSet = VulkanContext::GetGlobalDescSet();
+    vkCmdBindDescriptorSets(m_commandBuffer, bindPoint, layout, 0, 1, &descSet, 0, nullptr);
+    m_isGlobalDescSetBound[bindPoint] = true;
 }

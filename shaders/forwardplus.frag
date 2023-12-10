@@ -53,6 +53,18 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     uint BRDFLUTIndex;
 };
 
+layout(push_constant) uniform PC
+{
+    mat4 viewProj;
+    vec3 cameraPos;
+    int debugMode;
+
+    ShaderData shaderDataPtr;
+    Transforms transformsPtr; // accessed with objectId
+    uint64_t drawIdToObjectIdPtr; // used to access transforms, converts glDrawId to objectId
+    MaterialData materialsPtr; // accessed with glDrawId
+};
+
 const float HORIZON_FADE_FACTOR = 1.3;
 
 // tonemap from https://64.github.io/tonemapping/

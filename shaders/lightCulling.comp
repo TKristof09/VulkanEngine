@@ -19,8 +19,8 @@ layout(buffer_reference, std430, buffer_reference_align=4) writeonly buffer Visi
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData {
     ivec2 viewportSize;
     ivec2 tileNums;
-    LightBuffer lightBuffer;
     VisibleLightsBuffer visibleLightsBuffer;
+    LightBuffer lightBuffer;
 
     int lightNum;
     int depthTextureId;
@@ -29,6 +29,13 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
 //layout(set = 0, binding = 3) uniform sampler2D depthTexture;
 
 //layout(set = 0, binding = 4, rgba8) uniform writeonly image2D debugTexture;
+
+layout(push_constant) uniform PushConstants {
+    mat4 viewProj;
+    vec3 cameraPos;
+    int debugMode;
+    ShaderData shaderDataPtr;
+};
 
 
 struct ViewFrustum

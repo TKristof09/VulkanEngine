@@ -1,12 +1,16 @@
 #include "Pipeline.hpp"
-#include "ECS/CoreComponents/Mesh.hpp"
+#include "Application.hpp"
 #include "Rendering/VulkanContext.hpp"
+#include "Rendering/MaterialSystem.hpp"
 
 Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
     : m_name(shaderName),
+      m_type(createInfo.type),
       m_priority(priority),
       m_isGlobal(createInfo.isGlobal),
-      m_viewMask(createInfo.viewMask)
+      m_viewMask(createInfo.viewMask),
+      m_renderer(Application::GetInstance()->GetRenderer()),
+      m_shaderDataSlots({})
 {
     if(createInfo.type == PipelineType::GRAPHICS)
     {
@@ -34,6 +38,8 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
     {
         shader.DestroyShaderModule();
     }
+
+    VK_SET_DEBUG_NAME(m_pipeline, VK_OBJECT_TYPE_PIPELINE, m_name.c_str());
 }
 
 Pipeline::~Pipeline()
@@ -46,6 +52,12 @@ Pipeline::~Pipeline()
         m_pipeline = VK_NULL_HANDLE;
     }
 }
+
+uint64_t Pipeline::GetMaterialBufferPtr() const
+{
+    return Application::GetInstance()->GetMaterialSystem()->GetMaterialBufferAddress(m_name);
+}
+
 
 void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
 {
@@ -87,17 +99,16 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     VkRect2D scissor                                = {};
     if(!createInfo.useDynamicViewport)
     {
-        
-        viewport.width      = (float)createInfo.viewportExtent.width;
-        viewport.height     = -(float)createInfo.viewportExtent.height;
-        viewport.x          = 0.f;
-        viewport.y          = (float)createInfo.viewportExtent.height;
-        viewport.minDepth   = 0.0f;
-        viewport.maxDepth   = 1.0f;
+        viewport.width    = (float)createInfo.viewportExtent.width;
+        viewport.height   = -(float)createInfo.viewportExtent.height;
+        viewport.x        = 0.f;
+        viewport.y        = (float)createInfo.viewportExtent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
 
-        
-        scissor.offset   = {0, 0};
-        scissor.extent   = createInfo.viewportExtent;
+
+        scissor.offset = {0, 0};
+        scissor.extent = createInfo.viewportExtent;
 
 
         viewportState.pViewports = &viewport;
@@ -265,4 +276,34 @@ void Pipeline::CreateComputePipeline(const PipelineCreateInfo& createInfo)
     }
 
     VK_CHECK(vkCreateComputePipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &m_pipeline), "Failed to create compute pipeline");
+}
+
+void Pipeline::Bind(CommandBuffer& cb) const
+{
+    switch(m_type)
+    {
+    case PipelineType::GRAPHICS:
+        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+        break;
+    case PipelineType::COMPUTE:
+        vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, m_pipeline);
+        break;
+    default:
+        LOG_ERROR("Invalid pipeline type");
+        break;
+    }
+
+    if(m_usesDescriptorSet)
+    {
+        cb.BindGlobalDescSet(GetBindPoint(), m_layout);
+    }
+}
+void Pipeline::SetPushConstants(CommandBuffer& cb, void* data, uint32_t size, uint32_t offset)
+{
+    if(offset + size > 128)
+    {
+        LOG_ERROR("Push constant size is too big");
+        return;
+    }
+    vkCmdPushConstants(cb.GetCommandBuffer(), m_layout, VK_SHADER_STAGE_ALL, offset, size, data);
 }

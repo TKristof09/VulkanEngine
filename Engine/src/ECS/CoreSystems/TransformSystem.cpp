@@ -5,7 +5,7 @@ void TransformSystem::Initialize()
 {
     // Pre render phase because we want to calculate the world transforms at the end after all gameplay logic is done, right before rendering
     StartSystemBuilder<const Transform, const InternalTransform*, InternalTransform>(
-        SystemPhase::PreRender,
+        SystemPhase::PostUpdate,  // TODO: is this the right phase for this?
         [](auto& builder)
         {
             builder.term_at(2)
