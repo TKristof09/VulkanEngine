@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Core/Events/CoreEvents.hpp"
-#include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/InternalTransform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
@@ -23,6 +22,7 @@
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 
+
 #define SHADOWMAP_SIZE   2048
 #define MAX_SHADOW_DEPTH 1000
 #define NUM_CASCADES     4
@@ -30,6 +30,12 @@
 class Pipeline;
 struct PipelineCreateInfo;
 struct TransformBuffers;
+
+class DepthPass;
+class LightCullPass;
+class LightingPass;
+class SkyboxPass;
+class ShadowPass;
 
 class Renderer
 {
@@ -220,8 +226,12 @@ private:
     std::unique_ptr<Pipeline> m_computeBRDFPipeline;
 
 
-    // TODO
-    std::vector<void*> m_renderPasses;
+    // Renderpasses
+    std::unique_ptr<DepthPass> m_depthPass;
+    std::unique_ptr<ShadowPass> m_shadowPass;
+    std::unique_ptr<LightCullPass> m_lightCullPass;
+    std::unique_ptr<LightingPass> m_lightingPass;
+    std::unique_ptr<SkyboxPass> m_skyboxPass;
 
     // TODO temp
     bool m_needDrawBufferReupload = false;

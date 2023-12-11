@@ -94,7 +94,7 @@ private:
     std::unordered_map<std::string, std::vector<uint32_t>> m_resourceWrites;
 
     // TODO RenderPasses are not owned by the graph?
-    std::vector<RenderPass*> m_renderPasses;
+    std::vector<std::unique_ptr<RenderPass>> m_renderPasses;
     // same as m_renderPasses but ordered based on the dependencies between passes, to be used for execution
     std::vector<RenderPass*> m_orderedPasses;
     std::unordered_map<std::string, uint32_t> m_renderPassIds;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Application.hpp"
+#include "ECS/CoreComponents/Camera.hpp"
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/Pipeline.hpp"
 #include "ECS/Core.hpp"
@@ -68,8 +69,8 @@ private:
 
     struct PushConstants
     {
-        glm::mat4 viewProj;   // this is set by the renderer, not each pass (might change in the future if we start needing multiple cameras for things like reflections or idk)
-        glm::vec3 cameraPos;  // this is set by the renderer, not each pass (might change in the future if we start needing multiple cameras for things like reflections or idk)
+        glm::mat4 viewProj;
+        glm::vec3 cameraPos;
         int32_t debugMode;
         uint64_t shaderDataPtr;
         uint64_t transformBufferPtr;

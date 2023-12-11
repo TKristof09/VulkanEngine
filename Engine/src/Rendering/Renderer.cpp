@@ -39,11 +39,12 @@
 #include "ECS/CoreComponents/Material.hpp"
 #include "ECS/CoreComponents/RendererComponents.hpp"
 
+
 #include "Rendering/CoreRenderPasses/DepthPass.hpp"
-#include "Rendering/CoreRenderPasses/ShadowPass.hpp"
 #include "Rendering/CoreRenderPasses/LightCullPass.hpp"
 #include "Rendering/CoreRenderPasses/LightingPass.hpp"
 #include "Rendering/CoreRenderPasses/SkyboxPass.hpp"
+#include "Rendering/CoreRenderPasses/ShadowPass.hpp"
 
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -853,15 +854,11 @@ void Renderer::InitilizeRenderGraph()
             });
     }
 
-    auto slot     = m_shaderDataBuffer->Allocate(4);
-    uint32_t data = 69;
-    m_shaderDataBuffer->UploadData(slot, &data);
-
-    m_renderPasses.push_back(new DepthPass(m_renderGraph));
-    m_renderPasses.push_back(new LightCullPass(m_renderGraph));
-    m_renderPasses.push_back(new ShadowPass(m_renderGraph));
-    m_renderPasses.push_back(new LightingPass(m_renderGraph));
-    m_renderPasses.push_back(new SkyboxPass(m_renderGraph));
+    m_depthPass     = std::make_unique<DepthPass>(m_renderGraph);
+    m_lightCullPass = std::make_unique<LightCullPass>(m_renderGraph);
+    m_shadowPass    = std::make_unique<ShadowPass>(m_renderGraph);
+    m_lightingPass  = std::make_unique<LightingPass>(m_renderGraph);
+    m_skyboxPass    = std::make_unique<SkyboxPass>(m_renderGraph);
 
 
     m_renderGraph.Build();
@@ -2101,7 +2098,7 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         LOG_ERROR(message.str());
-        assert(true); // just to be able to place a breakpoint :)
+        assert(true);  // just to be able to place a breakpoint :)
     }
 
 

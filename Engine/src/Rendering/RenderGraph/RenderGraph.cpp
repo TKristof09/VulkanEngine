@@ -37,7 +37,7 @@ RenderPass& RenderGraph::AddRenderPass(const std::string& name, QueueTypeFlagBit
         return *m_renderPasses[it->second];
 
     uint32_t id = m_renderPasses.size();
-    m_renderPasses.emplace_back(new RenderPass(*this, id, type));
+    m_renderPasses.emplace_back(std::make_unique<RenderPass>(*this, id, type));
     m_renderPasses.back()->SetName(name);
     m_renderPassIds[name] = id;
     return *m_renderPasses.back();
@@ -166,7 +166,7 @@ void RenderGraph::OrderPasses()
 
     while(!stack.empty())
     {
-        m_orderedPasses.push_back(m_renderPasses[stack.top()]);
+        m_orderedPasses.push_back(m_renderPasses[stack.top()].get());
         stack.pop();
     }
 }
