@@ -185,15 +185,15 @@ void pbr_spheres(ECS* ecs)
         auto* t2 = dlight.GetComponentMut<Transform>();
         t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
     }
-    {
+    /*{
         Entity dlight = ecs->CreateEntity("DLight2");
         DirectionalLight dl{};
         dl.color     = Color::Blue;
-        dl.intensity = 100.0f;
+        dl.intensity = 10.0f;
         dlight.SetComponent<DirectionalLight>(dl);
         auto* t2 = dlight.GetComponentMut<Transform>();
         t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-    }
+    }*/
     Entity slight = ecs->CreateEntity("SLight");
     SpotLight sl{};
     sl.color       = Color::Red;

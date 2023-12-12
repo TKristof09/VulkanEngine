@@ -4,16 +4,16 @@
 class CommandBuffer
 {
 public:
-    CommandBuffer(bool transfer = false, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    CommandBuffer(Queue queue = VulkanContext::GetGraphicsQueue(), VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     ~CommandBuffer();
     void Free();
     void Begin(VkCommandBufferUsageFlags usage);
     void Begin(VkCommandBufferUsageFlags usage, VkCommandBufferInheritanceInfo inheritanceInfo);
     void End();
 
-    void SubmitIdle(Queue queue = VulkanContext::GetGraphicsQueue());
-    void Submit(Queue queue, VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence);
-    void Submit(Queue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence);
+    void SubmitIdle();
+    void Submit(VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence);
+    void Submit(const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence);
 
     void Reset();
 
@@ -29,7 +29,8 @@ public:
     CommandBuffer(CommandBuffer&& other) noexcept
         : m_recording(other.m_recording),
           m_commandBuffer(other.m_commandBuffer),
-          m_transfer(other.m_transfer)
+          m_queue(other.m_queue),
+          m_commandPool(other.m_commandPool)
     {
         other.m_commandBuffer = VK_NULL_HANDLE;
     }
@@ -42,17 +43,17 @@ public:
             return *this;
         m_recording     = other.m_recording;
         m_commandBuffer = other.m_commandBuffer;
-        m_transfer      = other.m_transfer;
+        m_queue         = other.m_queue;
+        m_commandPool   = other.m_commandPool;
 
         other.m_commandBuffer = VK_NULL_HANDLE;
         return *this;
     }
 
 private:
-    void Allocate(bool transfer, VkCommandBufferLevel level);
-
     bool m_recording;
-    bool m_transfer;
     VkCommandBuffer m_commandBuffer;
+    Queue m_queue;
+    VkCommandPool m_commandPool;
     std::unordered_map<VkPipelineBindPoint, bool> m_isGlobalDescSetBound;
 };

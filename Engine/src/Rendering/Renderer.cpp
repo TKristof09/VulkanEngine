@@ -1555,7 +1555,7 @@ void Renderer::Render(double dt)
     m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], imageIndex);
 
     VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    m_mainCommandBuffers[imageIndex].Submit(m_graphicsQueue, m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
+    m_mainCommandBuffers[imageIndex].Submit(m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
 
     {
         PROFILE_SCOPE("Present");

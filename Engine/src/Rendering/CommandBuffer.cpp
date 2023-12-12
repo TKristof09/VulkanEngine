@@ -1,29 +1,26 @@
 #include "CommandBuffer.hpp"
 #include <limits>
 
-CommandBuffer::CommandBuffer(bool transfer, VkCommandBufferLevel level)
+CommandBuffer::CommandBuffer(Queue queue, VkCommandBufferLevel level)
     : m_recording(false),
-      m_transfer(transfer),
+      m_queue(queue),
       m_commandBuffer(VK_NULL_HANDLE)
 {
-    Allocate(transfer, level);
-}
-
-void CommandBuffer::Allocate(bool transfer, VkCommandBufferLevel level)
-{
     m_recording = false;
+    if(queue.familyIndex == VulkanContext::GetTransferQueue().familyIndex)
+        m_commandPool = VulkanContext::GetTransferCommandPool();
+    else
+        m_commandPool = VulkanContext::GetGraphicsCommandPool();
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    if(transfer)
-        allocInfo.commandPool = VulkanContext::GetTransferCommandPool();
-    else
-        allocInfo.commandPool = VulkanContext::GetGraphicsCommandPool();
-    allocInfo.level              = level;
-    allocInfo.commandBufferCount = 1;
+    allocInfo.level                       = level;
+    allocInfo.commandPool                 = m_commandPool;
+    allocInfo.commandBufferCount          = 1;
 
     VK_CHECK(vkAllocateCommandBuffers(VulkanContext::GetDevice(), &allocInfo, &m_commandBuffer), "Failed to allocate command buffers!");
 }
+
 CommandBuffer::~CommandBuffer()
 {
     Free();
@@ -34,7 +31,7 @@ void CommandBuffer::Free()
 {
     if(m_commandBuffer != VK_NULL_HANDLE)
     {
-        vkFreeCommandBuffers(VulkanContext::GetDevice(), m_transfer ? VulkanContext::GetTransferCommandPool() : VulkanContext::GetGraphicsCommandPool(), 1, &m_commandBuffer);
+        vkFreeCommandBuffers(VulkanContext::GetDevice(), m_commandPool, 1, &m_commandBuffer);
         m_commandBuffer = VK_NULL_HANDLE;
     }
 }
@@ -69,7 +66,7 @@ void CommandBuffer::End()
     m_isGlobalDescSetBound.clear();
 }
 
-void CommandBuffer::SubmitIdle(Queue queue)
+void CommandBuffer::SubmitIdle()
 {
     if(m_recording)
         End();
@@ -86,11 +83,11 @@ void CommandBuffer::SubmitIdle(Queue queue)
 
     VK_CHECK(vkCreateFence(VulkanContext::GetDevice(), &fenceInfo, nullptr, &fence), "Failed to create fence");
     VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
-    VK_CHECK(vkQueueSubmit(queue.queue, 1, &submitInfo, fence), "Failed to submit queue");
+    VK_CHECK(vkQueueSubmit(m_queue.queue, 1, &submitInfo, fence), "Failed to submit queue");
     VK_CHECK(vkWaitForFences(VulkanContext::GetDevice(), 1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "Failed to wait for fence");
     vkDestroyFence(VulkanContext::GetDevice(), fence, nullptr);
 }
-void CommandBuffer::Submit(Queue queue, VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence)
+void CommandBuffer::Submit(VkSemaphore waitSemaphore, VkPipelineStageFlags waitStage, VkSemaphore signalSemaphore, VkFence fence)
 {
     PROFILE_FUNCTION();
     if(m_recording)
@@ -120,10 +117,10 @@ void CommandBuffer::Submit(Queue queue, VkSemaphore waitSemaphore, VkPipelineSta
         VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
     }
 
-    VK_CHECK(vkQueueSubmit(queue.queue, 1, &submitInfo, fence), "Failed to submit command buffer" + std::to_string((uint64_t)m_commandBuffer));
+    VK_CHECK(vkQueueSubmit(m_queue.queue, 1, &submitInfo, fence), "Failed to submit command buffer" + std::to_string((uint64_t)m_commandBuffer));
 }
 
-void CommandBuffer::Submit(Queue queue, const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence)
+void CommandBuffer::Submit(const std::vector<VkSemaphore>& waitSemaphores, const std::vector<VkPipelineStageFlags>& waitStages, const std::vector<VkSemaphore>& signalSemaphores, VkFence fence)
 {
     if(m_recording)
         End();
@@ -147,7 +144,7 @@ void CommandBuffer::Submit(Queue queue, const std::vector<VkSemaphore>& waitSema
         VK_CHECK(vkResetFences(VulkanContext::GetDevice(), 1, &fence), "Failed to reset fence");
     }
 
-    VK_CHECK(vkQueueSubmit(queue.queue, 1, &submitInfo, fence), "Failed to submit command buffer");
+    VK_CHECK(vkQueueSubmit(m_queue.queue, 1, &submitInfo, fence), "Failed to submit command buffer");
 }
 
 void CommandBuffer::Reset()

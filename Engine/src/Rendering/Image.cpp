@@ -205,7 +205,7 @@ void Image::TransitionLayout(VkImageLayout newLayout)
                          0, nullptr, 0, nullptr,  // these are for other types of barriers
                          1, &barrier);
 
-    commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
+    commandBuffer.SubmitIdle();
     m_layout = newLayout;
 }
 
@@ -321,7 +321,7 @@ void Image::GenerateMipmaps(VkImageLayout newLayout)
                          0, nullptr,
                          1, &barrier);
 
-    commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
+    commandBuffer.SubmitIdle();
 
     m_layout = newLayout;
 }

@@ -33,10 +33,10 @@ DebugUI::DebugUI(DebugUIInitInfo initInfo) : m_show_demo_window(true)
     ImGui_ImplVulkan_Init(&imguiInitInfo, VK_NULL_HANDLE);
 
     // upload font textures
-    CommandBuffer cb;
+    CommandBuffer cb(initInfo.queue);
     cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
-    cb.SubmitIdle(initInfo.queue);
+    cb.SubmitIdle();
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 
     /*
@@ -84,10 +84,10 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
 
 
     ImGui_ImplVulkan_Init(&imguiInitInfo, VK_NULL_HANDLE);
-    CommandBuffer cb;
+    CommandBuffer cb(initInfo.queue);
     cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     ImGui_ImplVulkan_CreateFontsTexture(cb.GetCommandBuffer());
-    cb.SubmitIdle(initInfo.queue);
+    cb.SubmitIdle();
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 void DebugUI::Draw(CommandBuffer* cb)
