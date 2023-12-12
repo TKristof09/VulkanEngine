@@ -14,7 +14,6 @@ public:
     LightingPass(RenderGraph& rg)
         : m_ecs(Application::GetInstance()->GetScene()->GetECS())
     {
-        // TODO: Create pipeline here?
         PipelineCreateInfo ci;
         ci.type             = PipelineType::GRAPHICS;
         ci.allowDerivatives = true;
@@ -94,10 +93,10 @@ private:
         lightingPass.SetInitialiseCallback(
             [&](RenderGraph& rg)
             {
-                ShaderData data             = {};
-                data.viewportSize           = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
-                data.tileNums               = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
-                // TODO temp
+                ShaderData data   = {};
+                data.viewportSize = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
+                data.tileNums     = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
+
                 const auto* pbrEnv          = m_ecs->GetSingleton<PBREnvironment>();
                 data.irradianceMapIndex     = pbrEnv->irradianceMap.GetSlot();
                 data.prefilteredEnvMapIndex = pbrEnv->prefilteredEnvMap.GetSlot();

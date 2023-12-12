@@ -13,8 +13,7 @@
 struct DebugUIInitInfo
 {
     std::shared_ptr<Window> pWindow;
-    uint32_t queueFamily;
-    VkQueue queue;
+    Queue queue;
     VkPipelineCache pipelineCache;
     VkDescriptorPool descriptorPool;
     uint32_t imageCount;  // >= MinImageCount

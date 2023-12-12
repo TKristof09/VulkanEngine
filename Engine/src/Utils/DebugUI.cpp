@@ -14,8 +14,8 @@ DebugUI::DebugUI(DebugUIInitInfo initInfo) : m_show_demo_window(true)
     imguiInitInfo.Instance                  = VulkanContext::GetInstance();
     imguiInitInfo.PhysicalDevice            = VulkanContext::GetPhysicalDevice();
     imguiInitInfo.Device                    = VulkanContext::GetDevice();
-    imguiInitInfo.QueueFamily               = initInfo.queueFamily;
-    imguiInitInfo.Queue                     = initInfo.queue;
+    imguiInitInfo.QueueFamily               = initInfo.queue.familyIndex;
+    imguiInitInfo.Queue                     = initInfo.queue.queue;
     imguiInitInfo.PipelineCache             = initInfo.pipelineCache;
     imguiInitInfo.DescriptorPool            = initInfo.descriptorPool;
     imguiInitInfo.Allocator                 = initInfo.allocator;
@@ -71,8 +71,8 @@ void DebugUI::ReInit(DebugUIInitInfo initInfo)
     imguiInitInfo.Instance                  = VulkanContext::GetInstance();
     imguiInitInfo.PhysicalDevice            = VulkanContext::GetPhysicalDevice();
     imguiInitInfo.Device                    = VulkanContext::GetDevice();
-    imguiInitInfo.QueueFamily               = initInfo.queueFamily;
-    imguiInitInfo.Queue                     = initInfo.queue;
+    imguiInitInfo.QueueFamily               = initInfo.queue.familyIndex;
+    imguiInitInfo.Queue                     = initInfo.queue.queue;
     imguiInitInfo.PipelineCache             = initInfo.pipelineCache;
     imguiInitInfo.DescriptorPool            = initInfo.descriptorPool;
     imguiInitInfo.Allocator                 = initInfo.allocator;

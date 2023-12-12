@@ -55,10 +55,11 @@ struct QueueFamilyIndices
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentationFamily;
     std::optional<uint32_t> computeFamily;
+    std::optional<uint32_t> transferFamily;
 
     [[nodiscard]] bool IsComplete() const
     {
-        return graphicsFamily.has_value() && presentationFamily.has_value() && computeFamily.has_value();
+        return graphicsFamily.has_value() && presentationFamily.has_value() && computeFamily.has_value() && transferFamily.has_value();
     }
 };
 struct SwapchainSupportDetails
@@ -91,7 +92,10 @@ Renderer::Renderer(std::shared_ptr<Window> window)
       m_gpu(VulkanContext::m_gpu),
       m_device(VulkanContext::m_device),
       m_graphicsQueue(VulkanContext::m_graphicsQueue),
-      m_commandPool(VulkanContext::m_commandPool),
+      m_transferQueue(VulkanContext::m_transferQueue),
+      m_computeQueue(VulkanContext::m_computeQueue),
+      m_graphicsCommandPool(VulkanContext::m_graphicsCommandPool),
+      m_transferCommandPool(VulkanContext::m_transferCommandPool),
       m_renderGraph(RenderGraph(this)),
 
       m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS)
@@ -170,7 +174,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     lightBuffers->visibleLightsBuffer.Allocate(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);  // MAX_LIGHTS_PER_TILE
     for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
     {
-        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
+        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false);
 
         shadowBuffers->matricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
         shadowBuffers->indicesBuffers.emplace_back(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false);
@@ -232,7 +236,6 @@ void Renderer::RecreateSwapchain()
 
 
     QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
-    initInfo.queueFamily        = families.graphicsFamily.value();
     initInfo.queue              = m_graphicsQueue;
 
     initInfo.pipelineCache  = nullptr;
@@ -267,7 +270,6 @@ void Renderer::CreateDebugUI()
     initInfo.pWindow         = m_window;
 
     QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
-    initInfo.queueFamily        = families.graphicsFamily.value();
     initInfo.queue              = m_graphicsQueue;
 
     initInfo.pipelineCache  = nullptr;
@@ -362,7 +364,7 @@ void Renderer::SetupDebugMessenger()
 #endif
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
     createInfo.sType                              = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity                    = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageSeverity                    = /*VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |*/ VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     createInfo.messageType                        = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo.pfnUserCallback                    = debugUtilsMessengerCallback;
 
@@ -392,7 +394,7 @@ void Renderer::CreateDevice()
     QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueQueueFamilies = {families.graphicsFamily.value(), families.presentationFamily.value(), families.computeFamily.value()};
+    std::set<uint32_t> uniqueQueueFamilies = {families.graphicsFamily.value(), families.presentationFamily.value(), families.computeFamily.value(), families.transferFamily.value()};
 
     for(auto queue : uniqueQueueFamilies)
     {
@@ -451,10 +453,14 @@ void Renderer::CreateDevice()
     device12Features.pNext = &device13Features;
 
     VK_CHECK(vkCreateDevice(m_gpu, &createInfo, nullptr, &m_device), "Failed to create device");
-    vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue);
-    vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue);
-    vkGetDeviceQueue(m_device, families.computeFamily.value(), 0, &m_computeQueue);
-
+    vkGetDeviceQueue(m_device, families.graphicsFamily.value(), 0, &m_graphicsQueue.queue);
+    m_graphicsQueue.familyIndex = families.graphicsFamily.value();
+    vkGetDeviceQueue(m_device, families.presentationFamily.value(), 0, &m_presentQueue.queue);
+    m_presentQueue.familyIndex = families.presentationFamily.value();
+    vkGetDeviceQueue(m_device, families.computeFamily.value(), 0, &m_computeQueue.queue);
+    m_computeQueue.familyIndex = families.computeFamily.value();
+    vkGetDeviceQueue(m_device, families.transferFamily.value(), 0, &m_transferQueue.queue);
+    m_transferQueue.familyIndex = families.transferFamily.value();
 
     m_queryPools.resize(MAX_FRAMES_IN_FLIGHT);
     m_queryResults.resize(MAX_FRAMES_IN_FLIGHT);
@@ -656,13 +662,19 @@ void Renderer::CreatePipeline()
 
 void Renderer::CreateCommandPool()
 {
-    QueueFamilyIndices families        = FindQueueFamilies(m_gpu, m_surface);
+    // TODO: maybe make an abstraction for command pools to not have to create them manually one by one for each queue
     VkCommandPoolCreateInfo createInfo = {};
     createInfo.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    createInfo.queueFamilyIndex        = families.graphicsFamily.value();
+    createInfo.queueFamilyIndex        = m_graphicsQueue.familyIndex;
     createInfo.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VK_CHECK(vkCreateCommandPool(m_device, &createInfo, nullptr, &m_commandPool), "Failed to create command pool");
+    VK_CHECK(vkCreateCommandPool(m_device, &createInfo, nullptr, &m_graphicsCommandPool), "Failed to create command pool");
+    VK_SET_DEBUG_NAME(m_graphicsCommandPool, VK_OBJECT_TYPE_COMMAND_POOL, "Graphics command pool");
+
+    createInfo.queueFamilyIndex = m_transferQueue.familyIndex;
+
+    VK_CHECK(vkCreateCommandPool(m_device, &createInfo, nullptr, &m_transferCommandPool), "Failed to create command pool");
+    VK_SET_DEBUG_NAME(m_transferCommandPool, VK_OBJECT_TYPE_COMMAND_POOL, "Transfer command pool");
 }
 
 void Renderer::CreateCommandBuffers()
@@ -1556,7 +1568,7 @@ void Renderer::Render(double dt)
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains    = &m_swapchain;
         presentInfo.pImageIndices  = &imageIndex;
-        result                     = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+        result                     = vkQueuePresentKHR(m_presentQueue.queue, &presentInfo);
     }
     std::array<uint64_t, 4> queryResults;
     {
@@ -1932,6 +1944,9 @@ QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
         if(queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT && !(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT))
             indices.computeFamily = i;
 
+        if(queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT && !(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && !(queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
+            indices.transferFamily = i;
+
         if(indices.IsComplete())
         {
             break;
@@ -1939,6 +1954,12 @@ QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 
         i++;
     }
+
+    if(!indices.IsComplete())
+    {
+        LOG_ERROR("Could not find all queue families");
+    }
+
     return indices;
 }
 
@@ -2098,7 +2119,6 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         LOG_ERROR(message.str());
-        assert(true);  // just to be able to place a breakpoint :)
     }
 
 

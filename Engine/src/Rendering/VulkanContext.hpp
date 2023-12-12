@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
+#include "Rendering/Queue.hpp"
 
 #define NUM_FRAMES_IN_FLIGHT 2
 static const uint32_t NUM_TEXTURE_DESCRIPTORS = 65535;
@@ -14,8 +15,11 @@ public:
     static VkDevice GetDevice() { return m_device; }
     static VkPhysicalDevice GetPhysicalDevice() { return m_gpu; }
     static VkPhysicalDeviceProperties GetPhysicalDeviceProperties() { return m_gpuProperties; }
-    static VkQueue GetGraphicsQueue() { return m_graphicsQueue; }
-    static VkCommandPool GetCommandPool() { return m_commandPool; }
+    static Queue GetGraphicsQueue() { return m_graphicsQueue; }
+    static Queue GetTransferQueue() { return m_transferQueue; }
+    static Queue GetComputeQueue() { return m_computeQueue; }
+    static VkCommandPool GetGraphicsCommandPool() { return m_graphicsCommandPool; }
+    static VkCommandPool GetTransferCommandPool() { return m_transferCommandPool; }
     static VkFormat GetSwapchainImageFormat() { return m_swapchainImageFormat; }
     static VkFormat GetDepthFormat() { return m_depthFormat; }
     static VkFormat GetStencilFormat() { return m_stencilFormat; }
@@ -49,7 +53,8 @@ public:
         vmaDestroyAllocator(m_vmaImageAllocator);
         vmaDestroyAllocator(m_vmaBufferAllocator);
 
-        vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+        vkDestroyCommandPool(m_device, m_graphicsCommandPool, nullptr);
+        vkDestroyCommandPool(m_device, m_transferCommandPool, nullptr);
         vkDestroyDescriptorSetLayout(m_device, m_globalDescSetLayout, nullptr);
         vkDestroySampler(m_device, m_textureSampler, nullptr);
         vkDestroySampler(m_device, m_shadowSampler, nullptr);
@@ -86,11 +91,12 @@ private:
     inline static VkInstance m_instance                      = VK_NULL_HANDLE;
     inline static VkPhysicalDeviceProperties m_gpuProperties = {};
 
-    inline static VkQueue m_graphicsQueue = VK_NULL_HANDLE;
-    inline static VkQueue m_transferQueue = VK_NULL_HANDLE;
-    inline static VkQueue m_computeQueue  = VK_NULL_HANDLE;
+    inline static Queue m_graphicsQueue = {};
+    inline static Queue m_transferQueue = {};
+    inline static Queue m_computeQueue  = {};
 
-    inline static VkCommandPool m_commandPool = VK_NULL_HANDLE;
+    inline static VkCommandPool m_graphicsCommandPool = VK_NULL_HANDLE;
+    inline static VkCommandPool m_transferCommandPool = VK_NULL_HANDLE;
 
     inline static VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
 

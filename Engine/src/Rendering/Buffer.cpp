@@ -51,7 +51,12 @@ void Buffer::Allocate(VkDeviceSize size, VkBufferUsageFlags usage, bool mappable
     createInfo.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     createInfo.size               = size;
     createInfo.usage              = usage;
-    createInfo.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;  // TODO: apparently for buffers using concurrent is the same performance as exclusive, but it makes handling multiple queues easier
+
+    std::vector<uint32_t> queueFamilyIndices = {VulkanContext::GetGraphicsQueue().familyIndex, VulkanContext::GetTransferQueue().familyIndex};
+    createInfo.sharingMode                   = VK_SHARING_MODE_CONCURRENT;  // for buffers this doesn't have a performance impact apparently
+    createInfo.queueFamilyIndexCount         = (uint32_t)queueFamilyIndices.size();
+    createInfo.pQueueFamilyIndices           = queueFamilyIndices.data();
+
 
     VmaAllocationCreateInfo allocCreateInfo = {};
     allocCreateInfo.usage                   = VMA_MEMORY_USAGE_AUTO;
@@ -76,7 +81,7 @@ void Buffer::Copy(Buffer* dst, VkDeviceSize size)
     copyRegion.size         = size;
     vkCmdCopyBuffer(commandBuffer.GetCommandBuffer(), m_buffer, dst->GetVkBuffer(), 1, &copyRegion);
 
-    commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());  // TODO better to submit with a fence instead of waiting until idle
+    commandBuffer.SubmitIdle(VulkanContext::GetTransferQueue());  // TODO better to submit with a fence instead of waiting until idle
 }
 
 void Buffer::CopyToImage(VkImage image, uint32_t width, uint32_t height)
@@ -328,12 +333,12 @@ void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data, uint64_
         copyRegion.dstOffset    = memOffset;
         copyRegion.size         = size;
 
-        CommandBuffer cb;
+        CommandBuffer cb(true);
         vkDeviceWaitIdle(VulkanContext::GetDevice());
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), 1, &copyRegion);
 
-        cb.Submit(VulkanContext::GetGraphicsQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
+        cb.Submit(VulkanContext::GetTransferQueue(), VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);  // TODO: use transfer queue
         vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
     }
 }

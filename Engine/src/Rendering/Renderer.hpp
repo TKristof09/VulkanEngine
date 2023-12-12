@@ -175,9 +175,10 @@ private:
     VkPhysicalDevice& m_gpu;
     VkDevice& m_device;
 
-    VkQueue& m_graphicsQueue;
-    VkQueue m_presentQueue;
-    VkQueue m_computeQueue;
+    Queue& m_graphicsQueue;
+    Queue m_presentQueue;
+    Queue& m_computeQueue;  // unused for now
+    Queue& m_transferQueue;
 
     VkSurfaceKHR m_surface;
 
@@ -191,7 +192,8 @@ private:
     std::unordered_map<std::string, Pipeline*> m_pipelinesRegistry;
 
 
-    VkCommandPool& m_commandPool;
+    VkCommandPool& m_graphicsCommandPool;
+    VkCommandPool& m_transferCommandPool;
     std::vector<CommandBuffer> m_mainCommandBuffers;
 
     std::vector<VkSemaphore> m_imageAvailable;
