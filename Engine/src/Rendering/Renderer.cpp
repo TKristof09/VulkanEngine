@@ -174,7 +174,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     lightBuffers->visibleLightsBuffer.Allocate(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);  // MAX_LIGHTS_PER_TILE
     for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
     {
-        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, false);
+        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
 
         shadowBuffers->matricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
         shadowBuffers->indicesBuffers.emplace_back(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false);
@@ -1720,15 +1720,8 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     comp->_shadowSlot = slot;
 
 
-    std::vector<std::unique_ptr<Image>> vec(NUM_CASCADES);
-    for(int i = 0; i < NUM_CASCADES; ++i)
-    {
-        vec[i] = std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci);
-    }
-
-    // TODO very temp code
-    m_shadowmaps.push_back(std::move(vec));
-    Image* img = m_shadowmaps[0].back().get();
+    // TODO temp code
+    Image* img = m_shadowmaps.emplace_back(std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci)).get();
     AddTexture(img, true);
     m_renderGraph.GetTextureArrayResource("shadowMaps").AddImagePointer(img);
     for(auto& buffer : shadowBuffers->indicesBuffers)

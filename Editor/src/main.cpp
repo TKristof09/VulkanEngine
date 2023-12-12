@@ -142,7 +142,6 @@ void pbr_spheres(ECS* ecs)
     {
         for(int j = 0; j < gridSize; ++j)
         {
-            
             int index      = i * gridSize + j;
             Entity e       = AssimpImporter::LoadFile("models/cube.obj", ecs, &parent);
             auto* tt       = e.GetComponentMut<Transform>();
@@ -176,16 +175,25 @@ void pbr_spheres(ECS* ecs)
             dt->pos  = {(i - lgridSize / 2.f) * 3, 1.5f, (j - lgridSize / 2.f) * 3};
         }
     }
-    //ecs->AddSystem<TestSystem>(2, 2);
-
-    Entity dlight = ecs->CreateEntity("DLight");
-    DirectionalLight dl{};
-    dl.color     = Color::White;
-    dl.intensity = 1.0f;
-    dlight.SetComponent<DirectionalLight>(dl);
-    auto* t2 = dlight.GetComponentMut<Transform>();
-    t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-
+    // ecs->AddSystem<TestSystem>(2, 2);
+    {
+        Entity dlight = ecs->CreateEntity("DLight");
+        DirectionalLight dl{};
+        dl.color     = Color::White;
+        dl.intensity = 1.0f;
+        dlight.SetComponent<DirectionalLight>(dl);
+        auto* t2 = dlight.GetComponentMut<Transform>();
+        t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
+    }
+    {
+        Entity dlight = ecs->CreateEntity("DLight2");
+        DirectionalLight dl{};
+        dl.color     = Color::Blue;
+        dl.intensity = 100.0f;
+        dlight.SetComponent<DirectionalLight>(dl);
+        auto* t2 = dlight.GetComponentMut<Transform>();
+        t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
+    }
     Entity slight = ecs->CreateEntity("SLight");
     SpotLight sl{};
     sl.color       = Color::Red;

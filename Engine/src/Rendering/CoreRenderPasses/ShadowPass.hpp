@@ -37,16 +37,10 @@ public:
 
 
 private:
-    struct ShaderData
-    {
-        uint64_t lightBuffer;
-        uint64_t shadowMatricesBuffer;
-    };
-
     struct PushConstants
     {
         int32_t lightIndex;
-        uint64_t shaderDataPtr;
+        uint64_t shadowMatricesBuffer;
         uint64_t transformBufferPtr;
     };
     void RegisterPass(RenderGraph& rg)
@@ -57,25 +51,16 @@ private:
         auto& shadowMapRessource = shadowPass.AddTextureArrayOutput("shadowMaps", VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
         shadowMapRessource.SetFormat(VK_FORMAT_D32_SFLOAT);
-        shadowPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
-            {
-                ShaderData data           = {};
-                const auto* lightBuffers  = m_ecs->GetSingleton<LightBuffers>();
-                const auto* shadowBuffers = m_ecs->GetSingleton<ShadowBuffers>();
-                for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
-                {
-                    data.lightBuffer          = lightBuffers->buffers[i].GetDeviceAddress(0);
-                    data.shadowMatricesBuffer = shadowBuffers->matricesBuffers[i].GetDeviceAddress(0);
-                    m_pipeline->UploadShaderData(&data, i);
-                }
-            });
         shadowPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                // TODO: how would this work with multiple lights? we somehow need to associate light with the corresponding image
-                for(const auto* img : shadowMapRessource.GetImagePointers())
+                PushConstants pc        = {};
+                pc.transformBufferPtr   = m_ecs->GetSingleton<TransformBuffers>()->buffers[imageIndex].GetDeviceAddress(0);
+                pc.shadowMatricesBuffer = m_ecs->GetSingleton<ShadowBuffers>()->matricesBuffers[imageIndex].GetDeviceAddress(0);
+                for(int i = 0; i < shadowMapRessource.GetImagePointers().size(); ++i)
                 {
+                    const auto* img = shadowMapRessource.GetImagePointers()[i];
+
                     // set up the renderingInfo struct
                     VkRenderingInfo rendering          = {};
                     rendering.sType                    = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -99,10 +84,7 @@ private:
 
                     m_pipeline->Bind(cb);
 
-                    PushConstants pc      = {};
-                    pc.lightIndex         = 0;
-                    pc.transformBufferPtr = m_ecs->GetSingleton<TransformBuffers>()->buffers[imageIndex].GetDeviceAddress(0);
-                    pc.shaderDataPtr      = m_pipeline->GetShaderDataBufferPtr(imageIndex);
+                    pc.lightIndex = i;
 
                     m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 

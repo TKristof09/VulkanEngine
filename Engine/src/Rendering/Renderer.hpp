@@ -117,7 +117,7 @@ private:
 
     std::shared_ptr<Image> m_lightCullDebugImage;
 
-    std::vector<std::vector<std::unique_ptr<Image>>> m_shadowmaps;  // non point lights, store NUM_CASCADES images for each light
+    std::vector<std::unique_ptr<Image>> m_shadowmaps;
 
     friend class MaterialSystem;
 
