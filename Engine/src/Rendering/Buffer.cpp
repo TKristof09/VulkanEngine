@@ -103,7 +103,7 @@ void Buffer::CopyToImage(VkImage image, uint32_t width, uint32_t height)
     commandBuffer.SubmitIdle(VulkanContext::GetGraphicsQueue());
 }
 
-void Buffer::Fill(void* data, uint64_t size, uint64_t offset)
+void Buffer::Fill(const void* data, uint64_t size, uint64_t offset)
 {
     if(m_mappedMemory)
     {
@@ -123,7 +123,7 @@ void Buffer::Fill(void* data, uint64_t size, uint64_t offset)
     vmaUnmapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation);
 }
 
-void Buffer::Fill(const std::vector<void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets)
+void Buffer::Fill(const std::vector<const void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets)
 {
     void* memory = nullptr;
     VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
@@ -256,7 +256,7 @@ uint64_t DynamicBufferAllocator::Allocate(uint64_t numObjects, bool& didResize, 
     return slot;
 }
 
-void DynamicBufferAllocator::UploadData(uint64_t slot, void* data)
+void DynamicBufferAllocator::UploadData(uint64_t slot, const void* data)
 {
     auto it = m_allocations.find(slot);
     if(it == m_allocations.end())
@@ -291,7 +291,7 @@ void DynamicBufferAllocator::UploadData(uint64_t slot, void* data)
     }
 }
 
-void DynamicBufferAllocator::UploadData(const std::vector<uint64_t>& slots, const std::vector<void*>& datas)
+void DynamicBufferAllocator::UploadData(const std::vector<uint64_t>& slots, const std::vector<const void*>& datas)
 {
     /*
     std::vector<uint64_t> sizes;

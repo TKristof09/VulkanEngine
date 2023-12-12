@@ -103,9 +103,10 @@ private:
 class DragFloat : public DebugUIElement
 {
 public:
-    DragFloat(float* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
-                                                                                          m_max(max),
-                                                                                          m_value(value)
+    DragFloat(float* value, const std::string& name = "", float min = 0, float max = 0)
+        : m_min(min),
+          m_max(max),
+          m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -139,9 +140,10 @@ private:
 class DragVector2 : public DebugUIElement
 {
 public:
-    DragVector2(glm::vec2* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
-                                                                                                m_max(max),
-                                                                                                m_value(value)
+    DragVector2(glm::vec2* value, const std::string& name = "", float min = 0, float max = 0)
+        : m_min(min),
+          m_max(max),
+          m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -175,9 +177,10 @@ private:
 class DragVector3 : public DebugUIElement
 {
 public:
-    DragVector3(glm::vec3* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
-                                                                                                m_max(max),
-                                                                                                m_value(value)
+    DragVector3(glm::vec3* value, const std::string& name = "", float min = 0, float max = 0)
+        : m_min(min),
+          m_max(max),
+          m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -211,9 +214,10 @@ private:
 class DragVector4 : public DebugUIElement
 {
 public:
-    DragVector4(glm::vec4* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
-                                                                                                m_max(max),
-                                                                                                m_value(value)
+    DragVector4(glm::vec4* value, const std::string& name = "", float min = 0, float max = 0)
+        : m_min(min),
+          m_max(max),
+          m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -247,9 +251,10 @@ private:
 class DragQuaternion : public DebugUIElement
 {
 public:
-    DragQuaternion(glm::quat* value, const std::string& name = "", float min = 0, float max = 0) : m_min(min),
-                                                                                                   m_max(max),
-                                                                                                   m_value(value)
+    DragQuaternion(glm::quat* value, const std::string& name = "", float min = 0, float max = 0)
+        : m_min(min),
+          m_max(max),
+          m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -283,9 +288,10 @@ private:
 class DragEulerAngles : public DebugUIElement
 {
 public:
-    DragEulerAngles(glm::quat* value, const std::string& name = "") : m_value(value),
-                                                                      m_euler(glm::degrees(glm::eulerAngles(*value))),
-                                                                      m_cachedValue(*value)
+    DragEulerAngles(glm::quat* value, const std::string& name = "")
+        : m_value(value),
+          m_euler(glm::degrees(glm::eulerAngles(*value))),
+          m_cachedValue(*value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -326,7 +332,8 @@ private:
 class ColorEdit3 : public DebugUIElement
 {
 public:
-    ColorEdit3(Color* value, const std::string& name = "") : m_value(value)
+    ColorEdit3(Color* value, const std::string& name = "")
+        : m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -357,7 +364,8 @@ private:
 class ColorEdit4 : public DebugUIElement
 {
 public:
-    ColorEdit4(Color* value, const std::string& name = "") : m_value(value)
+    ColorEdit4(Color* value, const std::string& name = "")
+        : m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -389,7 +397,8 @@ private:
 class CheckBox : public DebugUIElement
 {
 public:
-    CheckBox(bool* value, const std::string& name = "") : m_value(value)
+    CheckBox(bool* value, const std::string& name = "")
+        : m_value(value)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -422,8 +431,9 @@ private:
 class Button : public DebugUIElement
 {
 public:
-    Button(const std::string& name = "", bool* value = nullptr) : m_value(value),
-                                                                  m_callback(nullptr)
+    Button(const std::string& name = "", bool* value = nullptr)
+        : m_value(value),
+          m_callback(nullptr)
     {
         m_hasTag = name != "";
         m_name   = name != "" ? name : std::to_string((uint64_t)this);
@@ -466,8 +476,9 @@ private:
 class FileSelector : public DebugUIElement
 {
 public:
-    FileSelector(std::string* path) : m_path(path),
-                                      m_callback(nullptr)
+    FileSelector(std::string* path)
+        : m_path(path),
+          m_callback(nullptr)
     {
         m_name = std::to_string((uint64_t)this);
     }
@@ -505,15 +516,17 @@ private:
 class TreeNode : public DebugUIElement
 {
 public:
-    TreeNode(std::string& text, bool* value = nullptr) : m_value(value),
-                                                         m_callback(nullptr),
-                                                         m_text(text)
+    TreeNode(std::string& text, bool* value = nullptr)
+        : m_value(value),
+          m_callback(nullptr),
+          m_text(text)
     {
         m_name = m_text;
     }
-    TreeNode(const std::string& text, bool* value = nullptr) : m_value(value),
-                                                               m_callback(nullptr),
-                                                               m_text(m_name)
+    TreeNode(const std::string& text, bool* value = nullptr)
+        : m_value(value),
+          m_callback(nullptr),
+          m_text(m_name)
     {
         m_name = text;
     }
@@ -620,7 +633,8 @@ public:
 class Table : public DebugUIElement
 {
 public:
-    Table(const std::string& name = "") : m_maxColumn(0)
+    Table(const std::string& name = "")
+        : m_maxColumn(0)
     {
         m_name = name != "" ? name : std::to_string((uint64_t)this);
     }
@@ -670,7 +684,8 @@ private:
 class UIImage : public DebugUIElement
 {
 public:
-    UIImage(Image* image) : m_image(image)
+    UIImage(Image* image)
+        : m_image(image)
     {
         m_desc = ImGui_ImplVulkan_AddTexture(VulkanContext::GetTextureSampler(), m_image->GetImageView(), VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
     }
@@ -704,10 +719,11 @@ private:
 class DebugUIWindow
 {
 public:
-    DebugUIWindow(const std::string& name = "Debug", bool opened = true) : m_debugUI(nullptr),
-                                                                           m_index(0),
-                                                                           m_name(name),
-                                                                           m_opened(opened) {}
+    DebugUIWindow(const std::string& name = "Debug", bool opened = true)
+        : m_debugUI(nullptr),
+          m_index(0),
+          m_name(name),
+          m_opened(opened) {}
 
     ~DebugUIWindow();
 

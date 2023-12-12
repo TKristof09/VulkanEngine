@@ -1,30 +1,26 @@
 #pragma once
 
-#include "Core/Events/IEventDelegate.hpp"
+#include "Core/Events/Event.hpp"
 
-template<typename Class, typename EventType>
+class IEventDelegate
+{
+public:
+    virtual ~IEventDelegate(){};
+    virtual void Invoke(Event* e) = 0;
+};
+
+template<typename EventType>
 class EventDelegate : public IEventDelegate
 {
-typedef void(Class::*Callback)(const EventType* const);
-
 public:
-	EventDelegate(Class* receiver, Callback& callback):
-	m_receiver(receiver),
-	m_callback(callback) {}
+    EventDelegate(std::function<void(EventType)> callback)
+        : m_callback(callback) {}
 
-	virtual	void Invoke(const IEvent* const e) override
-	{
-		(m_receiver->*m_callback)(reinterpret_cast<const EventType* const>(e));
-	}
+    void Invoke(Event* e) override
+    {
+        (m_callback)(*static_cast<EventType*>(e));
+    }
 
-	virtual bool operator==(const IEventDelegate* other) const override
-	{
-		EventDelegate* delegate = (EventDelegate*)other;
-		if(other == nullptr)
-			return false;
-		return ((m_callback == delegate->m_callback) && (m_receiver == delegate->m_receiver));
-	}
 private:
-	Class* m_receiver;
-	Callback m_callback;
+    std::function<void(EventType)> m_callback;
 };

@@ -1,20 +1,16 @@
 #pragma once
 
 #include "Core/Events/Event.hpp"
-#include "ECS/Types.hpp"
+#include "ECS/Entity.hpp"
 
 template<typename T>
-struct ComponentAdded : public Event<ComponentAdded<T>>
+struct ComponentAdded : public Event
 {
-	EntityID entity;
-	T* component;
+    Entity entity;
 };
 
-// TODO: figure out a way to make this work with the RemoveAllComponents function of the component manager
-// we might not care about that case tho, the RemoveAllComponents should only be called when the entity is destroyed so I don't think we care about its components anyway
 template<typename T>
-struct ComponentRemoved : public Event<ComponentRemoved<T>>
+struct ComponentRemoved : public Event
 {
-	EntityID entity;
-	T* component;
+    Entity entity;
 };

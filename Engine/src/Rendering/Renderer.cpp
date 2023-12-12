@@ -1,7 +1,5 @@
 #include "Rendering/Renderer.hpp"
-#include "Rendering/Image.hpp"
-#include "Rendering/VulkanContext.hpp"
-#include "glm/ext/matrix_transform.hpp"
+
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -12,6 +10,7 @@
 #include <chrono>
 #include <array>
 #include <string>
+#include <math.h>
 #include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
@@ -20,17 +19,24 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <utility>
 
-#include "TextureManager.hpp"
-#include "ECS/ComponentManager.hpp"
+#include "Application.hpp"
+#include "Core/Events/EventHandler.hpp"
+
+#include "Rendering/TextureManager.hpp"
+#include "Rendering/Image.hpp"
+#include "Rendering/VulkanContext.hpp"
+#include "Rendering/RenderGraph/RenderGraph.hpp"
+#include "Rendering/RenderGraph/RenderPass.hpp"
+
+
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
-
-#include "Rendering/RenderGraph/RenderGraph.hpp"
-#include "Rendering/RenderGraph/RenderPass.hpp"
 
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -70,9 +76,9 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
                                      VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData, void* /*pUserData*/);
 
 
-Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
-    : m_ecs(scene->ecs),
-      m_window(window),
+Renderer::Renderer(std::shared_ptr<Window> window)
+    : m_ecs(Application::GetInstance()->GetScene()->GetECS()),
+      m_window(std::move(window)),
       m_instance(VulkanContext::m_instance),
       m_gpu(VulkanContext::m_gpu),
       m_device(VulkanContext::m_device),
@@ -88,12 +94,21 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
       m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS),
       m_shadowIndices(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false)
 {
-    scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentAdded);
-    scene->eventHandler->Subscribe(this, &Renderer::OnMeshComponentRemoved);
-    scene->eventHandler->Subscribe(this, &Renderer::OnMaterialComponentAdded);
-    scene->eventHandler->Subscribe(this, &Renderer::OnDirectionalLightAdded);
-    scene->eventHandler->Subscribe(this, &Renderer::OnPointLightAdded);
-    scene->eventHandler->Subscribe(this, &Renderer::OnSpotLightAdded);
+    m_mainCameraQuery        = m_ecs->StartQueryBuilder<const Camera, const InternalTransform>("MainCameraQuery").build();
+    m_transformsQuery        = m_ecs->StartQueryBuilder<const InternalTransform, const Renderable>("TransformsQuery").build();
+    m_renderablesQuery       = m_ecs->StartQueryBuilder<const Renderable>("RenderablesQuery").build();
+    m_directionalLightsQuery = m_ecs->StartQueryBuilder<const DirectionalLight, const InternalTransform>("DirectionalLightsQuery").build();
+    m_pointLightsQuery       = m_ecs->StartQueryBuilder<const PointLight, const InternalTransform>("PointLightsQuery").build();
+    m_spotLightsQuery        = m_ecs->StartQueryBuilder<const SpotLight, const InternalTransform>("SpotLightsQuery").build();
+
+
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnSceneSwitched);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnMeshComponentAdded);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnMeshComponentRemoved);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnMaterialComponentAdded);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnDirectionalLightAdded);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnPointLightAdded);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Renderer::OnSpotLightAdded);
 
     // m_shadowMatricesBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
     // m_transformBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
@@ -143,68 +158,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
 
     m_drawBuffer.Allocate(1000 * sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, true);  // TODO change to non mappable and use staging buffer
-    m_frustrumEntity                                = m_ecs->entityManager->CreateEntity();
-    m_frustrumEntity->GetComponent<NameTag>()->name = "Frustum object";
-    // auto mesh = m_frustrumEntity->AddComponent<Mesh>();
-    {
-        auto button = std::make_shared<Button>("Show frustrum");
-        button->RegisterCallback(
-            [=](Button* b)
-            {
-                if(m_frustrumEntity->GetComponent<Mesh>())
-                {
-                    m_frustrumEntity->RemoveComponent<Mesh>();
-                }
-                if(!m_frustrumEntity->GetComponent<Material>())
-                {
-                    auto mat        = m_frustrumEntity->AddComponent<Material>();
-                    mat->shaderName = "forwardplus";
-                }
-                Camera camera              = *(*(m_ecs->componentManager->begin<Camera>()));
-                Transform* cameraTransform = m_ecs->componentManager->GetComponent<Transform>(camera.GetOwner());
-
-                glm::mat4 inverseVP = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection());  // TODO implement a function for inverse projection matrix instead of using generic inverse
-
-                float zNear                             = 0.1f;
-                float cascadeDepthStart                 = 1;
-                float cascadeDepthEnd                   = zNear / (500.0f);
-                std::vector<glm::vec4> boundingVertices = {
-                    {-1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom left
-                    {-1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top left
-                    { 1.0f, -1.0f, cascadeDepthStart, 1.0f}, // near bottom right
-                    { 1.0f,  1.0f, cascadeDepthStart, 1.0f}, // near top right
-                    {-1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom left
-                    {-1.0f,  1.0f,   cascadeDepthEnd, 1.0f}, // far top left
-                    { 1.0f, -1.0f,   cascadeDepthEnd, 1.0f}, // far bottom right
-                    { 1.0f,  1.0f,   cascadeDepthEnd, 1.0f}  // far top right
-                };
-                auto mesh = m_frustrumEntity->AddComponent<Mesh>();
-                std::vector<Vertex> vertices;
-                for(glm::vec4& vert : boundingVertices)
-                {
-                    vert  = inverseVP * vert;
-                    vert /= vert.w;
-                    vertices.push_back({vert, {}, {}});
-                }
-                mesh->vertices = vertices;
-                mesh->indices  = {
-                    0, 2, 1, 2, 3, 1,  // near
-                    4, 6, 5, 6, 7, 5,  // far
-                    4, 0, 5, 0, 1, 5,  // left
-                    1, 3, 5, 7, 5, 3,  // top
-                    3, 2, 6, 6, 7, 3,  // right
-                    0, 2, 6, 0, 6, 4   // bottom
-                };
-            });
-        m_rendererDebugWindow->AddElement(button);
-    }
-    {
-        auto button = std::make_shared<Button>("Hide frustrum");
-        button->RegisterCallback([=](Button* b)
-                                 { m_frustrumEntity->RemoveComponent<Mesh>(); });
-        m_rendererDebugWindow->AddElement(button);
-    }
-
 
     // TODO: temporary, remove later
     {
@@ -218,19 +171,9 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
             {
                 vkCmdBeginRendering(cb.GetCommandBuffer(), depthPass.GetRenderingInfo());
 
-                ComponentManager* cm       = m_ecs->componentManager;
-                Camera camera              = *(*(cm->begin<Camera>()));
-                Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
-                glm::mat4 proj             = camera.GetProjection();
-                // glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
-                // glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
-                // glm::mat4 vp = proj * rot * trf;
-                glm::mat4 vp               = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
-                uint32_t vpOffset          = 0;
 
                 vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
                 PROFILE_SCOPE("Prepass draw call loop");
-                m_pushConstants.viewProj           = vp;
                 m_pushConstants.transformBufferPtr = m_transformBuffers[imageIndex].GetDeviceAddress(0);
 
                 vkCmdPushConstants(cb.GetCommandBuffer(), m_depthPipeline->m_layout, VK_SHADER_STAGE_ALL, 0, sizeof(PushConstants), &m_pushConstants);
@@ -316,10 +259,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
 
                 vkCmdBeginRendering(cb.GetCommandBuffer(), lightingPass.GetRenderingInfo());
 
-                ComponentManager* cm  = m_ecs->componentManager;
-                auto materialIterator = cm->begin<Material>();
-                auto end              = cm->end<Material>();
-                uint32_t offset       = 0;
 
                 auto* pipeline = m_pipelinesRegistry["forwardplus"];
                 // vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
@@ -375,7 +314,6 @@ Renderer::Renderer(std::shared_ptr<Window> window, Scene* scene)
         shadowPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                ComponentManager* cm = m_ecs->componentManager;
                 // TODO: how would this work with multiple lights? we somehow need to associate light with the corresponding image
                 for(const auto* img : m_shadowMaps->GetImagePointers())
                 {
@@ -1279,21 +1217,20 @@ void Renderer::CreateSampler()
 
 void Renderer::RefreshDrawCommands()
 {
-    ComponentManager* cm = m_ecs->componentManager;
     std::vector<DrawCommand> drawCommands;
-    for(auto* material : cm->GetComponents<Material>())
-    {
-        auto* renderable = cm->GetComponent<Renderable>(material->GetOwner());
-        DrawCommand dc{};
-        dc.indexCount    = renderable->indexCount;
-        dc.instanceCount = 1;
-        dc.firstIndex    = renderable->indexOffset;
-        dc.vertexOffset  = static_cast<int32_t>(renderable->vertexOffset);
-        dc.firstInstance = 0;
-        // dc.objectID      = renderable->objectID;
+    m_renderablesQuery.each(
+        [&](const Renderable& renderable)
+        {
+            DrawCommand dc{};
+            dc.indexCount    = renderable.indexCount;
+            dc.instanceCount = 1;
+            dc.firstIndex    = renderable.indexOffset;
+            dc.vertexOffset  = static_cast<int32_t>(renderable.vertexOffset);
+            dc.firstInstance = 0;
+            // dc.objectID      = renderable->objectID;
 
-        drawCommands.push_back(dc);
-    }
+            drawCommands.push_back(dc);
+        });
     m_drawBuffer.Fill(drawCommands.data(), drawCommands.size() * sizeof(DrawCommand));
     m_numDrawCommands = drawCommands.size();
 
@@ -1748,113 +1685,107 @@ void Renderer::UpdateLights(uint32_t index)
 {
     PROFILE_FUNCTION();
     {
-        PROFILE_SCOPE("Loop #1");
+        PROFILE_SCOPE("Directional Lights update");
 
-        for(auto* lightComp : m_ecs->componentManager->GetComponents<DirectionalLight>())
-        {
-            Transform* t   = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
-            glm::mat4 tMat = t->GetTransform();
-
-            glm::vec3 newDir   = glm::normalize(-glm::vec3(tMat[2]));
-            float newIntensity = lightComp->intensity;
-            glm::vec3 newColor = lightComp->color.ToVec3();
-
-
-            Light& light = m_lightMap[lightComp->GetComponentID()];
-            bool changed = newDir != light.direction || newIntensity != light.intensity || newColor != light.color;
-            if(changed)
+        m_directionalLightsQuery.each(
+            [&](const DirectionalLight& lightComp, const InternalTransform& transform)
             {
-                light.direction = newDir;
-                light.intensity = newIntensity;
-                light.color     = newColor;
+                auto newDir        = glm::normalize(-glm::vec3(transform.worldTransform[2]));
+                float newIntensity = lightComp.intensity;
+                auto newColor      = lightComp.color.ToVec3();
 
-                for(auto& dict : m_changedLights)
-                    dict[lightComp->_slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
-            }
-            // light.lightSpaceMatrices = GetCascadeMatricesOrtho(glm::mat4(1.0), newDir,
-        }
+
+                Light& light = m_lightMap[lightComp._slot];
+                bool changed = newDir != light.direction || newIntensity != light.intensity || newColor != light.color;
+                if(changed)
+                {
+                    light.direction = newDir;
+                    light.intensity = newIntensity;
+                    light.color     = newColor;
+
+                    for(auto& dict : m_changedLights)
+                        dict[lightComp._slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+                }
+                // light.lightSpaceMatrices = GetCascadeMatricesOrtho(glm::mat4(1.0), newDir,
+            });
     }
     {
-        PROFILE_SCOPE("Loop #2");
+        PROFILE_SCOPE("Point Lights update");
 
-        for(auto* lightComp : m_ecs->componentManager->GetComponents<PointLight>())
-        {
-            Transform* t   = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
-            glm::mat4 tMat = t->GetTransform();
-
-            glm::vec3 newPos = glm::vec3(tMat[3]);
-
-            float newRange     = lightComp->range;
-            float newIntensity = lightComp->intensity;
-            glm::vec3 newColor = lightComp->color.ToVec3();
-            Attenuation newAtt = lightComp->attenuation;
-
-            Light& light = m_lightMap[lightComp->GetComponentID()];
-            bool changed = newPos != light.position || newIntensity != light.intensity
-                        || newColor != light.color || newRange != light.range
-                        || newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
-            if(changed)
+        m_pointLightsQuery.each(
+            [&](const PointLight& lightComp, const InternalTransform& transform)
             {
-                light.position  = newPos;
-                light.range     = newRange;
-                light.intensity = newIntensity;
-                light.color     = newColor;
+                auto newPos = glm::vec3(transform.worldTransform[3]);
 
-                light.attenuation[0] = newAtt.quadratic;
-                light.attenuation[1] = newAtt.linear;
-                light.attenuation[2] = newAtt.constant;
+                float newRange     = lightComp.range;
+                float newIntensity = lightComp.intensity;
+                glm::vec3 newColor = lightComp.color.ToVec3();
+                Attenuation newAtt = lightComp.attenuation;
 
-                for(auto& dict : m_changedLights)
-                    dict[lightComp->_slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
-            }
-        }
+                Light& light = m_lightMap[lightComp._slot];
+                bool changed = newPos != light.position || newIntensity != light.intensity
+                            || newColor != light.color || newRange != light.range
+                            || newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
+                if(changed)
+                {
+                    light.position  = newPos;
+                    light.range     = newRange;
+                    light.intensity = newIntensity;
+                    light.color     = newColor;
+
+                    light.attenuation[0] = newAtt.quadratic;
+                    light.attenuation[1] = newAtt.linear;
+                    light.attenuation[2] = newAtt.constant;
+
+                    for(auto& dict : m_changedLights)
+                        dict[lightComp._slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+                }
+            });
     }
     {
-        PROFILE_SCOPE("Loop #3");
+        PROFILE_SCOPE("Spot Lights update");
 
-        for(auto* lightComp : m_ecs->componentManager->GetComponents<SpotLight>())
-        {
-            Transform* t   = m_ecs->componentManager->GetComponent<Transform>(lightComp->GetOwner());
-            glm::mat4 tMat = t->GetTransform();
-
-            glm::vec3 newPos   = glm::vec3(tMat[3]);
-            glm::vec3 newDir   = glm::normalize(glm::vec3(tMat[2]));
-            float newRange     = lightComp->range;
-            float newIntensity = lightComp->intensity;
-            float newCutoff    = lightComp->cutoff;
-            glm::vec3 newColor = lightComp->color.ToVec3();
-
-            Attenuation newAtt = lightComp->attenuation;
-
-
-            Light& light = m_lightMap[lightComp->GetComponentID()];
-            bool changed = newPos != light.position || newDir != light.direction || newIntensity != light.intensity
-                        || newColor != light.color || newRange != light.range || newCutoff != light.cutoff
-                        || newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
-
-            if(changed)
+        m_spotLightsQuery.each(
+            [&](const SpotLight& lightComp, const InternalTransform& transform)
             {
-                light.position  = newPos;
-                light.direction = newDir;
-                light.range     = newRange;
-                light.intensity = newIntensity;
-                light.cutoff    = newCutoff;
-                light.color     = newColor;
+                auto newPos        = glm::vec3(transform.worldTransform[3]);
+                auto newDir        = glm::normalize(glm::vec3(transform.worldTransform[2]));
+                float newRange     = lightComp.range;
+                float newIntensity = lightComp.intensity;
+                float newCutoff    = lightComp.cutoff;
+                glm::vec3 newColor = lightComp.color.ToVec3();
 
-                light.attenuation[0] = newAtt.quadratic;
-                light.attenuation[1] = newAtt.linear;
-                light.attenuation[2] = newAtt.constant;
+                Attenuation newAtt = lightComp.attenuation;
 
-                for(auto& dict : m_changedLights)
-                    dict[lightComp->_slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
-            }
-        }
+
+                Light& light = m_lightMap[lightComp._slot];
+                bool changed = newPos != light.position || newDir != light.direction || newIntensity != light.intensity
+                            || newColor != light.color || newRange != light.range || newCutoff != light.cutoff
+                            || newAtt.quadratic != light.attenuation[0] || newAtt.linear != light.attenuation[1] || newAtt.constant != light.attenuation[2];
+
+                if(changed)
+                {
+                    light.position  = newPos;
+                    light.direction = newDir;
+                    light.range     = newRange;
+                    light.intensity = newIntensity;
+                    light.cutoff    = newCutoff;
+                    light.color     = newColor;
+
+                    light.attenuation[0] = newAtt.quadratic;
+                    light.attenuation[1] = newAtt.linear;
+                    light.attenuation[2] = newAtt.constant;
+
+                    for(auto& dict : m_changedLights)
+                        dict[lightComp._slot] = &light;  // if it isn't in the dict then put it in otherwise just replace it (which actually does nothing but we would have to check if the dict contains it anyway so shouldn't matter for perf)
+                }
+            });
     }
 
     std::vector<std::pair<uint32_t, void*>> slotsAndDatas;
     for(auto& [slot, newLight] : m_changedLights[index])
     {
-        slotsAndDatas.push_back({slot, newLight});
+        slotsAndDatas.emplace_back(slot, newLight);
         m_lightsBuffers[index]->UploadData(slot, newLight);  // TODO batch the upload together
     }
     m_changedLights[index].clear();
@@ -1864,14 +1795,22 @@ void Renderer::UpdateLights(uint32_t index)
 
 void Renderer::UpdateLightMatrices(uint32_t index)
 {
-    ComponentManager* cm       = m_ecs->componentManager;
-    Camera camera              = *(*(cm->begin<Camera>()));
-    Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
-    glm::mat4 inverseVP        = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection());  // TODO implement a function for inverse projection matrix instead of using generic inverse
-    for(auto* light : cm->GetComponents<DirectionalLight>())
+    glm::mat4 inverseVP;
+    float zNear = NAN;
+    // TODO implement a function for inverse projection matrix instead of using generic inverse
+    m_mainCameraQuery.each(
+        [&](const Camera& camera, const InternalTransform& transform)
+        {
+            // TODO implement a function for inverse projection matrix instead of using generic inverse
+            inverseVP = transform.worldTransform * glm::inverse(GetProjection(camera));
+            zNear     = camera.zNear;
+        });
+    for(const auto& [_, internalLight] : m_lightMap)
     {
-        Light internalLight                   = m_lightMap[light->GetComponentID()];
-        auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, camera.zNear, MAX_SHADOW_DEPTH);
+        if(internalLight.type != LightType::Directional)
+            continue;
+
+        auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, zNear, MAX_SHADOW_DEPTH);
 
         ShadowMatrices data{};
         data.lightSpaceMatrices = cascadesVP;
@@ -1884,7 +1823,7 @@ void Renderer::UpdateLightMatrices(uint32_t index)
 
 void Renderer::Render(double dt)
 {
-    //PROFILE_FUNCTION();
+    // PROFILE_FUNCTION();
     uint32_t imageIndex;
     VkResult result;
     {
@@ -1916,286 +1855,37 @@ void Renderer::Render(double dt)
 
 
         // m_debugUI->SetupFrame(imageIndex, 0, &m_renderPass);	//subpass is 0 because we only have one subpass for now
-        ComponentManager* cm       = m_ecs->componentManager;
-        Camera camera              = *(*(cm->begin<Camera>()));
-        Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
-        glm::mat4 proj             = camera.GetProjection();
 
-        glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform());  // TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
+        glm::mat4 vp;
+        glm::vec3 cameraPos;
+
+        m_mainCameraQuery.each(
+            [&](const Camera& camera, const InternalTransform& transform)
+            {
+                vp        = GetProjection(camera) * glm::inverse(transform.worldTransform);
+                cameraPos = transform.worldTransform[3];
+            });
+
+        //
         UpdateLights(imageIndex);
         UpdateLightMatrices(imageIndex);
-        m_pushConstants.cameraPos = cameraTransform->pos;
+        m_pushConstants.cameraPos = cameraPos;
+        m_pushConstants.viewProj  = vp;
         // m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
 
         if(m_needDrawBufferReupload)
         {
             RefreshDrawCommands();
         }
-        for(auto* transform : cm->GetComponents<Transform>())
-        {
-            if(cm->HasComponent<Renderable>(transform->GetOwner()))
+        m_transformsQuery.each(
+            [&](const InternalTransform& transform, const Renderable& renderable)
             {
-                glm::mat4 model = transform->GetTransform();
-
+                glm::mat4 model = transform.worldTransform;
                 for(auto& buffer : m_transformBuffers)
-                    buffer.UploadData(transform->ub_id, &model);
-            }
-        }
+                    buffer.UploadData(renderable.objectID, &model);
+            });
     }
 
-    /*
-        ComponentManager* cm = m_ecs->componentManager;
-
-
-        // TODO: make something better for the cameras, now it only takes the first camera that was added to the componentManager
-        // also a single camera has a whole chunk of memory which isnt good if we only use 1 camera per game
-        Camera camera = *(*(cm->begin<Camera>()));
-        Transform* cameraTransform = cm->GetComponent<Transform>(camera.GetOwner());
-        auto materialIterator = cm->begin<Material>();
-        auto end = cm->end<Material>();
-        EntityID currentEntity = materialIterator->GetOwner();
-
-        RenderPass* lastRenderPass = nullptr;
-        m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-        VkCommandBuffer cb = m_mainCommandBuffers[imageIndex].GetCommandBuffer();
-        {
-            PROFILE_SCOPE("Command Recording and submitting");
-            vkCmdResetQueryPool(cb, m_queryPools[m_currentFrame], 0, 4);
-
-            vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_queryPools[m_currentFrame],0);
-
-
-
-
-            glm::mat4 proj = camera.GetProjection();
-            //glm::mat4 trf = glm::translate(-cameraTransform->wPosition);
-            //glm::mat4 rot = glm::toMat4(glm::conjugate(cameraTransform->wRotation));
-            //glm::mat4 vp = proj * rot * trf;
-            glm::mat4 vp = proj * glm::inverse(cameraTransform->GetTransform()); //TODO inversing the transform like this isnt too fast, consider only allowing camera on root level entity so we can just -pos and -rot
-            uint32_t vpOffset = 0;
-
-            CameraStruct cs = {vp, cameraTransform->pos};
-            m_ubAllocators["camera" + std::to_string(imageIndex)]->UpdateBuffer(0, &cs);
-
-            auto prepassBegin = m_depthPipeline->m_renderPass->GetBeginInfo(imageIndex);
-            vkCmdBeginRenderPass(cb, &prepassBegin, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_pipeline);
-
-            // This should be fine since all our shaders use set 0 for the camera so the descriptor doesn't get unbound by pipeline switches
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 0, 1, &m_cameraDescSets[imageIndex], 1, &vpOffset);
-            {
-                PROFILE_SCOPE("Prepass draw call loop");
-                for(auto* renderable : cm->GetComponents<Renderable>())
-                {
-                    auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
-                    glm::mat4 model =  transform->GetTransform();
-                    {
-                        PROFILE_SCOPE("Bind buffers");
-                        renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                        renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                    }
-                    uint32_t offset;
-                    uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
-
-                    m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-
-                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-                    vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
-                }
-            }
-            vkCmdEndRenderPass(cb);
-            vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queryPools[m_currentFrame], 1);
-
-
-            {
-                glm::mat4 inverseVP = cameraTransform->GetTransform() * glm::inverse(camera.GetProjection()); // TODO implement a function for inverse projection matrix instead of using generic inverse
-                auto shadowBegin = m_shadowRenderPass.GetBeginInfo(0);
-                PROFILE_SCOPE("Shadow pass draw call loop");
-                for(auto* light : cm->GetComponents<DirectionalLight>())
-                {
-                    Light internalLight = m_lightMap[light->GetComponentID()];
-                    auto [cascadesVP, cascadesV, zPlanes] = GetCascadeMatricesOrtho(inverseVP, internalLight.direction, camera.zNear, MAX_SHADOW_DEPTH);
-                    std::cout << "VP: " << glm::to_string(cascadesVP[0] * glm::vec4(cameraTransform->pos, 1.0)) << std::endl;
-                    std::cout << "V:  " << glm::to_string(cascadesV[0] * glm::vec4(cameraTransform->pos, 1.0)) << std::endl;
-
-                    internalLight.lightSpaceMatrices = cascadesVP;
-                    internalLight.lightViewMatrices = cascadesV;
-                    internalLight.zPlanes = zPlanes;
-                    m_lightsBuffers[imageIndex]->UpdateBuffer(light->_slot, &internalLight);
-
-                    for (int i = 0; i < NUM_CASCADES; ++i)
-                    {
-
-                        VkRenderPassAttachmentBeginInfo attachmentBegin = {};
-                        attachmentBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO;
-                        attachmentBegin.attachmentCount = 1;
-                        VkImageView view = m_shadowmaps[light->_shadowSlot][i]->GetImageView();
-                        attachmentBegin.pAttachments = &view;
-                        shadowBegin.pNext = &attachmentBegin;
-
-                        vkCmdBeginRenderPass(cb, &shadowBegin, VK_SUBPASS_CONTENTS_INLINE);
-                        if(i == 0) // only bind these once, they will stay the same among the cascades
-                        {
-                            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_pipeline);
-                            uint32_t offset = 0;
-                            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 0, 1, &m_shadowDesc[imageIndex], 1, &offset);
-                        }
-                        struct {
-                            uint32_t slot;
-                            uint32_t cascadeIndex;
-                        } pc;
-                        pc.slot = light->_slot;
-                        pc.cascadeIndex = i;
-                        vkCmdPushConstants(cb, m_shadowPipeline->m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
-
-
-                        for(auto* renderable : cm->GetComponents<Renderable>())
-                        {
-                            auto transform  = cm->GetComponent<Transform>(renderable->GetOwner());
-                            {
-                                PROFILE_SCOPE("Bind buffers");
-                                renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                                renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                            }
-                            uint32_t offset;
-                            uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
-
-
-                            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_shadowPipeline->m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-                            vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
-                        }
-                        vkCmdEndRenderPass(cb);
-                    }
-                }
-            }
-            //TODO timestamp
-
-
-
-            std::vector<VkBufferMemoryBarrier> barriersBefore(2);
-            barriersBefore[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriersBefore[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barriersBefore[0].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriersBefore[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
-            barriersBefore[0].size = m_lightsBuffers[imageIndex]->GetSize();
-            barriersBefore[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriersBefore[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barriersBefore[1].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriersBefore[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
-            barriersBefore[1].size = m_visibleLightsBuffers[imageIndex]->GetSize();
-
-            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, barriersBefore.size(), barriersBefore.data(), 0, nullptr);
-            uint32_t offset = 0;
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_pipeline);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, m_compute->m_layout, 0, 1, &m_computeDesc[imageIndex], 1, &offset);
-
-
-            m_computePushConstants.debugMode = 1;
-            vkCmdPushConstants(cb, m_compute->m_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
-            vkCmdDispatch(cb, m_computePushConstants.tileNums.x, m_computePushConstants.tileNums.y, 1);
-
-            std::vector<VkBufferMemoryBarrier> barriersAfter(2);
-            barriersAfter[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriersAfter[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriersAfter[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barriersAfter[0].buffer = m_lightsBuffers[imageIndex]->GetBuffer(0);
-            barriersAfter[0].size = m_lightsBuffers[imageIndex]->GetSize();
-            barriersAfter[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barriersAfter[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barriersAfter[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barriersAfter[1].buffer = m_visibleLightsBuffers[imageIndex]->GetBuffer(0);
-            barriersAfter[1].size = m_visibleLightsBuffers[imageIndex]->GetSize();
-            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, barriersAfter.size(), barriersAfter.data(), 0, nullptr);
-
-            vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, m_queryPools[m_currentFrame], 2);
-
-            for(auto& pipeline : m_pipelines)
-            {
-                //if(pipeline.m_name == "depth") continue;
-                auto tempIt = materialIterator;// to be able to restore the iterator to its previous place after global pipeline is finished
-                if(pipeline.m_isGlobal)
-                    materialIterator = cm->begin<Material>();
-
-                if(pipeline.m_renderPass != lastRenderPass)
-                {
-                    if(lastRenderPass)
-                        vkCmdEndRenderPass(cb);
-
-                    lastRenderPass = pipeline.m_renderPass;
-                    auto beginInfo = lastRenderPass->GetBeginInfo(imageIndex);
-                    vkCmdBeginRenderPass(cb, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-                    //vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, m_descriptorSets[pipeline.m_name + "0"][imageIndex], __, __); TODO use a global descriptor
-
-                }
-
-
-                //vkCmdPushConstants(m_mainCommandBuffers[imageIndex].GetCommandBuffer(), pipeline.m_layout,
-
-                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_pipeline);
-                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 0, 1, &m_tempDesc[imageIndex], 1, &offset);
-                vkCmdPushConstants(cb, pipeline.m_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ComputePushConstants), &m_computePushConstants);
-
-
-                PROFILE_SCOPE("Draw call loop");
-                while(materialIterator != end && (pipeline.m_isGlobal || materialIterator->shaderName == pipeline.m_name))
-                {
-                    Transform* transform = cm->GetComponent<Transform>(currentEntity);
-                    Renderable* renderable = cm->GetComponent<Renderable>(currentEntity);
-                    if(renderable == nullptr)
-                        continue;
-
-                    // We don't need to update the transforms here, because they have already been updated in the depth prepass draw loop
-
-                    //transform->rot = glm::rotate(transform->rot,  i * 0.001f * glm::radians(90.0f), glm::vec3(0,0,1));
-                    //glm::mat4 model =  transform->GetTransform();
-
-                    renderable->vertexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-                    renderable->indexBuffer.Bind(m_mainCommandBuffers[imageIndex]);
-
-                    uint32_t offset;
-                    uint32_t bufferIndex = m_ubAllocators["transforms" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(transform->ub_id, offset);
-
-                    //m_ubAllocators["transforms" + std::to_string(imageIndex)]->UpdateBuffer(transform->ub_id, &model);
-                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 2, 1, &m_transformDescSets[imageIndex][bufferIndex], 1, &offset);
-
-
-                    if(!pipeline.m_isGlobal)
-                    {
-                        m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->GetBufferIndexAndOffset(materialIterator->_ubSlot, offset);
-
-                        glm::vec4 ubs[] = {{materialIterator->_textureSlot, 0, 0, 0}, {0.5f, 0,0,1.0f}, };
-
-                        m_ubAllocators[pipeline.m_name + "material" + std::to_string(imageIndex)]->UpdateBuffer(materialIterator->_ubSlot, ubs);
-
-                    }
-                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.m_layout, 1, 1, &m_descriptorSets[pipeline.m_name + std::to_string(1)][bufferIndex + imageIndex], 1, &offset);
-                    vkCmdDrawIndexed(cb, static_cast<uint32_t>(renderable->indexBuffer.GetSize() / sizeof(uint32_t)) , 1, 0, 0, 0); // TODO: make the size calculation better (not hardcoded for uint32_t)
-
-
-                    materialIterator++;
-                    if(materialIterator != end)
-                        currentEntity = materialIterator->GetOwner();
-                }
-                if(pipeline.m_isGlobal && tempIt != end)
-                {
-                    materialIterator = tempIt;
-                    currentEntity = materialIterator->GetOwner();
-                }
-            }
-
-
-
-            m_debugUI->Draw(&m_mainCommandBuffers[imageIndex]);
-
-
-            vkCmdEndRenderPass(cb);
-            vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, m_queryPools[m_currentFrame], 3);
-            m_mainCommandBuffers[imageIndex].End();
-
-
-        }
-    */
     m_mainCommandBuffers[imageIndex].Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], imageIndex);
@@ -2235,13 +1925,17 @@ void Renderer::Render(double dt)
     m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+void Renderer::OnSceneSwitched(SceneSwitchedEvent e)
+{
+    m_ecs = e.newScene->GetECS();
+}
 
-void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
+void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
 {
     // TODO don't keep the vertex and index vectors after sending them to gpu
-    Mesh* mesh               = e->component;
+    const Mesh* mesh         = e.entity.GetComponent<Mesh>();
     VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
-    Renderable* comp         = m_ecs->componentManager->AddComponent<Renderable>(e->entity);
+    Renderable comp{};
 
 
     // create the vertex and index buffers on the gpu
@@ -2249,21 +1943,21 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
     uint64_t vertexSlot = m_vertexBuffer.Allocate(mesh->vertices.size(), didVBResize, (void*)&comp);
     m_vertexBuffer.UploadData(vertexSlot, mesh->vertices.data());
 
-    comp->vertexOffset = vertexSlot;
-    comp->vertexCount  = mesh->vertices.size();
+    comp.vertexOffset = vertexSlot;
+    comp.vertexCount  = mesh->vertices.size();
 
     bool didIBResize   = false;
     uint64_t indexSlot = m_indexBuffer.Allocate(mesh->indices.size(), didIBResize, &comp);
     m_indexBuffer.UploadData(indexSlot, mesh->indices.data());
 
-    comp->indexOffset = indexSlot;
-    comp->indexCount  = mesh->indices.size();
+    comp.indexOffset = indexSlot;
+    comp.indexCount  = mesh->indices.size();
 
     if(didVBResize)
     {
         for(const auto& [slot, info] : m_vertexBuffer.GetAllocationInfos())
         {
-            auto* renderable         = (Renderable*)info.pUserData;
+            auto* renderable         = (Renderable*)info.pUserData;  // TODO
             renderable->vertexOffset = slot;
         }
     }
@@ -2281,25 +1975,6 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
     {
         // RecreateDrawBuffers();
     }
-    /*
-    Buffer stagingVertexBuffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    stagingVertexBuffer.Fill((void*)mesh->vertices.data(), vBufferSize);
-
-    VkDeviceSize iBufferSize = sizeof(mesh->indices[0]) * mesh->indices.size();
-    Buffer stagingIndexBuffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    stagingIndexBuffer.Fill((void*)mesh->indices.data(), iBufferSize);
-
-    Renderable* comp   = m_ecs->componentManager->AddComponent<Renderable>(e->entity);
-    comp->vertexBuffer = Buffer(vBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    comp->indexBuffer  = Buffer(iBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    stagingVertexBuffer.Copy(&comp->vertexBuffer, vBufferSize);
-
-    stagingIndexBuffer.Copy(&comp->indexBuffer, iBufferSize);
-
-    stagingVertexBuffer.Free();
-    stagingIndexBuffer.Free();
-    */
 
     uint32_t slot = 0;
     for(auto& buffer : m_transformBuffers)
@@ -2307,27 +1982,23 @@ void Renderer::OnMeshComponentAdded(const ComponentAdded<Mesh>* e)
         bool didResize = false;
         slot           = buffer.Allocate(1, didResize);
     }
-    m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id = slot;
+    comp.objectID = slot;
 
-    comp->objectID = slot;
+    comp.objectID = slot;
 
     m_needDrawBufferReupload = true;
+
+    e.entity.SetComponent<Renderable>(comp);
 }
 
-void Renderer::OnMeshComponentRemoved(const ComponentRemoved<Mesh>* e)
+void Renderer::OnMeshComponentRemoved(ComponentRemoved<Mesh> e)
 {
-    m_ecs->componentManager->RemoveComponent<Renderable>(e->entity);
-
-    /*
-    for(uint32_t i = 0; i < m_swapchainImages.size(); ++i)
-    {
-        uint32_t id = m_ecs->componentManager->GetComponent<Transform>(e->entity)->ub_id;
-        m_ubAllocators["transforms" + std::to_string(i)]->Free(id);
-    }
-    */
+    // TODO remove the vertex and index buffers from the gpu
+    e.entity.RemoveComponent<Renderable>();
 }
 
-void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
+// TODO what is this
+void Renderer::OnMaterialComponentAdded(ComponentAdded<Material> e)
 {
     /*auto it = m_pipelinesRegistry.find(e->component->shaderName);
     if(it == m_pipelinesRegistry.end())
@@ -2343,17 +2014,18 @@ void Renderer::OnMaterialComponentAdded(const ComponentAdded<Material>* e)
     */
 }
 
-void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e)
+void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 {
     uint32_t slot = 0;
     bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
         slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
 
-    e->component->_slot = slot;
+    auto* comp  = e.entity.GetComponentMut<DirectionalLight>();
+    comp->_slot = slot;
 
-    m_lightMap[e->component->GetComponentID()] = {0};  // 0 = DirectionalLight
-    Light* light                               = &m_lightMap[e->component->GetComponentID()];
+    m_lightMap[slot] = {LightType::Directional};  // 0 = DirectionalLight
+    Light* light     = &m_lightMap[slot];
 
     uint32_t matricesSlot = 0;
     for(auto& buffer : m_shadowMatricesBuffers)
@@ -2375,8 +2047,8 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ci.layerCount  = NUM_CASCADES;
 
-    slot                      = m_shadowmaps.size();
-    e->component->_shadowSlot = slot;
+    slot              = m_shadowmaps.size();
+    comp->_shadowSlot = slot;
 
 
     std::vector<std::unique_ptr<Image>> vec(NUM_CASCADES);
@@ -2414,18 +2086,18 @@ void Renderer::OnDirectionalLightAdded(const ComponentAdded<DirectionalLight>* e
     */
 }
 
-void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
+void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
 {
     uint32_t slot = 0;
     bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
         slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
 
+    auto* comp  = e.entity.GetComponentMut<PointLight>();
+    comp->_slot = slot;
 
-    e->component->_slot = slot;
-
-    m_lightMap[e->component->GetComponentID()] = {1};  // 1 = PointLight
-    Light* light                               = &m_lightMap[e->component->GetComponentID()];
+    m_lightMap[slot] = {1};  // 1 = PointLight
+    Light* light     = &m_lightMap[slot];
 
     for(auto& dict : m_changedLights)
     {
@@ -2433,17 +2105,18 @@ void Renderer::OnPointLightAdded(const ComponentAdded<PointLight>* e)
     }
 }
 
-void Renderer::OnSpotLightAdded(const ComponentAdded<SpotLight>* e)
+void Renderer::OnSpotLightAdded(ComponentAdded<SpotLight> e)
 {
     uint32_t slot = 0;
     bool tmp      = false;
     for(auto& buffer : m_lightsBuffers)
         slot = buffer->Allocate(1, tmp);  // slot should be the same for all of these, since we allocate to every buffer every time
 
-    e->component->_slot = slot;
+    auto* comp  = e.entity.GetComponentMut<SpotLight>();
+    comp->_slot = slot;
 
-    m_lightMap[e->component->GetComponentID()] = {2};  // 2 = SpotLight
-    Light* light                               = &m_lightMap[e->component->GetComponentID()];
+    m_lightMap[slot] = {2};  // 2 = SpotLight
+    Light* light     = &m_lightMap[slot];
 
     for(auto& dict : m_changedLights)
     {

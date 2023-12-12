@@ -1,16 +1,9 @@
 #pragma once
 
 #include "Core/Events/Event.hpp"
-
 #include "ECS/Entity.hpp"
 
-struct EntityCreated : public Event<EntityCreated>
+struct EntityCreated : public Event
 {
-	Entity entity;
-};
-
-// TODO: make this work
-struct EntityDestroyed : public Event<EntityDestroyed>
-{
-	Entity entity;
+    Entity entity;
 };

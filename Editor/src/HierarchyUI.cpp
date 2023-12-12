@@ -1,127 +1,98 @@
 #include "HierarchyUI.hpp"
 
+#include "Application.hpp"
 #include "Rendering/TextureManager.hpp"
-#include "ECS/CoreComponents/Relationship.hpp"
-#include "ECS/CoreComponents/NameTag.hpp"
-#include "ECS/EntityManager.hpp"
 #include "Rendering/MaterialSystem.hpp"
-#include "ECS/SystemManager.hpp"
+#include "Core/Events/EventHandler.hpp"
+std::unordered_map<std::type_index, PropertyDrawFunction> HierarchyUI::m_propertyDrawFunctions = {};
 
-std::unordered_map<ComponentTypeID, PropertyDrawFunction> HierarchyUI::m_propertyDrawFunctions = {};
 
-
-HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem):
-	m_hierarchyWindow(DebugUIWindow("Hierarchy")),
-	m_propertiesWindow(DebugUIWindow("Properties")),
-	m_ecs(scene->ecs),
-	m_renderer(renderer)
+HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem)
+    : m_hierarchyWindow(DebugUIWindow("Hierarchy")),
+      m_propertiesWindow(DebugUIWindow("Properties")),
+      m_renderer(renderer)
 {
-	renderer->AddDebugUIWindow(&m_hierarchyWindow);
-	renderer->AddDebugUIWindow(&m_propertiesWindow);
+    renderer->AddDebugUIWindow(&m_hierarchyWindow);
+    renderer->AddDebugUIWindow(&m_propertiesWindow);
 
-	scene->eventHandler->Subscribe(this, &HierarchyUI::OnEntityCreated);
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &HierarchyUI::OnEntityCreated);
 
-	HierarchyUI::RegisterPropertyDrawFunction(Transform::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
-	{
-		window->AddElement(std::make_shared<Text>("Transform:"));
+    HierarchyUI::RegisterPropertyDrawFunction<Transform>(
+        [](void* component, DebugUIWindow* window)
+        {
+            window->AddElement(std::make_shared<Text>("Transform:"));
 
-		Transform* comp = (Transform*)component;
-		window->AddElement(std::make_shared<DragVector3>(&comp->pos, "Position"));
-		window->AddElement(std::make_shared<DragEulerAngles>(&comp->rot, "Rotation"));
-		window->AddElement(std::make_shared<DragVector3>(&comp->scale, "Scale", 0.0f, FLT_MAX));
-
-	});
-
-	HierarchyUI::RegisterPropertyDrawFunction(NameTag::STATIC_COMPONENT_TYPE_ID, [](IComponent* component, DebugUIWindow* window)
-	{
-		auto name = std::make_shared<TextEdit>(&((NameTag*)component)->name);
-		window->AddElement(name);
-	});
-
-	HierarchyUI::RegisterPropertyDrawFunction(Material::STATIC_COMPONENT_TYPE_ID, [materialSystem](IComponent* component, DebugUIWindow* window)
-	{
-		Material* comp = (Material*)component;
-		window->AddElement(std::make_shared<Text>("Material:    " + comp->shaderName));
+            auto* comp = (Transform*)component;
+            window->AddElement(std::make_shared<DragVector3>(&comp->pos, "Position"));
+            window->AddElement(std::make_shared<DragEulerAngles>(&comp->rot, "Rotation"));
+            window->AddElement(std::make_shared<DragVector3>(&comp->scale, "Scale", 0.0f, FLT_MAX));
+        });
 
 
-		auto table = std::make_shared<Table>();
-		int row = 0;
-		window->AddElement(std::make_shared<Text>("Textures:"));
-		for(auto& [name, path] : comp->textures)
-		{
-			auto nameText = std::make_shared<Text>("\t" + name);
-			auto file = std::make_shared<FileSelector>(&path);
-			file->RegisterCallback([comp, materialSystem](FileSelector* fileSelector)
-			{
-				TextureManager::LoadTexture(fileSelector->GetPath());
-				materialSystem->UpdateMaterial(comp);
-			});
-			table->AddElement(nameText, row, 1);
-			table->AddElement(file, row, 2);
-			row++;
-		}
-		window->AddElement(table);
-	});
+    HierarchyUI::RegisterPropertyDrawFunction<Material>(
+        [materialSystem](void* component, DebugUIWindow* window)
+        {
+            auto* comp = (Material*)component;
+            window->AddElement(std::make_shared<Text>("Material:    " + comp->shaderName));
 
+
+            auto table = std::make_shared<Table>();
+            int row    = 0;
+            window->AddElement(std::make_shared<Text>("Textures:"));
+            for(auto& [name, path] : comp->textures)
+            {
+                auto nameText = std::make_shared<Text>("\t" + name);
+                auto file     = std::make_shared<FileSelector>(&path);
+                file->RegisterCallback([comp, materialSystem](FileSelector* fileSelector)
+                                       {
+                                           TextureManager::LoadTexture(fileSelector->GetPath());
+                                           // TODO
+                                           // materialSystem->UpdateMaterial(comp);
+                                       });
+                table->AddElement(nameText, row, 1);
+                table->AddElement(file, row, 2);
+                row++;
+            }
+            window->AddElement(table);
+        });
 }
 
-void HierarchyUI::OnEntityCreated(const EntityCreated* event)
+void HierarchyUI::OnEntityCreated(EntityCreated event)
 {
-	Relationship* comp = event->entity.GetComponent<Relationship>();
+    auto node     = std::make_shared<TreeNode>(event.entity.GetName());
+    Entity entity = event.entity;
+    node->RegisterCallback(
+        [this, entity](TreeNode* node)
+        {
+            EntitySelectedCallback(entity);
+            m_hierarchyWindow.DeselectAll();
+            node->SetIsSelected(true);
+        });
 
-	auto node = std::make_shared<TreeNode>(event->entity.GetComponent<NameTag>()->name);
-	node->SetUserPtr(event->entity.GetEntityID());
-	node->RegisterCallback(
-			[this](TreeNode* node)
-			{
-				EntitySelectedCallback((EntityID)node->GetUserPtr());
-				m_hierarchyWindow.DeselectAll();
-				node->SetIsSelected(true);
-
-			}
-	);
-
-	if(comp->parent == INVALID_ENTITY_ID)
-	{
-		m_hierarchyWindow.AddElement(node);
-		m_hierarchyTree[event->entity.GetEntityID()] = node;
-	}
-	else
-	{
-
-		m_hierarchyTree[comp->parent]->AddElement(node);
-		m_hierarchyTree[event->entity.GetEntityID()] = node;
-	}
+    if(event.entity.GetParent() == Entity::INVALID_ENTITY)
+    {
+        m_hierarchyWindow.AddElement(node);
+        m_hierarchyTree[event.entity] = node;
+    }
+    else
+    {
+        m_hierarchyTree[event.entity.GetParent()]->AddElement(node);
+        m_hierarchyTree[event.entity] = node;
+    }
 }
 
-void HierarchyUI::EntitySelectedCallback(EntityID entity)
+void HierarchyUI::EntitySelectedCallback(Entity entity)
 {
-	m_selectedEntity = entity;
-	LOG_TRACE("Selected entity: {0}", m_ecs->componentManager->GetComponent<NameTag>(m_selectedEntity)->name);
+    m_selectedEntity = entity;
+    LOG_TRACE("Selected entity: {0}", entity.GetName());
 
-	m_propertiesWindow.Clear();
-	auto components = m_ecs->componentManager->GetAllComponents(entity);
 
-	m_propertyDrawFunctions[NameTag::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<NameTag>(entity), &m_propertiesWindow);
-	m_propertiesWindow.AddElement(std::make_shared<Separator>());
-	m_propertyDrawFunctions[Transform::STATIC_COMPONENT_TYPE_ID](m_ecs->componentManager->GetComponent<Transform>(entity), &m_propertiesWindow);
-	m_propertiesWindow.AddElement(std::make_shared<Separator>());
+    m_propertiesWindow.Clear();
 
-	for(auto& [typeID, component] : components)
-	{
-		if(typeID == Transform::STATIC_COMPONENT_TYPE_ID || typeID == NameTag::STATIC_COMPONENT_TYPE_ID)
-			continue;
 
-		auto it = m_propertyDrawFunctions.find(typeID);
-		if(it != m_propertyDrawFunctions.end())
-		{
-			it->second(component, &m_propertiesWindow);
-			m_propertiesWindow.AddElement(std::make_shared<Separator>());
-		}
-	}
+    DrawComponent<Transform>(entity);
+    DrawComponent<Material>(entity);
 }
-
-
 
 
 // void HierarchyUI::SetupComponentProperties(ComponentTypeID type, IComponent* component)

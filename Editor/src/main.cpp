@@ -22,18 +22,16 @@
 #include "TestSystem.hpp"
 
 
-void sponza_test(ECSEngine* ecs)
+void sponza_test(ECS* ecs)
 {
-    Entity* camera                        = ecs->entityManager->CreateEntity();
-    Transform* t                          = camera->AddComponent<Transform>();
-    camera->GetComponent<NameTag>()->name = "Camera";
-    camera->AddComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
-    t->pos = {0.0f, 60.0f, -10.0f};
+    Entity camera = ecs->CreateEntity("MainCamera");
+    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.GetComponentMut<Transform>()->pos = {0.0f, 60.0f, -10.0f};
     // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
 
-    Entity* e2                           = AssimpImporter::LoadFile("models/sponza_smooth.fbx", ecs);
-    e2->GetComponent<Transform>()->scale = {0.1f, 0.1f, 0.1f};
+    Entity e2                              = AssimpImporter::LoadFile("models/sponza_smooth.fbx", ecs);
+    e2.GetComponentMut<Transform>()->scale = {0.1f, 0.1f, 0.1f};
 
     // Entity* dlight                        = ecs->entityManager->CreateEntity();
     // dlight->GetComponent<NameTag>()->name = "DLight";
@@ -44,24 +42,24 @@ void sponza_test(ECSEngine* ecs)
     // t2->rot       = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
 
 
-    Entity* lightParent                        = ecs->entityManager->CreateEntity();
-    lightParent->GetComponent<NameTag>()->name = "point lights";
-    std::vector<Color> colors                  = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int gridSize                     = 0;
+    Entity lightParent        = ecs->CreateEntity("point lights");
+    std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
+    constexpr int gridSize    = 0;
     for(int i = 0; i < gridSize; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
         {
-            Entity* d      = ecs->entityManager->CreateChild(lightParent);
-            auto l         = d->AddComponent<PointLight>();
-            int index      = i * gridSize + j;
-            l->color       = colors[index % colors.size()];
-            l->intensity   = 100.0f;
-            l->range       = 100.0f;
-            l->attenuation = {1, 0, 0};
-            // l->cutoff = glm::radians(40.f);
-            auto dt        = d->GetComponent<Transform>();
-            dt->pos        = {(i - gridSize / 2.f) * 10, 1.0f, (j - gridSize / 2.f) * 10};
+            Entity d = lightParent.CreateChild("Light");
+            PointLight l{};
+            int index     = i * gridSize + j;
+            l.color       = colors[index % colors.size()];
+            l.intensity   = 100.0f;
+            l.range       = 100.0f;
+            l.attenuation = {1, 0, 0};
+            // l.cutoff = glm::radians(40.f);
+            d.SetComponent<PointLight>(l);
+            auto* dt = d.GetComponentMut<Transform>();
+            dt->pos  = {(i - gridSize / 2.f) * 10, 1.0f, (j - gridSize / 2.f) * 10};
         }
     }
 
@@ -79,50 +77,47 @@ void sponza_test(ECSEngine* ecs)
     // t2->lPosition = {3.0f, -0.5f,-1.0f};
 
 
-    ecs->systemManager->AddSystem<TestSystem>(5, 5);
-    
-    Entity* dlight                        = ecs->entityManager->CreateEntity();
-    dlight->GetComponent<NameTag>()->name = "DLight";
-    auto dl                               = dlight->AddComponent<DirectionalLight>();
-    dl->color                             = Color::White;
-    dl->intensity                         = 1.0f;
-    Transform* t2                         = dlight->GetComponent<Transform>();
-    t2->rot                               = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
+    ecs->AddSystem<TestSystem>(5, 5);
 
-    Entity* slight                        = ecs->entityManager->CreateEntity();
-    slight->GetComponent<NameTag>()->name = "SLight";
-    auto sl                               = slight->AddComponent<SpotLight>();
-    sl->color                             = Color::Red;
-    sl->intensity                         = 500.0f;
-    sl->range                             = 1000.0f;
-    sl->attenuation                       = {1, 0, 0};
-    sl->cutoff                            = glm::cos(glm::radians(45.f));
-    Transform* ts                         = slight->GetComponent<Transform>();
+    Entity dlight = ecs->CreateEntity("DLight");
+    DirectionalLight dl{};
+    dl.color     = Color::White;
+    dl.intensity = 1.0f;
+    dlight.SetComponent<DirectionalLight>(dl);
+    auto* t2 = dlight.GetComponentMut<Transform>();
+    t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
+
+    Entity slight = ecs->CreateEntity("SLight");
+    SpotLight sl{};
+    sl.color       = Color::Red;
+    sl.intensity   = 500.0f;
+    sl.range       = 1000.0f;
+    sl.attenuation = {1, 0, 0};
+    sl.cutoff      = glm::cos(glm::radians(45.f));
+    slight.SetComponent<SpotLight>(sl);
+    auto* ts = slight.GetComponentMut<Transform>();
     // ts->rot                               = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-    ts->pos                               = {3.0f, 1.f, 0.0f};
+    ts->pos  = {3.0f, 1.f, 0.0f};
 }
 
-void pbr_spheres(ECSEngine* ecs)
+void pbr_spheres(ECS* ecs)
 {
-    Entity* camera = ecs->entityManager->CreateEntity();
-    Transform* t   = camera->AddComponent<Transform>();
-    camera->AddComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
-    t->pos = {0.0f, 8.0f, 0.0f};
-    t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1, 0, 0));
+    Entity camera = ecs->CreateEntity("MainCamera");
+    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.GetComponentMut<Transform>()->pos = {0.0f, 4.0f, -10.0f};
+    // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
 
-    Entity* ground                           = AssimpImporter::LoadFile("models/cube.obj", ecs);
-    ground->GetComponent<NameTag>()->name    = "Ground";
-    auto gt                                  = ground->GetComponent<Transform>();
-    gt->scale                                = {20.f, 0.1f, 20.f};
-    gt->pos                                  = {0.f, -2.f, 0.f};
-    ground->GetComponent<Material>()->albedo = glm::vec3(0.1f, 0.7f, 0.05f);
+    Entity ground                              = AssimpImporter::LoadFile("models/cube.obj", ecs);
+    auto* gt                                   = ground.GetComponentMut<Transform>();
+    gt->scale                                  = {20.f, 0.1f, 20.f};
+    gt->pos                                    = {0.f, -2.f, 0.f};
+    ground.GetComponentMut<Material>()->albedo = glm::vec3(0.1f, 0.7f, 0.05f);
 
 
-    Entity* parent                        = ecs->entityManager->CreateEntity();
-    parent->GetComponent<NameTag>()->name = "Spheres";
-    constexpr int gridSize                = 5;
-    std::vector<std::string> names        = {
+    Entity parent                  = ecs->CreateEntity("Spheres");
+    constexpr int gridSize         = 5;
+    std::vector<std::string> names = {
         "models/rusty_sphere.fbx",
         "models/grassy_sphere.fbx",
         "models/aluminum_sphere.fbx",
@@ -136,81 +131,82 @@ void pbr_spheres(ECSEngine* ecs)
         for(int j = 0; j < gridSize; ++j)
         {
             int index = i * gridSize + j;
-            Entity* e = AssimpImporter::LoadFile(names[rand() % names.size()], ecs, parent);
-            auto tt   = e->GetComponent<Transform>();
+            Entity e  = AssimpImporter::LoadFile(names[rand() % names.size()], ecs, &parent);
+            auto* tt  = e.GetComponentMut<Transform>();
             tt->pos   = {(i - gridSize / 2.f) * 3, 0.0f, (j - gridSize / 2.f) * 3};
             tt->scale = {1, 1, 1};
         }
     }
-    parent                                = ecs->entityManager->CreateEntity();
-    parent->GetComponent<NameTag>()->name = "Cubes";
+    parent = ecs->CreateEntity("Cubes");
     for(int i = 0; i < gridSize; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
         {
+            
             int index      = i * gridSize + j;
-            Entity* e      = AssimpImporter::LoadFile("models/cube.obj", ecs, parent);
-            auto tt        = e->GetComponent<Transform>();
+            Entity e       = AssimpImporter::LoadFile("models/cube.obj", ecs, &parent);
+            auto* tt       = e.GetComponentMut<Transform>();
             tt->pos        = {(i - gridSize / 2.f) * 3, j * 3, -10.0f};
             tt->scale      = {1, 1, 1};
-            auto* mat      = e->GetComponent<Material>();
+            auto* mat      = e.GetComponentMut<Material>();
             mat->albedo    = glm::vec3(1.0f, 0.0f, 0.0f);
-            mat->roughness = glm::clamp(i / ((float)gridSize - 1), 0.05f, 1.0f); // roughness 0 looks odd in direct lighting
-            mat->metallic  = j / ((float)gridSize - 1);
+            mat->roughness = glm::clamp(i / ((float)gridSize), 0.05f, 1.0f);  // roughness 0 looks odd in direct lighting
+            mat->metallic  = j / ((float)gridSize);
         }
     }
 
-    Entity* lightParent                        = ecs->entityManager->CreateEntity();
-    lightParent->GetComponent<NameTag>()->name = "point lights";
-    std::vector<Color> colors                  = {Color::Blue, Color::Green};
-    constexpr int lgridSize                    = 1;
+
+    Entity lightParent        = ecs->CreateEntity("point lights");
+    std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
+    constexpr int lgridSize   = 2;
     for(int i = 0; i < lgridSize; ++i)
     {
         for(int j = 0; j < lgridSize; ++j)
         {
-            Entity* e      = ecs->entityManager->CreateChild(lightParent);
-            auto l         = e->AddComponent<PointLight>();
-            int index      = i * lgridSize + j;
-            l->color       = colors[rand() % colors.size()];
-            l->intensity   = 200.0f;
-            l->range       = 100.0f;
-            l->attenuation = {1, 0, 0};
-            // l->cutoff = glm::radians(40.f);
-            auto lt        = e->GetComponent<Transform>();
-            lt->pos        = {(i - lgridSize / 2.f) * 3, 1.5f, (j - lgridSize / 2.f) * 3};
+            Entity d = lightParent.CreateChild("Light");
+            PointLight l{};
+            int index     = i * lgridSize + j;
+            l.color       = colors[index % colors.size()];
+            l.intensity   = 200.0f;
+            l.range       = 100.0f;
+            l.attenuation = {1, 0, 0};
+            // l.cutoff = glm::radians(40.f);
+            d.SetComponent<PointLight>(l);
+            auto* dt = d.GetComponentMut<Transform>();
+            dt->pos  = {(i - lgridSize / 2.f) * 3, 1.5f, (j - lgridSize / 2.f) * 3};
         }
     }
-    ecs->systemManager->AddSystem<TestSystem>(2, 2);
-    
-     Entity* dlight                        = ecs->entityManager->CreateEntity();
-     dlight->GetComponent<NameTag>()->name = "DLight";
-     auto dl                               = dlight->AddComponent<DirectionalLight>();
-     dl->color                             = Color::White;
-     dl->intensity                         = 1.0f;
-     Transform* t2 = dlight->GetComponent<Transform>();
-     t2->rot       = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-     
-    Entity* slight                        = ecs->entityManager->CreateEntity();
-    slight->GetComponent<NameTag>()->name = "SLight";
-    auto sl                               = slight->AddComponent<SpotLight>();
-    sl->color                             = Color::White;
-    sl->intensity                         = 100.0f;
-    sl->range                             = 100.0f;
-    sl->attenuation                       = {1, 0, 0};
-    sl->cutoff                            = glm::cos(glm::radians(45.f));
-    Transform* ts                         = slight->GetComponent<Transform>();
+    ecs->AddSystem<TestSystem>(2, 2);
+
+    Entity dlight = ecs->CreateEntity("DLight");
+    DirectionalLight dl{};
+    dl.color     = Color::White;
+    dl.intensity = 1.0f;
+    dlight.SetComponent<DirectionalLight>(dl);
+    auto* t2 = dlight.GetComponentMut<Transform>();
+    t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
+
+    Entity slight = ecs->CreateEntity("SLight");
+    SpotLight sl{};
+    sl.color       = Color::Red;
+    sl.intensity   = 500.0f;
+    sl.range       = 1000.0f;
+    sl.attenuation = {1, 0, 0};
+    sl.cutoff      = glm::cos(glm::radians(45.f));
+    slight.SetComponent<SpotLight>(sl);
+    auto* ts = slight.GetComponentMut<Transform>();
     // ts->rot                               = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
-    ts->pos                               = {3.0f, 1.f, 0.0f};
+    ts->pos  = {3.0f, 1.f, 0.0f};
 }
 
 int main()
 {
     Application editor(1920, 1080, 60, "Editor");
 
-    Scene scene = editor.GetScene();
+    Scene* scene = editor.GetScene();
 
-    ECSEngine* ecs = scene.ecs;
-    HierarchyUI hierarchyUi(&scene, editor.GetRenderer(), editor.GetMaterialSystem());
+    ECS* ecs = scene->GetECS();
+    HierarchyUI hierarchyUi(scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
     int sceneId = 2;
     switch(sceneId)
@@ -224,7 +220,7 @@ int main()
     default:
         return -1;
     }
-
+    ecs->EnableRESTEditor();
     editor.Run();
 
     return 0;

@@ -1,38 +1,49 @@
 #pragma once
+#include <utility>
+
 #include "Rendering/Renderer.hpp"
 #include "ECS/Entity.hpp"
 #include "ECS/CoreEvents/EntityEvents.hpp"
 #include "Utils/DebugUIElements.hpp"
 
 class MaterialSystem;
-typedef std::function<void(IComponent*, DebugUIWindow*)> PropertyDrawFunction; //void (*PropertyDrawFunction)(IComponent*, DebugUIWindow*);
+using PropertyDrawFunction = std::function<void(void*, DebugUIWindow*)>;  // void (*PropertyDrawFunction)(IComponent*, DebugUIWindow*);
 
 class HierarchyUI
 {
 public:
-	HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem);
+    HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem);
 
 
-	void OnEntityCreated(const EntityCreated* event);
+    void OnEntityCreated(EntityCreated event);
 
-	static void RegisterPropertyDrawFunction(ComponentTypeID typeID, PropertyDrawFunction func)
-	{
-		m_propertyDrawFunctions[typeID] = func;
-	}
+    template<typename T>
+    static void RegisterPropertyDrawFunction(PropertyDrawFunction func)
+    {
+        m_propertyDrawFunctions[typeid(T)] = std::move(func);
+    }
 
 private:
-	void EntitySelectedCallback(EntityID entity);
+    void EntitySelectedCallback(Entity entity);
 
-	Renderer* m_renderer;
-	ECSEngine* m_ecs;
+    template<typename T>
+    void DrawComponent(Entity entity)
+    {
+        if(!entity.HasComponent<T>())
+            return;
 
-	std::unordered_map<EntityID, std::shared_ptr<TreeNode>> m_hierarchyTree;
-	DebugUIWindow m_hierarchyWindow;
-	DebugUIWindow m_propertiesWindow;
+        m_propertiesWindow.AddElement(std::make_shared<Separator>());
+        m_propertyDrawFunctions[typeid(T)](entity.GetComponentMut<T>(), &m_propertiesWindow);
+        m_propertiesWindow.AddElement(std::make_shared<Separator>());
+    }
 
-	EntityID m_selectedEntity;
+    Renderer* m_renderer;
 
-	static std::unordered_map<ComponentTypeID, PropertyDrawFunction> m_propertyDrawFunctions;
+    std::unordered_map<Entity, std::shared_ptr<TreeNode>> m_hierarchyTree;
+    DebugUIWindow m_hierarchyWindow;
+    DebugUIWindow m_propertiesWindow;
 
+    Entity m_selectedEntity = Entity::INVALID_ENTITY;
+
+    static std::unordered_map<std::type_index, PropertyDrawFunction> m_propertyDrawFunctions;
 };
-

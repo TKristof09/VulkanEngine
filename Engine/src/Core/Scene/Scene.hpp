@@ -1,12 +1,12 @@
 #pragma once
 
-class ECSEngine;
-class EventHandler;
+class ECS;
 
 struct Scene
 {
-	std::string name = "DefaultScene";
+    std::string name = "DefaultScene";
 
-	ECSEngine* ecs;
-	EventHandler* eventHandler;
+    ECS* GetECS() { return ecs.get(); }
+
+    std::unique_ptr<ECS> ecs;
 };
