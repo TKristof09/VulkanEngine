@@ -130,6 +130,19 @@ void Buffer::Fill(const void* data, uint64_t size, uint64_t offset)
 
 void Buffer::Fill(const std::vector<const void*>& datas, const std::vector<uint64_t>& sizes, const std::vector<uint64_t>& offsets)
 {
+    if(m_mappedMemory)
+    {
+        uint32_t i = 0;
+        for(auto offset : offsets)
+        {
+            memcpy((void*)((uintptr_t)m_mappedMemory + offset), datas[i], (size_t)sizes[i]);
+
+            i++;
+        }
+        return;
+    }
+
+
     void* memory = nullptr;
     VK_CHECK(vmaMapMemory(VulkanContext::GetVmaBufferAllocator(), m_allocation, &memory), "Failed to map memory");
 

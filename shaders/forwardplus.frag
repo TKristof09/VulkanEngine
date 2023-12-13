@@ -287,7 +287,7 @@ void main() {
 
     float metallic = mat.metallicnessMap == 0 ? mat.metallicness : textureLod(textures[mat.metallicnessMap], fragTexCoord, 0.0).r; // TODO in the future we will stop generating mipmaps for every loaded texture, until then use textureLod 0.0
     float roughness = mat.roughnessMap == 0 ? mat.roughness : textureLod(textures[mat.roughnessMap], fragTexCoord, 0.0).r; // for textures that shouldnt have mips as a workaround
-    vec3 albedo = mat.albedoMap == 0 ? pow(mat.albedo, vec3(2.2)) : pow(texture(textures[mat.albedoMap], fragTexCoord).rgb, vec3(2.2));
+    vec3 albedo = mat.albedoMap == 0 ? mat.albedo : texture(textures[mat.albedoMap], fragTexCoord).rgb;
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 

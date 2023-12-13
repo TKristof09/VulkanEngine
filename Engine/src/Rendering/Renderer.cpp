@@ -1,5 +1,4 @@
 #include "Rendering/Renderer.hpp"
-#include "ECS/CoreComponents/SkyboxComponent.hpp"
 
 #include <memory>
 #include <numeric>
@@ -38,6 +37,7 @@
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 #include "ECS/CoreComponents/RendererComponents.hpp"
+#include "ECS/CoreComponents/SkyboxComponent.hpp"
 
 
 #include "Rendering/CoreRenderPasses/DepthPass.hpp"
@@ -132,11 +132,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
 
     TextureManager::LoadTexture("./textures/error.jpg");
 
-    CreateColorResources();
-    CreateDepthResources();
     CreateUniformBuffers();
-
-    CreateSampler();
 
     CreateDescriptorPool();
     CreateDescriptorSet();
@@ -226,8 +222,6 @@ void Renderer::RecreateSwapchain()
 
     CreateSwapchain();
     // CreatePipeline();
-    CreateColorResources();
-    CreateDepthResources();
     CreateCommandBuffers();
 
 
@@ -252,9 +246,6 @@ void Renderer::RecreateSwapchain()
 void Renderer::CleanupSwapchain()
 {
     vkDeviceWaitIdle(m_device);
-
-    m_depthImage.reset();
-    m_colorImage.reset();
 
 
     m_mainCommandBuffers.clear();
@@ -785,72 +776,6 @@ void Renderer::CreateUniformBuffers()
     }*/
 }
 
-void Renderer::CreateColorResources()
-{
-    ImageCreateInfo ci;
-    ci.format      = m_swapchainImageFormat;
-    ci.usage       = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    ci.layout      = VK_IMAGE_LAYOUT_UNDEFINED;
-    ci.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    ci.msaaSamples = m_msaaSamples;
-    ci.useMips     = false;
-    m_colorImage   = std::make_shared<Image>(m_swapchainExtent, ci);
-}
-
-void Renderer::CreateDepthResources()
-{
-    ImageCreateInfo ci    = {};
-    ci.format             = VK_FORMAT_B8G8R8A8_UNORM;
-    ci.usage              = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    ci.aspectFlags        = VK_IMAGE_ASPECT_COLOR_BIT;
-    ci.layout             = VK_IMAGE_LAYOUT_GENERAL;
-    ci.useMips            = false;
-    m_lightCullDebugImage = std::make_shared<Image>(m_swapchainExtent, ci);
-}
-
-void Renderer::CreateSampler()
-{
-    VkSamplerCreateInfo createInfo     = {};
-    createInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    createInfo.magFilter               = VK_FILTER_LINEAR;
-    createInfo.minFilter               = VK_FILTER_LINEAR;
-    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    createInfo.anisotropyEnable        = VK_TRUE;
-    createInfo.maxAnisotropy           = 16.f;
-    createInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    createInfo.unnormalizedCoordinates = VK_FALSE;
-    createInfo.compareEnable           = VK_FALSE;
-    createInfo.compareOp               = VK_COMPARE_OP_NEVER;
-    createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    createInfo.mipLodBias              = 0.0f;
-    createInfo.minLod                  = 0.0f;
-    createInfo.maxLod                  = VK_LOD_CLAMP_NONE;
-
-    VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_textureSampler), "Failed to create sampler");
-
-    createInfo                         = {};
-    createInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    createInfo.magFilter               = VK_FILTER_LINEAR;
-    createInfo.minFilter               = VK_FILTER_LINEAR;
-    createInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    createInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    createInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    createInfo.anisotropyEnable        = VK_FALSE;
-    createInfo.maxAnisotropy           = 1.f;
-    createInfo.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-    createInfo.unnormalizedCoordinates = VK_FALSE;
-    createInfo.compareEnable           = VK_TRUE;
-    createInfo.compareOp               = VK_COMPARE_OP_GREATER;
-    createInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    createInfo.mipLodBias              = 0.0f;
-    createInfo.minLod                  = 0.0f;
-    createInfo.maxLod                  = 1.0f;
-
-    VK_CHECK(vkCreateSampler(m_device, &createInfo, nullptr, &VulkanContext::m_shadowSampler), "Failed to create sampler");
-}
-
 
 void Renderer::InitilizeRenderGraph()
 {
@@ -917,7 +842,7 @@ void Renderer::RefreshShaderDataOffsets()
 }
 
 // TODO: make it possible to specifiy sampler parameters per texture (for example we want to use clamp to edge for the brdf texture while using repeat for the material textures)
-void Renderer::AddTexture(Image* texture, bool isShadow)
+void Renderer::AddTexture(Image* texture, SamplerConfig samplerConf)
 {
     if(m_freeTextureSlots.empty())
     {
@@ -930,8 +855,7 @@ void Renderer::AddTexture(Image* texture, bool isShadow)
     VkDescriptorImageInfo imageInfo{};
     imageInfo.imageLayout = texture->GetLayout();
     imageInfo.imageView   = texture->GetImageView();
-    imageInfo.sampler     = isShadow ? VulkanContext::m_shadowSampler : VulkanContext::m_textureSampler;
-
+    imageInfo.sampler     = m_samplers.try_emplace(samplerConf, samplerConf).first->second.GetVkSampler();
 
     VkWriteDescriptorSet descriptorWrite{};
     descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1254,7 +1178,10 @@ void Renderer::CreateEnvironmentMap()
         cb.SubmitIdle();
         cb.Reset();
 
-        AddTexture(&BRDFLUT);
+        SamplerConfig samplerConf = {};
+        samplerConf.addressMode   = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+        AddTexture(&BRDFLUT, samplerConf);
     }
 
     m_ecs->EmplaceSingleton<PBREnvironment>(std::move(convEnvMap), std::move(prefilteredEnvMap), std::move(BRDFLUT));
@@ -1722,7 +1649,15 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
 
     // TODO temp code
     Image* img = m_shadowmaps.emplace_back(std::make_unique<Image>(SHADOWMAP_SIZE, SHADOWMAP_SIZE, ci)).get();
-    AddTexture(img, true);
+
+    SamplerConfig shadowSampler{};
+    shadowSampler.filter         = VK_FILTER_LINEAR;
+    shadowSampler.addressMode    = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    shadowSampler.borderColor    = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    shadowSampler.depthCompareOp = VK_COMPARE_OP_GREATER;
+    shadowSampler.anisotropy     = 0;
+
+    AddTexture(img, shadowSampler);
     m_renderGraph.GetTextureArrayResource("shadowMaps").AddImagePointer(img);
     for(auto& buffer : shadowBuffers->indicesBuffers)
     {

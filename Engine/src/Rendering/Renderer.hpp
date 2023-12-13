@@ -12,11 +12,13 @@
 #include <set>
 
 #include "Rendering/RenderGraph/RenderGraph.hpp"
+#include "Rendering/Sampler.hpp"
 #include "Utils/DebugUIElements.hpp"
 #include "Window.hpp"
 #include "CommandBuffer.hpp"
 #include "Buffer.hpp"
 #include "Utils/DebugUI.hpp"
+
 #include "ECS/Core.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
@@ -58,7 +60,7 @@ public:
     void OnPointLightAdded(ComponentAdded<PointLight> e);
     void OnSpotLightAdded(ComponentAdded<SpotLight> e);
 
-    void AddTexture(Image* texture, bool isShadow = false);
+    void AddTexture(Image* texture, SamplerConfig samplerConf = {});
     void RemoveTexture(Image* texture);
 
     DynamicBufferAllocator& GetShaderDataBuffer() { return *m_shaderDataBuffer; }
@@ -146,10 +148,6 @@ private:
     void CreateDescriptorSet();
     static void CreatePushConstants();
 
-    void CreateColorResources();
-    void CreateDepthResources();
-
-    void CreateSampler();
 
     void RefreshDrawCommands();
 
@@ -180,6 +178,8 @@ private:
     Queue& m_computeQueue;  // unused for now
     Queue& m_transferQueue;
 
+    VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
     VkSurfaceKHR m_surface;
 
     VkSwapchainKHR m_swapchain;
@@ -203,10 +203,6 @@ private:
 
     VkDescriptorPool m_descriptorPool;
 
-    std::shared_ptr<Image> m_depthImage;
-
-    VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    std::shared_ptr<Image> m_colorImage;  // for MSAA
 
     size_t m_currentFrame = 0;
 
@@ -214,6 +210,8 @@ private:
     std::unique_ptr<DebugUIWindow> m_rendererDebugWindow;
 
     RenderGraph m_renderGraph;
+
+    std::unordered_map<SamplerConfig, Sampler> m_samplers;
 
     std::unique_ptr<DynamicBufferAllocator> m_vertexBuffer;
     std::unique_ptr<DynamicBufferAllocator> m_indexBuffer;

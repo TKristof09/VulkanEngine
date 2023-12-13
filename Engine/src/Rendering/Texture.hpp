@@ -1,14 +1,14 @@
 #pragma once
 #include "Image.hpp"
 
-#include <string.h>
+#include <string>
 
 class Texture : public Image
 {
 public:
-    Texture() : Image(0, 0, {}) {}
-    Texture(const std::string& fileName, VkImageUsageFlags usageFlags, bool hdr = false);
-    ~Texture() = default;
+    static Texture Create(const std::string& fileName, bool srgb = true);
+    static Texture CreateHDR(const std::string& fileName);
+    ~Texture() override = default;
 
     Texture(Texture&& other) noexcept
         : Image(std::move(other))
@@ -21,6 +21,5 @@ public:
     }
 
 private:
-    std::pair<uint32_t, uint32_t> LoadFile(const std::string& fileName, bool hdr);
-    void* m_pixels;  // dont need to worry about freeing this since it gets freed in the constructor after the loading of the image
+    Texture(uint32_t width, uint32_t height, ImageCreateInfo ci) : Image(width, height, ci) {}
 };

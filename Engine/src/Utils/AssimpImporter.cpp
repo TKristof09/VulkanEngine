@@ -131,7 +131,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
         /* texturePath        = "./models/" + texturePath;
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
-        TextureManager::LoadTexture(texturePath);
+        TextureManager::LoadTexture(texturePath, false);
         mat.textures["normal"] = texturePath;
     }
 
@@ -142,7 +142,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
         /* texturePath        = "./models/" + texturePath;
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
-        TextureManager::LoadTexture(texturePath);
+        TextureManager::LoadTexture(texturePath, false);
         mat.textures["roughness"] = texturePath;
     }
 
@@ -152,7 +152,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
         /* texturePath        = "./models/" + texturePath;
         auto it                 = texturePath.find("\\");
         texturePath.replace(it, 1, "/", 1);*/
-        TextureManager::LoadTexture(texturePath);
+        TextureManager::LoadTexture(texturePath, false);
         mat.textures["metallic"] = texturePath;
     }
 
