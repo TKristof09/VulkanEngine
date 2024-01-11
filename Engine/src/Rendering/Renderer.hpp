@@ -62,6 +62,8 @@ public:
 
     void AddTexture(Image* texture, SamplerConfig samplerConf = {});
     void RemoveTexture(Image* texture);
+    void AddStorageImage(Image* img);
+    void RemoveStorageImage(Image* img);
 
     DynamicBufferAllocator& GetShaderDataBuffer() { return *m_shaderDataBuffer; }
 
@@ -219,6 +221,7 @@ private:
     std::unique_ptr<DynamicBufferAllocator> m_shaderDataBuffer;
 
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
+    std::list<int32_t> m_freeStorageImageSlots;
 
     std::unique_ptr<Pipeline> m_equiToCubePipeline;
     std::unique_ptr<Pipeline> m_convoltionPipeline;

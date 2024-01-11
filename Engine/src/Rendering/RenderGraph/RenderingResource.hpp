@@ -78,7 +78,6 @@ struct TextureInfo
 
     VkFormat format;
     VkImageUsageFlags usageFlags;
-    VkImageAspectFlags aspectFlags;
     VkImageLayout layout;
     uint32_t mipLevels;
     uint32_t arrayLayers;

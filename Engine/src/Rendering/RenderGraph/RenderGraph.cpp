@@ -235,7 +235,7 @@ void RenderGraph::CreatePhysicalResources()
             ImageInfo info{};
             info.createInfo.format      = inputTextureInfo.format;
             info.createInfo.usage       = inputTextureInfo.usageFlags;
-            info.createInfo.aspectFlags = inputTextureInfo.aspectFlags;
+            info.createInfo.aspectFlags = IsDepthFormat(inputTextureInfo.format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
             info.createInfo.msaaSamples = inputTextureInfo.samples;
             info.createInfo.useMips     = inputTextureInfo.mipLevels > 1;
             info.createInfo.layout      = ConvertAccessToLayout(resource->GetUsages().at(passId).second);
@@ -316,10 +316,6 @@ void RenderGraph::CreatePhysicalResources()
             AddOrUpdateImageInfo(output, pass->GetId());
         }
 
-        for(auto* output : pass->GetResolveOutputs())
-        {
-            AddOrUpdateImageInfo(output, pass->GetId());
-        }
 
         auto* depthInput  = pass->GetDepthInput();
         auto* depthOutput = pass->GetDepthOutput();
@@ -340,11 +336,6 @@ void RenderGraph::CreatePhysicalResources()
             AddOrUpdateImageInfo(depthOutput, pass->GetId());
         }
 
-        auto* depthResolveOutput = pass->GetDepthResolveOutput();
-        if(depthResolveOutput)
-        {
-            AddOrUpdateImageInfo(depthResolveOutput, pass->GetId());
-        }
 
         for(auto* input : pass->GetDrawCommandBuffers())
         {
@@ -397,6 +388,38 @@ void RenderGraph::CreatePhysicalResources()
 
             AddOrUpdateBufferInfo(output);
         }
+
+        auto storageImageInputs  = pass->GetStorageImageInputs();
+        auto storageImageOutputs = pass->GetStorageImageOutputs();
+        for(uint32_t i = 0; i < storageImageInputs.size(); ++i)
+        {
+            auto* input  = storageImageInputs[i];
+            auto* output = storageImageOutputs[i];
+            if(input)
+            {
+                if(input->GetLifetime() == RenderingResource::Lifetime::External)
+                    continue;
+
+                AddOrUpdateImageInfo(input, pass->GetId());
+
+                // if output is nullptr then its a read only buffer
+                if(!output)
+                    continue;
+                if(output->GetPhysicalId() == -1)
+                    output->SetPhysicalId(input->GetPhysicalId());
+                else if(output->GetPhysicalId() != input->GetPhysicalId())
+                    LOG_ERROR("Can't alias resources. Output already has a different index");
+            }
+        }
+        for(auto* output : storageImageOutputs)
+        {
+            if(!output)  // read only buffer so it was handled in the input loop
+                continue;
+            if(output->GetLifetime() == RenderingResource::Lifetime::External)
+                continue;
+
+            AddOrUpdateImageInfo(output, pass->GetId());
+        }
     }
 
     m_transientImages.reserve(imageInfos.size());
@@ -404,8 +427,10 @@ void RenderGraph::CreatePhysicalResources()
     for(auto& info : imageInfos)
     {
         auto* ptr = &m_transientImages.emplace_back(info.width, info.height, info.createInfo);
-        if(info.createInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)  // TODO also do this for storage images later on
+        if(info.createInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
             m_renderer->AddTexture(ptr);
+        if(info.createInfo.usage & VK_IMAGE_USAGE_STORAGE_BIT)
+            m_renderer->AddStorageImage(ptr);
 
         for(auto id : info.virtualResourceIds)
         {
@@ -489,10 +514,9 @@ void RenderGraph::CreatePhysicalPasses()
         rendering.layerCount        = 1;
         rendering.renderArea.extent = VulkanContext::GetSwapchainExtent();
 
-        auto colorOutputs   = pass->GetColorOutputs();
-        auto* depthOutput   = pass->GetDepthOutput();
-        auto* depthInput    = pass->GetDepthInput();
-        auto resolveOutputs = pass->GetResolveOutputs();
+        auto colorOutputs = pass->GetColorOutputs();
+        auto* depthOutput = pass->GetDepthOutput();
+        auto* depthInput  = pass->GetDepthInput();
 
         for(int i = 0; i < colorOutputs.size(); ++i)
         {
@@ -530,13 +554,6 @@ void RenderGraph::CreatePhysicalPasses()
                     info.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             }
 
-            if(!resolveOutputs.empty())
-            {
-                info.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
-                info.resolveImageLayout = resolveOutputs[i]->GetTextureInfo().layout;
-                uint32_t resolveId      = resolveOutputs[i]->GetPhysicalId();
-                info.resolveImageView   = m_transientImages[resolveId].GetImageView();
-            }
             pass->AddAttachmentInfo(info, isSwapchain);
         }
 
@@ -559,14 +576,6 @@ void RenderGraph::CreatePhysicalPasses()
             }
             else
                 info.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            auto* depthResolve = pass->GetDepthResolveOutput();
-            if(depthResolve)
-            {
-                info.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
-                info.resolveImageLayout = depthResolve->GetTextureInfo().layout;
-                uint32_t resolveId      = depthResolve->GetPhysicalId();
-                info.resolveImageView   = m_transientImages[resolveId].GetImageView();
-            }
             pass->AddAttachmentInfo(info);
             rendering.pDepthAttachment = &pass->GetAttachmentInfos().back();
         }
@@ -580,15 +589,7 @@ void RenderGraph::CreatePhysicalPasses()
             info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;  // TODO in the future we might have depth input + output?
             info.storeOp     = NeedsStore(*depthInput, orderedPassId) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-            info.loadOp        = VK_ATTACHMENT_LOAD_OP_LOAD;
-            auto* depthResolve = pass->GetDepthResolveOutput();
-            if(depthResolve)
-            {
-                info.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
-                info.resolveImageLayout = depthResolve->GetTextureInfo().layout;
-                uint32_t resolveId      = depthResolve->GetPhysicalId();
-                info.resolveImageView   = m_transientImages[resolveId].GetImageView();
-            }
+            info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
             pass->AddAttachmentInfo(info);
             rendering.pDepthAttachment = &pass->GetAttachmentInfos().back();
         }
@@ -629,6 +630,8 @@ void RenderGraph::CheckPhysicalResources()
                 }
             }
             break;
+        case RenderingResource::Type::TextureArray:
+            break;  // we cant check this because images can be added to the array after the graph is built
         }
     }
     if(!ok)
@@ -1174,14 +1177,10 @@ void RenderGraph::AddSynchronization()
             SetupImageSync(i, depthInput, depthInput->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
 
-        // TODO: do resolve stuff
-        for(auto* resource : m_orderedPasses[i]->GetResolveOutputs())
-        {
-        }
 
         for(int j = 0; j < m_orderedPasses[i]->GetStorageBufferInputs().size(); ++j)
         {
-            RenderingBufferResource* resource;
+            RenderingBufferResource* resource = nullptr;
             // either the input or the output (or both) isnt nullptr, if both arent nullptr then they are the same resource so we only need to do one sync
             if(m_orderedPasses[i]->GetStorageBufferInputs()[j])
                 resource = m_orderedPasses[i]->GetStorageBufferInputs()[j];
@@ -1190,6 +1189,20 @@ void RenderGraph::AddSynchronization()
 
             SetupBufferSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
         }
+
+        for(int j = 0; j < m_orderedPasses[i]->GetStorageImageInputs().size(); ++j)
+        {
+            RenderingTextureResource* resource = nullptr;
+            // either the input or the output (or both) isnt nullptr, if both arent nullptr then they are the same resource so we only need to do one sync
+            if(m_orderedPasses[i]->GetStorageImageInputs()[j])
+                resource = m_orderedPasses[i]->GetStorageImageInputs()[j];
+            else
+                resource = m_orderedPasses[i]->GetStorageImageOutputs()[j];
+
+            SetupImageSync(i, resource, resource->GetUsages().at(m_orderedPasses[i]->GetId()));
+        }
+
+
         for(auto* resource : m_orderedPasses[i]->GetUniformBufferInputs())
         {
             if(!resource)

@@ -84,6 +84,7 @@ private:
         colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
+        lightingPass.AddTextureInput("debugImage");
         auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
         auto* lightBuffers        = m_ecs->GetSingletonMut<LightBuffers>();
         visibleLightsBuffer.SetBufferPointer(&lightBuffers->visibleLightsBuffer);

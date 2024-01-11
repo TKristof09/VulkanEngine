@@ -98,7 +98,8 @@ Renderer::Renderer(std::shared_ptr<Window> window)
       m_transferCommandPool(VulkanContext::m_transferCommandPool),
       m_renderGraph(RenderGraph(this)),
 
-      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS)
+      m_freeTextureSlots(NUM_TEXTURE_DESCRIPTORS),
+      m_freeStorageImageSlots(NUM_TEXTURE_DESCRIPTORS)
 {
     m_transformsQuery        = m_ecs->StartQueryBuilder<const InternalTransform, const Renderable, TransformBuffers>("TransformsQuery").term_at(3).singleton().build();
     m_renderablesQuery       = m_ecs->StartQueryBuilder<const Renderable>("RenderablesQuery").build();
@@ -118,6 +119,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
 
     // fill in the free texture slots
     std::iota(m_freeTextureSlots.begin(), m_freeTextureSlots.end(), 0);
+    std::iota(m_freeStorageImageSlots.begin(), m_freeStorageImageSlots.end(), 0);
 
     CreateInstance();
     SetupDebugMessenger();
@@ -398,11 +400,13 @@ void Renderer::CreateDevice()
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    VkPhysicalDeviceFeatures deviceFeatures = {};
-    deviceFeatures.samplerAnisotropy        = VK_TRUE;
-    deviceFeatures.sampleRateShading        = VK_TRUE;
-    deviceFeatures.shaderInt64              = VK_TRUE;
-    deviceFeatures.multiDrawIndirect        = VK_TRUE;
+    VkPhysicalDeviceFeatures deviceFeatures             = {};
+    deviceFeatures.samplerAnisotropy                    = VK_TRUE;
+    deviceFeatures.sampleRateShading                    = VK_TRUE;
+    deviceFeatures.shaderInt64                          = VK_TRUE;
+    deviceFeatures.multiDrawIndirect                    = VK_TRUE;
+    deviceFeatures.shaderStorageImageReadWithoutFormat  = VK_TRUE;
+    deviceFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
 
     // deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
 
@@ -861,18 +865,8 @@ void Renderer::AddTexture(Image* texture, SamplerConfig samplerConf)
     descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
     descriptorWrite.dstArrayElement = slot;
-    if(texture->GetUsage() & VK_IMAGE_USAGE_STORAGE_BIT)
-    {
-        descriptorWrite.dstBinding     = 1;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    }
-    else if(texture->GetUsage() & VK_IMAGE_USAGE_SAMPLED_BIT)
-    {
-        descriptorWrite.dstBinding     = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    }
-    else
-        LOG_ERROR("Texture usage not supported for descriptor");
+    descriptorWrite.dstBinding      = 0;
+    descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptorWrite.descriptorCount = 1;
     descriptorWrite.pImageInfo      = &imageInfo;
 
@@ -904,18 +898,8 @@ void Renderer::RemoveTexture(Image* texture)
     descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
     descriptorWrite.dstArrayElement = 1;
-    if(texture->GetUsage() & VK_IMAGE_USAGE_STORAGE_BIT)
-    {
-        descriptorWrite.dstBinding     = 1;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    }
-    else if(texture->GetUsage() & VK_IMAGE_USAGE_SAMPLED_BIT)
-    {
-        descriptorWrite.dstBinding     = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    }
-    else
-        LOG_ERROR("Texture usage not supported for descriptor");
+    descriptorWrite.dstBinding      = 0;
+    descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptorWrite.descriptorCount = 1;
     descriptorWrite.pImageInfo      = &imageInfo;
 
@@ -923,6 +907,66 @@ void Renderer::RemoveTexture(Image* texture)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
 }
 
+void Renderer::AddStorageImage(Image* img)
+{
+    if(m_freeStorageImageSlots.empty())
+    {
+        LOG_ERROR("No free texture slots");
+        return;
+    }
+    int32_t slot = m_freeStorageImageSlots.front();
+    m_freeStorageImageSlots.pop_front();
+
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = img->GetLayout();
+    imageInfo.imageView   = img->GetImageView();
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
+    descriptorWrite.dstArrayElement = slot;
+    descriptorWrite.dstBinding      = 1;
+    descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo      = &imageInfo;
+
+    // TODO batch these together (like at the end of the frame or something)
+    vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+
+    img->SetSlot(slot);
+}
+
+// TODO: maybe make only one function for removing textures and storage images so that if an image is used as both sampled and storage then it gets removed from both descriptors instead of having to call two different functions for removing from each
+void Renderer::RemoveStorageImage(Image* img)
+{
+    // find the sorted position and insert there
+    int32_t slot = img->GetSlot();
+    if(slot == -1)
+    {
+        LOG_ERROR("Texture hasn't been added to the renderer, can't remove it");
+        return;
+    }
+    auto it = std::lower_bound(m_freeStorageImageSlots.begin(), m_freeStorageImageSlots.end(), slot);
+    m_freeStorageImageSlots.insert(it, slot);
+
+    Texture& errorTexture = TextureManager::GetTexture("./textures/error.jpg");
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = errorTexture.GetLayout();
+    imageInfo.imageView   = errorTexture.GetImageView();
+    imageInfo.sampler     = VulkanContext::m_textureSampler;
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet          = VulkanContext::m_globalDescSet;
+    descriptorWrite.dstArrayElement = 1;
+    descriptorWrite.dstBinding      = 1;
+    descriptorWrite.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo      = &imageInfo;
+
+    // TODO batch these together (like at the end of the frame or something)
+    vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+}
 
 void Renderer::CreateEnvironmentMap()
 {
