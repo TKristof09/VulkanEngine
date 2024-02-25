@@ -253,6 +253,7 @@ void RenderGraph::CreatePhysicalResources()
                     info.width  = VulkanContext::GetSwapchainExtent().width * inputTextureInfo.width;
                     info.height = VulkanContext::GetSwapchainExtent().height * inputTextureInfo.height;
                 }
+                break;
             default:
                 LOG_ERROR("Unsupported size modifier");
             }
@@ -1644,5 +1645,5 @@ bool HasWriteAccess(VkAccessFlags2 access)
 
 bool HasReadAccess(VkAccessFlags2 access)
 {
-    return access & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_HOST_READ_BIT);
+    return access & (VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_HOST_READ_BIT);
 }

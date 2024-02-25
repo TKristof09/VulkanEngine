@@ -1,0 +1,164 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "bindings.glsl"
+#include "noise.glsl"
+#include "common.glsl"
+
+layout(local_size_x=8, local_size_y=8, local_size_z=1) in;
+layout(push_constant) uniform PC
+{
+    uint depthTexture;
+    uint outAoTexture; // R32 uint texture
+    uint hilbertLUT;
+    uint normalsTexture;
+
+    vec2 clipToViewSpaceConsts;
+    vec2 screenSize;
+    float zNear;
+};
+
+// For these two functions see slide 63 of https://www.activision.com/cdn/research/s2016_pbs_activision_occlusion.pptx
+// [Drobot2014a] Low Level Optimizations for GCN
+float FastSqrt(float x)
+{
+    return intBitsToFloat(0x1FBD1DF5 + (floatBitsToInt(x) >> 1));
+}
+
+// [Eberly2014] GPGPU Programming for Games and Science
+// https://seblagarde.wordpress.com/2014/12/01/inverse-trigonometric-functions-gpu-optimization-for-amd-gcn-architecture/
+// input [-1, 1] and output [0, PI]
+float FastAcos(float inX)
+{
+    inX = clamp(inX, -1.0, 1.0);
+    float x = abs(inX);
+    float res = -0.156583 * x + HALF_PI;
+    res *= FastSqrt(1.0 - x);
+
+    return (inX >= 0) ? res : PI - res; // Undo range reduction
+}
+
+// MÖLLER T., HUGHES J. F.: "Efficiently building a matrix to rotate one vector to another"
+// implementation taken from https://github.com/GameTechDev/XeGTAO/blob/master/Source/Rendering/Shaders/XeGTAO.hlsli#L211
+mat3 RotFromToMatrix(vec3 from, vec3 to )
+{
+    const float e       = dot(from, to);
+    const float f       = abs(e); //(e < 0)? -e:e;
+
+    // WARNING: This has not been tested/worked through, especially not for 16bit floats; seems to work in our special use case (from is always {0, 0, -1}) but wouldn't use it in general
+    if( f > float( 1.0 - 0.0003 ) ) // from and to vectors are almost parallel
+        return mat3( 1, 0, 0, 0, 1, 0, 0, 0, 1 );
+
+    const vec3 v      = cross( from, to );
+    /* ... use this hand optimized version (9 mults less) */
+    const float h       = (1.0)/(1.0 + e);      /* optimization by Gottfried Chen */
+    const float hvx     = h * v.x;
+    const float hvz     = h * v.z;
+    const float hvxy    = hvx * v.y;
+    const float hvxz    = hvx * v.z;
+    const float hvyz    = hvz * v.y;
+
+    mat3 mtx;
+    mtx[0][0] = e + hvx * v.x;
+    mtx[0][1] = hvxy - v.z;
+    mtx[0][2] = hvxz + v.y;
+
+    mtx[1][0] = hvxy + v.z;
+    mtx[1][1] = e + h * v.y * v.y;
+    mtx[1][2] = hvyz - v.x;
+
+    mtx[2][0] = hvxz - v.y;
+    mtx[2][1] = hvyz + v.x;
+    mtx[2][2] = e + hvz * v.z;
+
+    return mtx;
+}
+
+void main()
+{
+    vec2 centerUV = (gl_GlobalInvocationID.xy + 0.5) / screenSize;
+    float depth = LinearizeDepth(texelFetch(textures[depthTexture], ivec2(gl_GlobalInvocationID.xy), 0).r, zNear);
+    vec3 pos = GetViewspacePosition(centerUV, depth, clipToViewSpaceConsts);
+    vec3 viewDir = normalize(-pos);
+    vec3 viewSpaceNormal = normalize(texture(textures[normalsTexture], centerUV).xyz * 2.0 - 1.0);
+
+    vec2 noise = SpatialNoiseR2(ivec2(gl_GlobalInvocationID.xy), storageTextures[hilbertLUT]);
+
+    float visibility = 0.0;
+    vec3 bentNormal = vec3(0.0);
+
+    const int sliceCount = 15;
+    const int sampleCount = 5;
+
+    for(int slice = 0; slice < sliceCount; slice++)
+    {
+        float phi = (float(slice)) / float(sliceCount) * PI; // add some noise to this to be able to use spatial (and later temporal) filter to reduce the number of slices needed
+        vec2 omega = vec2(cos(phi), sin(phi));
+
+        vec3 dir = vec3(omega.x, omega.y, 0.0);
+
+        omega *= 5.0; // radius for the hemisphere
+        // project normal onto the plane defined by the view direction
+        vec3 orthoDir = dir - dot(dir, viewDir) * viewDir;
+        vec3 axis = normalize(cross(orthoDir, viewDir));
+        vec3 projNormal = viewSpaceNormal - dot(viewSpaceNormal, axis) * axis;
+
+        float signNormal = sign(dot(projNormal, orthoDir));
+        float cosNormal = clamp(dot(projNormal, viewDir) / (length(projNormal)), 0.0, 1.0);
+
+        float n = signNormal * FastAcos(cosNormal);
+
+        float horizonCos0 = -1.0;
+        float horizonCos1 = -1.0;
+        for(int s = 0; s < sampleCount; s++)
+        {
+            float sampleVal = float(s) / float(sampleCount);
+            vec2 sampleOffset = sampleVal * sampleVal * vec2(omega.x, -omega.y); // might not need to flip y since we are using negative viewport height
+
+            sampleOffset /= screenSize;
+
+            vec2 uv0 = centerUV + sampleOffset;
+            vec2 uv1 = centerUV - sampleOffset;
+
+            float depth0 = LinearizeDepth(texture(textures[depthTexture], uv0).r, zNear);
+            float depth1 = LinearizeDepth(texture(textures[depthTexture], uv1).r, zNear);
+
+            vec3 samplePos0 = GetViewspacePosition(uv0, depth0, clipToViewSpaceConsts);
+            vec3 samplePos1 = GetViewspacePosition(uv1, depth1, clipToViewSpaceConsts);
+
+            horizonCos0 = max(horizonCos0, dot(normalize(samplePos0 - pos), viewDir));
+            horizonCos1 = max(horizonCos1, dot(normalize(samplePos1 - pos), viewDir));
+        }
+
+        float h0 = n + clamp(FastAcos(horizonCos0) - n, -HALF_PI, HALF_PI);
+        float h1 = n + clamp(-FastAcos(horizonCos1) - n, -HALF_PI, HALF_PI);
+
+        float sinN = sin(n);
+        float projNormalLength = length(projNormal);
+        visibility += projNormalLength * (cosNormal + 2 * h0 * sinN - cos(2 * h0 - n)
+                                           + cosNormal + 2 * h1 * sinN - cos(2 * h1 - n)) / 4.0;
+
+        // we can compute bent normals here using Alg. 2 from the paper
+        /* float t0 = (6.0 * sin(h0 - n) - sin(3.0 * h0 - n) + 6.0 * sin(h1 - n) - sin(3.0 * h1 - n) + 16.0 * sin(n) - 3.0 * (sin(h0 + n) + sin(h1 + n))) / 12.0;
+        float t1 = (-cos(3.0 * h0 - n) - cos(3.0 * h1 - n) + 8.0 * cos(n) - 3.0 * (cos(h0 + n) + cos(h1 + n))) / 12.0;
+        vec3 localBentNormal = vec3(omega * t0, -t1);
+        bentNormal += localBentNormal * projNormalLength * localBentNormal * RotFromToMatrix(vec3(0.0, 0.0, -1.0), viewDir); */
+    }
+
+    visibility /= float(sliceCount);
+
+    // bentNormal = normalize(bentNormal);
+
+    // imageStore(storageTexturesU[outAoTexture], ivec2(gl_GlobalInvocationID.xy), uvec4(PackVec4ToUint(vec4(bentNormal * 0.5 + 0.5, visibility))));
+    imageStore(storageTextures[outAoTexture], ivec2(gl_GlobalInvocationID.xy), vec4(visibility));
+
+}
+
+/* vec3 GTAOMultiBounce(vec3 albedo, float ao)
+{
+    vec3 a =2.0404 * albedo − 0.3324;
+    vec3 b =4.7951 * albedo − 0.6417;
+    vec3 c =2.7552 * albedo + 0.6903;
+
+    return max(vec3(ao), ((a * ao + b) * ao + c) * ao);
+} */
+

@@ -11,10 +11,45 @@
 #define NUM_CASCADES 4
 
 #define PI 3.1415926535897932384626433832795
-#define TWOPI 6.283185307179586476925286766559
-#define HALFPI 1.5707963267948966192313216916398
-#define INVPI 0.31830988618379067153776752674503
-#define PI2 9.8696044010893586188344909998762
+#define TWO_PI 6.283185307179586476925286766559
+#define HALF_PI 1.5707963267948966192313216916398
+#define INV_PI 0.31830988618379067153776752674503
+#define PI_2 9.8696044010893586188344909998762
+
+// https://iolite-engine.com/blog_posts/reverse_z_cheatsheet
+float LinearizeDepth(float screenZ, float zNear)
+{
+    return -zNear / screenZ;
+}
+vec4 LinearizeDepth(vec4 screenZs, float zNear)
+{
+    return -zNear / screenZs;
+}
+// constant = (aspect / cot(fov / 2), 1 / cot(fov / 2))
+//          = (aspect * tan(fov / 2), tan(fov / 2))
+vec3 GetViewspacePosition(vec2 uv, float VSdepth, vec2 constant)
+{
+    vec2 ndc = uv * 2.0 - 1.0;
+    vec2 clipSpace = ndc * -VSdepth;
+    return vec3(clipSpace * constant, VSdepth);
+}
+
+uint PackVec4ToUint(vec4 v)
+{
+    return uint((uint(clamp(v.x, 0.0, 1.0) * 255.0 + 0.5) << 24) |
+                (uint(clamp(v.y, 0.0, 1.0) * 255.0 + 0.5) << 16) |
+                (uint(clamp(v.z, 0.0, 1.0) * 255.0 + 0.5) << 8) |
+                (uint(clamp(v.w, 0.0, 1.0) * 255.0 + 0.5)));
+}
+
+vec4 UnpackUintToVec4(uint u)
+{
+    return vec4(float((u >> 24) & 0x000000ff) / 255.0,
+                float((u >> 16) & 0x000000ff) / 255.0,
+                float((u >> 8)  & 0x000000ff) / 255.0,
+                float(u         & 0x000000ff) / 255.0);
+}
+
 
 struct Attenuation
 {

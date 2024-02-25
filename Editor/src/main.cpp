@@ -157,7 +157,7 @@ void pbr_spheres(ECS* ecs)
 
     Entity lightParent        = ecs->CreateEntity("point lights");
     std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int lgridSize   = 1;
+    constexpr int lgridSize   = 5;
     for(int i = 0; i < lgridSize; ++i)
     {
         for(int j = 0; j < lgridSize; ++j)
@@ -216,7 +216,7 @@ int main()
     ECS* ecs = scene->GetECS();
     HierarchyUI hierarchyUi(scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-    int sceneId = 2;
+    int sceneId = 1;
     switch(sceneId)
     {
     case 1:

@@ -46,7 +46,7 @@ public:
           m_usage(other.m_usage),
           m_onlyHandleImageView(other.m_onlyHandleImageView),
           m_allocation(other.m_allocation),
-          m_slot(other.m_slot)
+          m_sampledSlot(other.m_sampledSlot)
     {
         other.m_image = VK_NULL_HANDLE;
     }
@@ -71,7 +71,7 @@ public:
         m_usage               = other.m_usage;
         m_onlyHandleImageView = other.m_onlyHandleImageView;
         m_allocation          = other.m_allocation;
-        m_slot                = other.m_slot;
+        m_sampledSlot         = other.m_sampledSlot;
 
         other.m_image = VK_NULL_HANDLE;
         return *this;
@@ -94,8 +94,11 @@ public:
     const uint32_t GetWidth() const { return m_width; }
     const uint32_t GetHeight() const { return m_height; }
 
-    void SetSlot(int32_t slot) { m_slot = slot; }
-    const int32_t GetSlot() const { return m_slot; }
+    void SetSampledSlot(int32_t slot) { m_sampledSlot = slot; }
+    const int32_t GetSampledSlot() const { return m_sampledSlot; }
+
+    void SetStorageSlot(int32_t slot) { m_storageSlot = slot; }
+    const int32_t GetStorageSlot() const { return m_storageSlot; }
 
 protected:
     uint32_t m_mipLevels;
@@ -112,7 +115,8 @@ protected:
     bool m_isCubeMap      = false;
     std::string m_debugName;
 
-    int32_t m_slot = -1;
+    int32_t m_sampledSlot = -1;
+    int32_t m_storageSlot = -1;
 
     bool m_onlyHandleImageView = false;
 

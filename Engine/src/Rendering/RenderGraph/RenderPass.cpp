@@ -41,7 +41,7 @@ RenderingTextureResource& RenderPass::AddColorOutput(const std::string& name, At
         info.usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
     if(attachmentInfo.clear)
     {
@@ -260,6 +260,7 @@ RenderingTextureResource& RenderPass::AddStorageImageReadOnly(const std::string&
     if(external)
         resource.SetLifetime(RenderingResource::Lifetime::External);
 
+    m_graph.RegisterResourceRead(name, *this);
 
     m_storageImageInputs.push_back(&resource);
     m_storageImageOutputs.push_back(nullptr);
@@ -292,6 +293,7 @@ RenderingTextureResource& RenderPass::AddStorageImageOutput(const std::string& n
 
 
     m_storageImageOutputs.push_back(&resource);
+    m_graph.RegisterResourceWrite(name, *this);
     if(!input.empty())
     {
         auto& inputResource = m_graph.GetTextureResource(name);
@@ -315,6 +317,7 @@ RenderingTextureResource& RenderPass::AddStorageImageOutput(const std::string& n
         if(external)
             inputResource.SetLifetime(RenderingResource::Lifetime::External);
         m_storageImageInputs.push_back(&inputResource);
+        m_graph.RegisterResourceRead(input, *this);
     }
     else
     {

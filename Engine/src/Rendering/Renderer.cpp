@@ -45,6 +45,8 @@
 #include "Rendering/CoreRenderPasses/LightingPass.hpp"
 #include "Rendering/CoreRenderPasses/SkyboxPass.hpp"
 #include "Rendering/CoreRenderPasses/ShadowPass.hpp"
+#include "Rendering/CoreRenderPasses/GTAOPass.hpp"
+#include "Rendering/CoreRenderPasses/DenoisePass.hpp"
 
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -333,7 +335,7 @@ void Renderer::CreateInstance()
     std::vector<VkValidationFeatureEnableEXT> enables;
     enables.push_back(VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT);
     // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);  // TODO reenable sync validation when it gets fixed
-    // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+    //enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 
 
     VkValidationFeaturesEXT features       = {};
@@ -800,6 +802,8 @@ void Renderer::InitilizeRenderGraph()
     m_shadowPass    = std::make_unique<ShadowPass>(m_renderGraph);
     m_lightingPass  = std::make_unique<LightingPass>(m_renderGraph);
     m_skyboxPass    = std::make_unique<SkyboxPass>(m_renderGraph);
+    m_gtaoPass      = std::make_unique<GTAOPass>(m_renderGraph);
+    m_denoisePass   = std::make_unique<DenoisePass>(m_renderGraph);
 
 
     m_renderGraph.Build();
@@ -873,13 +877,13 @@ void Renderer::AddTexture(Image* texture, SamplerConfig samplerConf)
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
 
-    texture->SetSlot(slot);
+    texture->SetSampledSlot(slot);
 }
 
 void Renderer::RemoveTexture(Image* texture)
 {
     // find the sorted position and insert there
-    int32_t slot = texture->GetSlot();
+    int32_t slot = texture->GetSampledSlot();
     if(slot == -1)
     {
         LOG_ERROR("Texture hasn't been added to the renderer, can't remove it");
@@ -905,6 +909,8 @@ void Renderer::RemoveTexture(Image* texture)
 
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+
+    texture->SetSampledSlot(-1);
 }
 
 void Renderer::AddStorageImage(Image* img)
@@ -933,14 +939,14 @@ void Renderer::AddStorageImage(Image* img)
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
 
-    img->SetSlot(slot);
+    img->SetStorageSlot(slot);
 }
 
 // TODO: maybe make only one function for removing textures and storage images so that if an image is used as both sampled and storage then it gets removed from both descriptors instead of having to call two different functions for removing from each
 void Renderer::RemoveStorageImage(Image* img)
 {
     // find the sorted position and insert there
-    int32_t slot = img->GetSlot();
+    int32_t slot = img->GetStorageSlot();
     if(slot == -1)
     {
         LOG_ERROR("Texture hasn't been added to the renderer, can't remove it");
@@ -966,6 +972,8 @@ void Renderer::RemoveStorageImage(Image* img)
 
     // TODO batch these together (like at the end of the frame or something)
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
+
+    img->SetStorageSlot(-1);
 }
 
 void Renderer::CreateEnvironmentMap()
@@ -1011,7 +1019,7 @@ void Renderer::CreateEnvironmentMap()
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
         m_equiToCubePipeline->Bind(cb);
-        uint32_t textureSlot = img.GetSlot();
+        uint32_t textureSlot = img.GetSampledSlot();
         m_equiToCubePipeline->SetPushConstants(cb, &textureSlot, sizeof(uint32_t));
         vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
         vkCmdEndRendering(cb.GetCommandBuffer());
@@ -1060,7 +1068,7 @@ void Renderer::CreateEnvironmentMap()
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
         m_convoltionPipeline->Bind(cb);
-        uint32_t envMapSlot = envMap->GetSlot();
+        uint32_t envMapSlot = envMap->GetSampledSlot();
         m_convoltionPipeline->SetPushConstants(cb, &envMapSlot, sizeof(uint32_t));
         vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
         vkCmdEndRendering(cb.GetCommandBuffer());
@@ -1171,7 +1179,7 @@ void Renderer::CreateEnvironmentMap()
             vkCmdSetScissor(cb.GetCommandBuffer(), 0, 1, &rendering.renderArea);
 
 
-            pc.envMapSlot = envMap->GetSlot();
+            pc.envMapSlot = envMap->GetSampledSlot();
             pc.roughness  = (float)i / (float)(mipLevels - 1);
             m_prefilterPipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
             vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);
@@ -1706,7 +1714,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     for(auto& buffer : shadowBuffers->indicesBuffers)
     {
         uint32_t shadowSlot = buffer.Allocate(1);
-        uint32_t imgSlot    = img->GetSlot();
+        uint32_t imgSlot    = img->GetSampledSlot();
         buffer.UploadData(shadowSlot, &imgSlot);
     }
     ++shadowBuffers->numIndices;
@@ -2094,5 +2102,5 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     }
 
 
-    return VK_TRUE;
+     return VK_TRUE;
 }

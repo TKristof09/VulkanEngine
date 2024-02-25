@@ -38,6 +38,8 @@ class LightCullPass;
 class LightingPass;
 class SkyboxPass;
 class ShadowPass;
+class GTAOPass;
+class DenoisePass;
 
 class Renderer
 {
@@ -235,6 +237,8 @@ private:
     std::unique_ptr<LightCullPass> m_lightCullPass;
     std::unique_ptr<LightingPass> m_lightingPass;
     std::unique_ptr<SkyboxPass> m_skyboxPass;
+    std::unique_ptr<GTAOPass> m_gtaoPass;
+    std::unique_ptr<DenoisePass> m_denoisePass;
 
     // TODO temp
     bool m_needDrawBufferReupload = false;

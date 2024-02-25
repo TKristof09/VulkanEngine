@@ -51,6 +51,8 @@ layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer Shade
     uint irradianceMapIndex;
     uint prefilteredEnvMapIndex;
     uint BRDFLUTIndex;
+
+    uint aoTextureIndex;
 };
 
 layout(push_constant) uniform PC
@@ -193,7 +195,7 @@ float NDF_GGX(float NdotH, float roughness)
     float alpha = roughness * roughness;
     float alpha2 = alpha * alpha;
     float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
-    return (alpha2)/(denom*denom)*INVPI;
+    return (alpha2)/(denom*denom)*INV_PI;
 }
 
 // Geometric Shadowing function (Microfacet shadowing and masking)
@@ -205,6 +207,7 @@ float G_SchlickSmithGGX(float NdotL, float NdotV, float roughness)
 }
 
 // Fresnel function
+// TODO might be better to not use pow and instead do it manually or do pow4 and a multiply
 vec3 F_Schlick(float cosTheta, vec3 F0)
 {
 
@@ -248,7 +251,7 @@ vec3 CookTorrance(vec3 viewDir, vec3 normal, vec3 F0, vec3 albedo, float metalli
 
             vec3 spec = NDF * F * G / (4.0 * NdotL * NdotV + 0.0001);
             vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-            Lo += (kD * albedo * INVPI + spec * horizonFade) * NdotL * attenuation * light.color * light.intensity;
+            Lo += (kD * albedo * INV_PI + spec * horizonFade) * NdotL * attenuation * light.color * light.intensity;
         }
     }
     return Lo;
@@ -272,13 +275,6 @@ void main() {
 
     uint tileLightNum = shaderDataPtr.visibleLightsBuffer.data[tileIndex].count;
 
-    /* TODO
-       if(tileLightNum == 0)
-       {
-       outColor = vec4(0.0);
-       return;
-       }
-     */
 
     //vec3 normal = GetNormalFromMap();
     vec3 viewDir = normalize(cameraPos - worldPos);
@@ -288,6 +284,7 @@ void main() {
     float metallic = mat.metallicnessMap == 0 ? mat.metallicness : textureLod(textures[mat.metallicnessMap], fragTexCoord, 0.0).r; // TODO in the future we will stop generating mipmaps for every loaded texture, until then use textureLod 0.0
     float roughness = mat.roughnessMap == 0 ? mat.roughness : textureLod(textures[mat.roughnessMap], fragTexCoord, 0.0).r; // for textures that shouldnt have mips as a workaround
     vec3 albedo = mat.albedoMap == 0 ? mat.albedo : texture(textures[mat.albedoMap], fragTexCoord).rgb;
+    float ao = texture(textures[shaderDataPtr.aoTextureIndex], gl_FragCoord.xy / shaderDataPtr.viewportSize).r;
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
@@ -303,7 +300,8 @@ void main() {
     vec3 F = F_SchlickRoughness(clamp(dot(normal, viewDir), 0.0, 1.0), F0, roughness);
     vec3 kD = 1.0 - F;
     kD *= 1.0 - metallic;
-    vec3 diffuse = irradiance * albedo;
+
+    vec3 diffuse = irradiance * albedo * ao;
     vec3 specular = reflection * (F0 * brdf.x + brdf.y);
 
     vec3 ambient = (kD * diffuse + specular);

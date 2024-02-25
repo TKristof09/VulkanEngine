@@ -60,7 +60,7 @@ float NDF_GGX(float NdotH, float roughness)
     float alpha = roughness * roughness;
     float alpha2 = alpha * alpha;
     float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
-    return (alpha2)/(denom*denom)*INVPI;
+    return (alpha2)/(denom*denom)*INV_PI;
 }
 void main()
 {
