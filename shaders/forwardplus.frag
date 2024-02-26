@@ -267,7 +267,14 @@ vec3 CalcPrefilteredReflection(vec3 r, float roughness)
 	vec3 b = textureLod(cubemapTextures[shaderDataPtr.prefilteredEnvMapIndex], r, lodc).rgb;
 	return mix(a, b, lod - lodf);
 }
+vec3 GTAOMultiBounce(vec3 albedo, float ao)
+{
+    vec3 a = 2.0404 * albedo - 0.3324;
+    vec3 b = 4.7951 * albedo - 0.6417;
+    vec3 c = 2.7552 * albedo + 0.6903;
 
+    return max(vec3(ao), ((a * ao + b) * ao + c) * ao);
+}
 
 void main() {
     ivec2 tileID = ivec2(gl_FragCoord.xy / TILE_SIZE);
@@ -301,7 +308,8 @@ void main() {
     vec3 kD = 1.0 - F;
     kD *= 1.0 - metallic;
 
-    vec3 diffuse = irradiance * albedo * ao;
+    vec3 diffuse = irradiance * albedo;
+    diffuse *= GTAOMultiBounce(diffuse, ao);
     vec3 specular = reflection * (F0 * brdf.x + brdf.y);
 
     vec3 ambient = (kD * diffuse + specular);
