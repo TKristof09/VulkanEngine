@@ -91,7 +91,7 @@ void main()
 
     for(int slice = 0; slice < sliceCount; slice++)
     {
-        float phi = (float(slice)) / float(sliceCount) * PI; // add some noise to this to be able to use spatial (and later temporal) filter to reduce the number of slices needed
+        float phi = (float(slice) + noise.x) / float(sliceCount) * PI; // add some noise to this to be able to use spatial (and later temporal) filter to reduce the number of slices needed
         vec2 omega = vec2(cos(phi), sin(phi));
 
         vec3 dir = vec3(omega.x, omega.y, 0.0);
@@ -111,7 +111,7 @@ void main()
         float horizonCos1 = -1.0;
         for(int s = 0; s < sampleCount; s++)
         {
-            float sampleVal = float(s) / float(sampleCount);
+            float sampleVal = (float(s)) / float(sampleCount);
             vec2 sampleOffset = sampleVal * sampleVal * vec2(omega.x, -omega.y); // might not need to flip y since we are using negative viewport height
 
             sampleOffset /= screenSize;
