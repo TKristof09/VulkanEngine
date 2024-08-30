@@ -41,6 +41,8 @@ private:
         auto& aoTexture     = pass.AddTextureInput("aoImage");
         auto& outputTexture = pass.AddStorageImageOutput("finalAOImage", VK_FORMAT_R32_SFLOAT);
 
+        Application::GetInstance()->GetRenderer()->AddDebugUIImage(outputTexture);
+
 
         pass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)

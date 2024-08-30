@@ -30,7 +30,6 @@ public:
     static VkPushConstantRange GetGlobalPushConstantRange() { return m_globalPushConstantRange; }
 
     static VkSampler GetTextureSampler() { return m_textureSampler; }
-    static VkSampler GetShadowSampler() { return m_shadowSampler; }
 
     static VmaAllocator GetVmaImageAllocator() { return m_vmaImageAllocator; }
     static VmaAllocator GetVmaBufferAllocator() { return m_vmaBufferAllocator; }
@@ -56,8 +55,6 @@ public:
         vkDestroyCommandPool(m_device, m_graphicsCommandPool, nullptr);
         vkDestroyCommandPool(m_device, m_transferCommandPool, nullptr);
         vkDestroyDescriptorSetLayout(m_device, m_globalDescSetLayout, nullptr);
-        vkDestroySampler(m_device, m_textureSampler, nullptr);
-        vkDestroySampler(m_device, m_shadowSampler, nullptr);
 
         vkDestroyDevice(m_device, nullptr);
 
@@ -110,7 +107,6 @@ private:
     inline static VkPushConstantRange m_globalPushConstantRange = {};
 
     inline static VkSampler m_textureSampler = VK_NULL_HANDLE;
-    inline static VkSampler m_shadowSampler  = VK_NULL_HANDLE;
 
     // The reason why we need 2 allocators is that with the buffer device address feature enabled on a VMA allocator
     // renderdoc crashes with a VK_DEVICE_LOST error when trying to capture a frame.

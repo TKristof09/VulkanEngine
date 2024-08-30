@@ -150,6 +150,9 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     vkDeviceWaitIdle(m_device);
     CreateEnvironmentMap();
 
+    // Create default sampler
+    VulkanContext::m_textureSampler = m_samplers.emplace(SamplerConfig{}, SamplerConfig{}).first->second.GetVkSampler();
+
 
     m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
     AddDebugUIWindow(m_rendererDebugWindow.get());
@@ -335,7 +338,7 @@ void Renderer::CreateInstance()
     std::vector<VkValidationFeatureEnableEXT> enables;
     enables.push_back(VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT);
     // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);  // TODO reenable sync validation when it gets fixed
-    //enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+    // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 
 
     VkValidationFeaturesEXT features       = {};
@@ -785,9 +788,36 @@ void Renderer::CreateUniformBuffers()
 
 void Renderer::InitilizeRenderGraph()
 {
+    m_depthPass     = std::make_unique<DepthPass>(m_renderGraph);
+    m_lightCullPass = std::make_unique<LightCullPass>(m_renderGraph);
+    m_shadowPass    = std::make_unique<ShadowPass>(m_renderGraph);
+    m_lightingPass  = std::make_unique<LightingPass>(m_renderGraph);
+    m_skyboxPass    = std::make_unique<SkyboxPass>(m_renderGraph);
+    m_gtaoPass      = std::make_unique<GTAOPass>(m_renderGraph);
+    m_denoisePass   = std::make_unique<DenoisePass>(m_renderGraph);
+
+
     {
         auto& uiPass = m_renderGraph.AddRenderPass("uiPass", QueueTypeFlagBits::Graphics);
         uiPass.AddColorOutput(SWAPCHAIN_RESOURCE_NAME, {}, "skyboxImage");
+
+
+        for(const auto& image : m_uiImages)
+        {
+            uiPass.AddTextureInput(image.GetName());
+        }
+
+        uiPass.SetInitialiseCallback(
+            [&](RenderGraph& rg)
+            {
+                for(auto* image : uiPass.GetTextureInputs())
+                {
+                    auto img      = std::make_shared<UIImage>(image->GetImagePointer());
+                    auto treeNode = std::make_shared<TreeNode>(image->GetName());
+                    treeNode->AddElement(img);
+                    m_rendererDebugWindow->AddElement(treeNode);
+                }
+            });
         uiPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t frameIndex)
             {
@@ -796,14 +826,6 @@ void Renderer::InitilizeRenderGraph()
                 vkCmdEndRendering(cb.GetCommandBuffer());
             });
     }
-
-    m_depthPass     = std::make_unique<DepthPass>(m_renderGraph);
-    m_lightCullPass = std::make_unique<LightCullPass>(m_renderGraph);
-    m_shadowPass    = std::make_unique<ShadowPass>(m_renderGraph);
-    m_lightingPass  = std::make_unique<LightingPass>(m_renderGraph);
-    m_skyboxPass    = std::make_unique<SkyboxPass>(m_renderGraph);
-    m_gtaoPass      = std::make_unique<GTAOPass>(m_renderGraph);
-    m_denoisePass   = std::make_unique<DenoisePass>(m_renderGraph);
 
 
     m_renderGraph.Build();
@@ -2102,5 +2124,5 @@ VkBool32 debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT mess
     }
 
 
-     return VK_TRUE;
+    return VK_TRUE;
 }

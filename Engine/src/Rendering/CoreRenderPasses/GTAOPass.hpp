@@ -32,6 +32,7 @@ public:
         compute.type               = PipelineType::COMPUTE;
         m_pipeline                 = std::make_unique<Pipeline>("gtao", compute);
 
+
         RegisterPass(rg);
     }
 
@@ -58,6 +59,8 @@ private:
         auto& hilbertLUT   = pass.AddStorageImageReadOnly("hilbertLUT", 0, true);
 
         hilbertLUT.SetImagePointer(m_hilbertLUT.get());
+
+        Application::GetInstance()->GetRenderer()->AddDebugUIImage(aoTexture);
 
 
         pass.SetExecutionCallback(

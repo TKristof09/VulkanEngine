@@ -52,6 +52,11 @@ public:
     Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 
     void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
+    void AddDebugUIElement(const std::shared_ptr<DebugUIElement>& element) { m_rendererDebugWindow->AddElement(element); };
+    void AddDebugUIImage(const RenderingTextureResource& image)
+    {
+        m_uiImages.push_back(image);
+    }
 
     void OnSceneSwitched(SceneSwitchedEvent e);
 
@@ -239,6 +244,8 @@ private:
     std::unique_ptr<SkyboxPass> m_skyboxPass;
     std::unique_ptr<GTAOPass> m_gtaoPass;
     std::unique_ptr<DenoisePass> m_denoisePass;
+
+    std::vector<RenderingTextureResource> m_uiImages;
 
     // TODO temp
     bool m_needDrawBufferReupload = false;
