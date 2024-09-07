@@ -269,9 +269,9 @@ vec3 CalcPrefilteredReflection(vec3 r, float roughness)
 }
 vec3 GTAOMultiBounce(vec3 albedo, float ao)
 {
-    vec3 a = 2.0404 * albedo - 0.3324;
-    vec3 b = 4.7951 * albedo - 0.6417;
-    vec3 c = 2.7552 * albedo + 0.6903;
+    vec3 a =  2.0404 * albedo - 0.3324;
+    vec3 b = -4.7951 * albedo + 0.6417;
+    vec3 c =  2.7552 * albedo + 0.6903;
 
     return max(vec3(ao), ((a * ao + b) * ao + c) * ao);
 }
@@ -302,17 +302,16 @@ void main() {
     vec3 reflection = CalcPrefilteredReflection(r, roughness);
     vec2 brdf = texture(textures[shaderDataPtr.BRDFLUTIndex], vec2(clamp(dot(normal, viewDir), 0.0, 1.0), 1.0 - roughness)).rg; // use 1-roughness because of vulkan's flipped y uv coordinate
 
-
     // ambient lighting
     vec3 F = F_SchlickRoughness(clamp(dot(normal, viewDir), 0.0, 1.0), F0, roughness);
     vec3 kD = 1.0 - F;
     kD *= 1.0 - metallic;
 
     vec3 diffuse = irradiance * albedo;
-    diffuse *= GTAOMultiBounce(diffuse, ao);
+    // diffuse *= GTAOMultiBounce(albedo, ao);
     vec3 specular = reflection * (F0 * brdf.x + brdf.y);
 
-    vec3 ambient = (kD * diffuse + specular);
+    vec3 ambient = kD * diffuse * GTAOMultiBounce(albedo, ao) + specular;
     vec3 color = Lo + ambient;
 
     color = pow(uncharted2_filmic(color), vec3(1.0/2.2));

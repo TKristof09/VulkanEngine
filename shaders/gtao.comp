@@ -29,7 +29,7 @@ float FastSqrt(float x)
 // input [-1, 1] and output [0, PI]
 float FastAcos(float inX)
 {
-    inX = clamp(inX, -1.0, 1.0);
+    // return acos(inX);
     float x = abs(inX);
     float res = -0.156583 * x + HALF_PI;
     res *= FastSqrt(1.0 - x);
@@ -83,12 +83,29 @@ void main()
 
     vec2 noise = SpatialNoiseR2(ivec2(gl_GlobalInvocationID.xy), storageTextures[hilbertLUT]);
 
+    float pixelVSSize = (GetViewspacePosition(centerUV + vec2(1.0, 0.0) / screenSize, depth, clipToViewSpaceConsts) - pos).x;
+
+
+
     float visibility = 0.0;
     vec3 bentNormal = vec3(0.0);
 
     const int sliceCount = 15;
     const int sampleCount = 5;
 
+    // temp values from xegtao demo
+    const float effectRadius = 0.5;
+    const float effectFalloffRange = 0.615;
+    const float radiusMultiplier = 1.46;
+    const float falloffRange = 0.62;
+    const float thinOccluderCompensation = 0.0;
+
+    // precompute the falloff function 1.0 + (falloffFrom - r) / falloffRange
+    const float falloffMul = -1.0 / falloffRange;
+    const float falloffFrom = effectRadius * (1.0 - effectFalloffRange);
+    const float falloffAdd = falloffFrom / falloffRange + 1.0;
+
+    const float screenSpaceRadius = effectRadius / pixelVSSize;
     for(int slice = 0; slice < sliceCount; slice++)
     {
         float phi = (float(slice) + noise.x) / float(sliceCount) * PI; // add some noise to this to be able to use spatial (and later temporal) filter to reduce the number of slices needed
@@ -96,8 +113,8 @@ void main()
 
         vec3 dir = vec3(omega.x, omega.y, 0.0);
 
-        omega *= 5.0; // radius for the hemisphere
-        // project normal onto the plane defined by the view direction
+        omega *= screenSpaceRadius; // radius for the hemisphere
+                                    // project normal onto the plane defined by the view direction
         vec3 orthoDir = dir - dot(dir, viewDir) * viewDir;
         vec3 axis = normalize(cross(orthoDir, viewDir));
         vec3 projNormal = viewSpaceNormal - dot(viewSpaceNormal, axis) * axis;
@@ -107,12 +124,14 @@ void main()
 
         float n = signNormal * FastAcos(cosNormal);
 
-        float horizonCos0 = -1.0;
-        float horizonCos1 = -1.0;
+        const float lowHorizonCos0 = cos(n + HALF_PI);
+        const float lowHorizonCos1 = cos(n - HALF_PI);
+        float horizonCos0 = lowHorizonCos0;
+        float horizonCos1 = lowHorizonCos1;
         for(int s = 0; s < sampleCount; s++)
         {
             float sampleVal = (float(s)) / float(sampleCount);
-            vec2 sampleOffset = sampleVal * sampleVal * vec2(omega.x, -omega.y); // might not need to flip y since we are using negative viewport height
+            vec2 sampleOffset = sampleVal * sampleVal * vec2(omega.x, -omega.y);
 
             sampleOffset /= screenSize;
 
@@ -124,9 +143,29 @@ void main()
 
             vec3 samplePos0 = GetViewspacePosition(uv0, depth0, clipToViewSpaceConsts);
             vec3 samplePos1 = GetViewspacePosition(uv1, depth1, clipToViewSpaceConsts);
+            vec3 sampleDelta0 = samplePos0 - pos;
+            vec3 sampleDelta1 = samplePos1 - pos;
+            float sampleDist0 = length(sampleDelta0);
+            float sampleDist1 = length(sampleDelta1);
 
-            horizonCos0 = max(horizonCos0, dot(normalize(samplePos0 - pos), viewDir));
-            horizonCos1 = max(horizonCos1, dot(normalize(samplePos1 - pos), viewDir));
+
+            // falloff for samples outside the radius
+            float weight0 = clamp(sampleDist0 * falloffMul + falloffAdd, 0.0, 1.0);
+            float weight1 = clamp(sampleDist1 * falloffMul + falloffAdd, 0.0, 1.0);
+
+            float cos0 = dot(sampleDelta0 / sampleDist0, viewDir);
+            float cos1 = dot(sampleDelta1 / sampleDist1, viewDir);
+
+            cos0 = mix(lowHorizonCos0, cos0, weight0);
+            cos1 = mix(lowHorizonCos1, cos1, weight1);
+
+            // thin occluder heuristic
+            float newHorizonCos0 = max(horizonCos0, cos0);
+            float newHorizonCos1 = max(horizonCos1, cos1);
+
+            horizonCos0 = (horizonCos0 > cos0) ? mix(newHorizonCos0, horizonCos0, thinOccluderCompensation) : newHorizonCos0;
+            horizonCos1 = (horizonCos1 > cos1) ? mix(newHorizonCos1, horizonCos1, thinOccluderCompensation) : newHorizonCos1;
+
         }
 
         float h0 = n + clamp(FastAcos(horizonCos0) - n, -HALF_PI, HALF_PI);
@@ -135,30 +174,31 @@ void main()
         float sinN = sin(n);
         float projNormalLength = length(projNormal);
         visibility += projNormalLength * (cosNormal + 2 * h0 * sinN - cos(2 * h0 - n)
-                                           + cosNormal + 2 * h1 * sinN - cos(2 * h1 - n)) / 4.0;
+                + cosNormal + 2 * h1 * sinN - cos(2 * h1 - n)) / 4.0;
 
         // we can compute bent normals here using Alg. 2 from the paper
         /* float t0 = (6.0 * sin(h0 - n) - sin(3.0 * h0 - n) + 6.0 * sin(h1 - n) - sin(3.0 * h1 - n) + 16.0 * sin(n) - 3.0 * (sin(h0 + n) + sin(h1 + n))) / 12.0;
-        float t1 = (-cos(3.0 * h0 - n) - cos(3.0 * h1 - n) + 8.0 * cos(n) - 3.0 * (cos(h0 + n) + cos(h1 + n))) / 12.0;
-        vec3 localBentNormal = vec3(omega * t0, -t1);
-        bentNormal += localBentNormal * projNormalLength * localBentNormal * RotFromToMatrix(vec3(0.0, 0.0, -1.0), viewDir); */
+           float t1 = (-cos(3.0 * h0 - n) - cos(3.0 * h1 - n) + 8.0 * cos(n) - 3.0 * (cos(h0 + n) + cos(h1 + n))) / 12.0;
+           vec3 localBentNormal = vec3(omega * t0, -t1);
+           bentNormal += localBentNormal * projNormalLength * localBentNormal * RotFromToMatrix(vec3(0.0, 0.0, -1.0), viewDir); */
     }
 
     visibility /= float(sliceCount);
 
     // bentNormal = normalize(bentNormal);
 
+    // TODO: finalize bent normal stuff
     // imageStore(storageTexturesU[outAoTexture], ivec2(gl_GlobalInvocationID.xy), uvec4(PackVec4ToUint(vec4(bentNormal * 0.5 + 0.5, visibility))));
     imageStore(storageTextures[outAoTexture], ivec2(gl_GlobalInvocationID.xy), vec4(visibility));
 
 }
 
 /* vec3 GTAOMultiBounce(vec3 albedo, float ao)
-{
-    vec3 a =2.0404 * albedo − 0.3324;
-    vec3 b =4.7951 * albedo − 0.6417;
-    vec3 c =2.7552 * albedo + 0.6903;
+   {
+   vec3 a =2.0404 * albedo − 0.3324;
+   vec3 b =4.7951 * albedo − 0.6417;
+   vec3 c =2.7552 * albedo + 0.6903;
 
-    return max(vec3(ao), ((a * ao + b) * ao + c) * ao);
-} */
+   return max(vec3(ao), ((a * ao + b) * ao + c) * ao);
+   } */
 

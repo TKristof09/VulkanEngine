@@ -27,6 +27,7 @@ void DecodeGather(vec4 packedDatas, out AOTerm outAOTerms[4])
 {
     for (int i = 0; i < 4; ++i)
     {
+        // TODO: implement bent normal stuff
         // vec4 unpackedData = UnpackUintToVec4(packedDatas[i]);
         outAOTerms[i].bentNormal = vec3(0);//unpackedData.xyz;
         outAOTerms[i].visibility = packedDatas[i];
