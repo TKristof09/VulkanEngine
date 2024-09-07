@@ -244,8 +244,8 @@ void RenderGraph::CreatePhysicalResources()
             {
             case SizeModifier::Absolute:
                 {
-                    info.width  = inputTextureInfo.width;
-                    info.height = inputTextureInfo.height;
+                    info.width  = static_cast<int32_t>(inputTextureInfo.width);
+                    info.height = static_cast<int32_t>(inputTextureInfo.height);
                 }
                 break;
             case SizeModifier::SwapchainRelative:
@@ -519,10 +519,8 @@ void RenderGraph::CreatePhysicalPasses()
         auto* depthOutput = pass->GetDepthOutput();
         auto* depthInput  = pass->GetDepthInput();
 
-        for(int i = 0; i < colorOutputs.size(); ++i)
+        for(auto* resource : colorOutputs)
         {
-            auto* resource = colorOutputs[i];
-
             VkRenderingAttachmentInfo info{};
             info.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             uint32_t id      = UINT32_MAX;  // use this to indicate swapchain image, get actual id if not swapchain image
@@ -752,7 +750,7 @@ void RenderGraph::AddSynchronization()
                     transitionBarrier.subresourceRange.baseArrayLayer = 0;
                     transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
 
-                    transitionIndex = dstIndex;
+                    transitionIndex = static_cast<int32_t>(dstIndex);
                 }
             }
             if(nextLayout != dstLayout)
@@ -975,7 +973,7 @@ void RenderGraph::AddSynchronization()
                     transitionBarrier.subresourceRange.baseArrayLayer = 0;
                     transitionBarrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
 
-                    transitionIndex = dstIndex;
+                    transitionIndex = static_cast<int32_t>(dstIndex);
                 }
             }
             if(nextLayout != dstLayout)
@@ -1433,16 +1431,16 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
     blitRegion.srcSubresource.mipLevel       = 0;
     blitRegion.srcSubresource.baseArrayLayer = 0;
     blitRegion.srcOffsets[0]                 = {0, 0, 0};
-    blitRegion.srcOffsets[1].x               = renderTarget.GetWidth();
-    blitRegion.srcOffsets[1].y               = renderTarget.GetHeight();
+    blitRegion.srcOffsets[1].x               = static_cast<int32_t>(renderTarget.GetWidth());
+    blitRegion.srcOffsets[1].y               = static_cast<int32_t>(renderTarget.GetHeight());
     blitRegion.srcOffsets[1].z               = 1;
     blitRegion.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     blitRegion.dstSubresource.layerCount     = 1;
     blitRegion.dstSubresource.mipLevel       = 0;
     blitRegion.dstSubresource.baseArrayLayer = 0;
     blitRegion.dstOffsets[0]                 = {0, 0, 0};
-    blitRegion.dstOffsets[1].x               = VulkanContext::GetSwapchainExtent().width;
-    blitRegion.dstOffsets[1].y               = VulkanContext::GetSwapchainExtent().height;
+    blitRegion.dstOffsets[1].x               = static_cast<int32_t>(VulkanContext::GetSwapchainExtent().width);
+    blitRegion.dstOffsets[1].y               = static_cast<int32_t>(VulkanContext::GetSwapchainExtent().height);
     blitRegion.dstOffsets[1].z               = 1;
 
 

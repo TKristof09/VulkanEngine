@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Rendering/Buffer.hpp"
 #include "Rendering/CommandBuffer.hpp"
 #include <vulkan/vulkan.h>
 
@@ -32,7 +31,7 @@ struct AttachmentInfo
     VkClearValue clearValue   = {};
 };
 
-#define MAX_DRAW_COMMANDS 10000
+constexpr uint32_t MAX_DRAW_COMMANDS = 10000;
 struct DrawCommand
 {
     uint32_t indexCount;
@@ -91,7 +90,7 @@ public:
     void AddAttachmentInfo(VkRenderingAttachmentInfo info, bool isSwapchain = false)
     {
         if(isSwapchain)
-            m_swapchainAttachmentIndex = m_attachmentInfos.size();
+            m_swapchainAttachmentIndex = static_cast<int32_t>(m_attachmentInfos.size());
         m_attachmentInfos.push_back(info);
     }
     void SetRenderingInfo(VkRenderingInfo info) { m_renderingInfo = info; }
@@ -99,8 +98,8 @@ public:
 
 
     // Getter for inputs and outputs
-    const std::vector<RenderingTextureResource*>& GetColorInputs() const { return m_colorInputs; }
-    const std::vector<RenderingTextureResource*>& GetColorOutputs() const { return m_colorOutputs; }
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetColorInputs() const { return m_colorInputs; }
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetColorOutputs() const { return m_colorOutputs; }
     [[nodiscard]] RenderingTextureResource* GetDepthInput() const { return m_depthInput; }
     [[nodiscard]] RenderingTextureResource* GetDepthOutput() const { return m_depthOutput; }
 

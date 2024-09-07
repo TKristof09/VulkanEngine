@@ -4,6 +4,6 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Debug -S . -B .cmake/
 # the problem might be with the precompiled header, but im too lazy to investigate right now
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Debug -S . -B .cmake2/
 cd .cmake2
-make -j8
+make -j
 cd ..
-compdb -p .cmake/ list > compile_commands.json
+# compdb -p .cmake/ list > compile_commands.json

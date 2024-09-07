@@ -5,7 +5,6 @@
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/Pipeline.hpp"
 #include "ECS/Core.hpp"
-#include "ECS/CoreComponents/RendererComponents.hpp"
 #include "Utils/Math/Hilbert.hpp"
 #include <glm/glm.hpp>
 class GTAOPass
@@ -64,7 +63,7 @@ private:
 
 
         pass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
+            [&](CommandBuffer& cb, uint32_t /*imageIndex*/)
             {
                 const auto* mainCamera  = m_ecs->GetSingleton<MainCameraData>();
                 const auto viewportSize = glm::vec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);

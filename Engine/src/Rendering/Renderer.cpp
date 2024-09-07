@@ -6,7 +6,6 @@
 #include <optional>
 #include <set>
 #include <limits>
-#include <chrono>
 #include <array>
 #include <string>
 #include <utility>
@@ -33,7 +32,6 @@
 
 #include "ECS/CoreComponents/Camera.hpp"
 #include "ECS/CoreComponents/Lights.hpp"
-#include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreComponents/Material.hpp"
 #include "ECS/CoreComponents/RendererComponents.hpp"
@@ -66,7 +64,7 @@ struct QueueFamilyIndices
 };
 struct SwapchainSupportDetails
 {
-    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceCapabilitiesKHR capabilities{};
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
@@ -300,7 +298,7 @@ void Renderer::CreateInstance()
     // The VK_LAYER_KHRONOS_validation contains all current validation functionality.
     const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
     // Check if this layer is available at instance level
-    uint32_t layerCount;
+    uint32_t layerCount             = 0;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
     std::vector<VkLayerProperties> instanceLayerProperties(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, instanceLayerProperties.data());
@@ -377,7 +375,7 @@ void Renderer::CreateDevice()
     deviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 #endif
 
-    uint32_t deviceCount;
+    uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
@@ -392,6 +390,8 @@ void Renderer::CreateDevice()
     QueueFamilyIndices families = FindQueueFamilies(m_gpu, m_surface);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+
+    assert(families.graphicsFamily.has_value() && families.presentationFamily.has_value() && families.computeFamily.has_value() && families.transferFamily.has_value());
     std::set<uint32_t> uniqueQueueFamilies = {families.graphicsFamily.value(), families.presentationFamily.value(), families.computeFamily.value(), families.transferFamily.value()};
 
     for(auto queue : uniqueQueueFamilies)
@@ -471,7 +471,7 @@ void Renderer::CreateDevice()
         queryCI.queryCount            = 4;
         vkCreateQueryPool(m_device, &queryCI, nullptr, &m_queryPools[i]);
     }
-    m_timestampPeriod = VulkanContext::m_gpuProperties.limits.timestampPeriod;
+    m_timestampPeriod = static_cast<uint64_t>(VulkanContext::m_gpuProperties.limits.timestampPeriod);
 }
 
 void Renderer::CreateVmaAllocator()
@@ -507,14 +507,14 @@ void Renderer::CreateSwapchain()
     createInfo.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     createInfo.imageArrayLayers         = 1;
 
-    QueueFamilyIndices indices    = FindQueueFamilies(m_gpu, m_surface);
-    uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentationFamily.value()};
+    QueueFamilyIndices indices                 = FindQueueFamilies(m_gpu, m_surface);
+    std::array<uint32_t, 2> queueFamilyIndices = {indices.graphicsFamily.value(), indices.presentationFamily.value()};
 
     if(indices.graphicsFamily != indices.presentationFamily)
     {
         createInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;  // if the two queues are different then we need to share between them
-        createInfo.queueFamilyIndexCount = 2;
-        createInfo.pQueueFamilyIndices   = queueFamilyIndices;
+        createInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+        createInfo.pQueueFamilyIndices   = queueFamilyIndices.data();
     }
     else
     {
@@ -528,7 +528,7 @@ void Renderer::CreateSwapchain()
 
     VK_CHECK(vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain), "Failed to create swapchain");
 
-    uint32_t imageCount;
+    uint32_t imageCount = 0;
     VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr), "Failed to get swapchain images");
     std::vector<VkImage> tempImages(imageCount);
     VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, tempImages.data()), "Failed to get swapchain images");
@@ -538,10 +538,10 @@ void Renderer::CreateSwapchain()
 
     m_renderGraph.SetupSwapchainImages(tempImages);
     // TODO remove
-    for(size_t i = 0; i < tempImages.size(); i++)
+    for(auto& tempImage : tempImages)
     {
         ImageCreateInfo ci = {};
-        ci.image           = tempImages[i];
+        ci.image           = tempImage;
         ci.aspectFlags     = VK_IMAGE_ASPECT_COLOR_BIT;
         ci.format          = m_swapchainImageFormat;
 
@@ -808,7 +808,7 @@ void Renderer::InitilizeRenderGraph()
         }
 
         uiPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
+            [&](RenderGraph& /*rg*/)
             {
                 for(auto* image : uiPass.GetTextureInputs())
                 {
@@ -819,7 +819,7 @@ void Renderer::InitilizeRenderGraph()
                 }
             });
         uiPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t frameIndex)
+            [&](CommandBuffer& cb, uint32_t /*frameIndex*/)
             {
                 vkCmdBeginRendering(cb.GetCommandBuffer(), uiPass.GetRenderingInfo());
                 m_debugUI->Draw(&cb);
@@ -1263,9 +1263,9 @@ void Renderer::CreateEnvironmentMap()
 
 std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCADES>, std::array<glm::vec2, NUM_CASCADES>> GetCascadeMatricesOrtho(const glm::mat4& invCamera, const glm::vec3& lightDir, float zNear, float maxDepth)
 {
-    std::array<glm::mat4, NUM_CASCADES> resVP;
-    std::array<glm::mat4, NUM_CASCADES> resV;
-    std::array<glm::vec2, NUM_CASCADES> zPlanes;
+    std::array<glm::mat4, NUM_CASCADES> resVP{};
+    std::array<glm::mat4, NUM_CASCADES> resV{};
+    std::array<glm::vec2, NUM_CASCADES> zPlanes{};
 
     float maxDepthNDC  = zNear / maxDepth;
     float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
@@ -1495,11 +1495,11 @@ void Renderer::UpdateLightMatrices(uint32_t index)
     }
 }
 
-void Renderer::Render(double dt)
+void Renderer::Render(double /*dt*/)
 {
     // PROFILE_FUNCTION();
-    uint32_t imageIndex;
-    VkResult result;
+    uint32_t imageIndex = 0;
+    VkResult result{};
     {
         PROFILE_SCOPE("Pre frame stuff");
         {
@@ -1571,7 +1571,7 @@ void Renderer::Render(double dt)
         presentInfo.pImageIndices  = &imageIndex;
         result                     = vkQueuePresentKHR(m_presentQueue.queue, &presentInfo);
     }
-    std::array<uint64_t, 4> queryResults;
+    std::array<uint64_t, 4> queryResults{};
     {
         PROFILE_SCOPE("Query results");
         // VK_CHECK(vkGetQueryPoolResults(m_device, m_queryPools[m_currentFrame], 0, 4, sizeof(uint64_t) * 4, queryResults.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT), "Query isn't ready");
@@ -1744,8 +1744,8 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     // TODO
 
     light->shadowSlot = slot;
-    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos;
-    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF;
+    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos{};
+    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF{};
 
     // debugimages
     /*
@@ -1820,7 +1820,7 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
 std::vector<const char*> GetExtensions()
 {
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
+    const char** glfwExtensions = nullptr;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);

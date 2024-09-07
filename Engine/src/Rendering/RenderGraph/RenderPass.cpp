@@ -1,6 +1,5 @@
 #include "RenderPass.hpp"
 #include "RenderGraph.hpp"
-#include "vulkan/vulkan.h"
 #include "RenderingResource.hpp"
 
 RenderingTextureResource& RenderPass::AddTextureInput(const std::string& name, bool external)

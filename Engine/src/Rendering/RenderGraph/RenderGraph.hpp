@@ -32,9 +32,9 @@ class Renderer;
 class RenderGraph
 {
 public:
-    RenderGraph(Renderer* renderer) : m_swapchainResource(RenderingTextureResource(SWAPCHAIN_RESOURCE_NAME)),
-                                      m_renderer(renderer)
-
+    RenderGraph(Renderer* renderer)
+        : m_swapchainResource(RenderingTextureResource(SWAPCHAIN_RESOURCE_NAME)),
+          m_renderer(renderer)
     {
         TextureInfo info        = {};
         VkClearValue clearValue = {};
@@ -42,6 +42,13 @@ public:
         info.SetClearValue(clearValue);
         m_swapchainResource.SetTextureInfo(info);
     }
+
+    ~RenderGraph() = default;
+
+    RenderGraph(const RenderGraph&)                = delete;
+    RenderGraph& operator=(const RenderGraph&)     = delete;
+    RenderGraph(RenderGraph&&) noexcept            = default;
+    RenderGraph& operator=(RenderGraph&&) noexcept = default;
 
     void SetupSwapchainImages(const std::vector<VkImage>& swapchainImages);
     RenderPass& AddRenderPass(const std::string& name, QueueTypeFlagBits type);
@@ -107,7 +114,7 @@ private:
     std::vector<Image> m_swapchainImages;  // TODO: maybe keep the Renderer as the owner of these?
     RenderingTextureResource m_swapchainResource;
 
-    VkImageLayout m_finalRenderTargetLayout;
+    VkImageLayout m_finalRenderTargetLayout{VK_IMAGE_LAYOUT_UNDEFINED};
 
 
     // list of all barriers that need to be executed after each pass, indexed by passId

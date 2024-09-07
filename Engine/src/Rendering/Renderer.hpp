@@ -46,6 +46,10 @@ class Renderer
 public:
     Renderer(std::shared_ptr<Window> window);
     ~Renderer();
+    Renderer(const Renderer&)            = delete;
+    Renderer(Renderer&&)                 = delete;
+    Renderer& operator=(const Renderer&) = delete;
+    Renderer& operator=(Renderer&&)      = delete;
     void InitilizeRenderGraph();
     void Render(double dt);
 
@@ -175,7 +179,7 @@ private:
 
     std::vector<VkQueryPool> m_queryPools;
     std::vector<uint64_t> m_queryResults;
-    uint64_t m_timestampPeriod;
+    uint64_t m_timestampPeriod{UINT64_MAX};
 
 
     VkInstance& m_instance;
@@ -183,18 +187,18 @@ private:
     VkDevice& m_device;
 
     Queue& m_graphicsQueue;
-    Queue m_presentQueue;
+    Queue m_presentQueue{};
     Queue& m_computeQueue;  // unused for now
     Queue& m_transferQueue;
 
     VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    VkSurfaceKHR m_surface;
+    VkSurfaceKHR m_surface{VK_NULL_HANDLE};
 
-    VkSwapchainKHR m_swapchain;
+    VkSwapchainKHR m_swapchain{VK_NULL_HANDLE};
     std::vector<std::shared_ptr<Image>> m_swapchainImages;
-    VkFormat m_swapchainImageFormat;
-    VkExtent2D m_swapchainExtent;
+    VkFormat m_swapchainImageFormat{VK_FORMAT_UNDEFINED};
+    VkExtent2D m_swapchainExtent{};
 
 
     std::multiset<Pipeline> m_pipelines;
@@ -210,7 +214,7 @@ private:
     std::vector<VkFence> m_inFlightFences;
     std::vector<VkFence> m_imagesInFlight;
 
-    VkDescriptorPool m_descriptorPool;
+    VkDescriptorPool m_descriptorPool{VK_NULL_HANDLE};
 
 
     size_t m_currentFrame = 0;
@@ -250,7 +254,7 @@ private:
     // TODO temp
     bool m_needDrawBufferReupload = false;
 
-    RenderingTextureArrayResource* m_shadowMaps;
+    RenderingTextureArrayResource* m_shadowMaps{nullptr};
 
     // ECS queries
     Query<const InternalTransform, const Renderable, TransformBuffers> m_transformsQuery;
