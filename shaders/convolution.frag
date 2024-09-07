@@ -26,9 +26,9 @@ void main()
 
     float sampleDelta = 0.025;
     uint sampleCount = 0;
-    for(float phi = 0.0; phi < TWOPI; phi += sampleDelta)
+    for(float phi = 0.0; phi < TWO_PI; phi += sampleDelta)
     {
-        for(float theta = 0.0; theta < HALFPI; theta += sampleDelta)
+        for(float theta = 0.0; theta < HALF_PI; theta += sampleDelta)
         {
             // spherical to cartesian (in tangent space)
             vec3 tangentSample = vec3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));

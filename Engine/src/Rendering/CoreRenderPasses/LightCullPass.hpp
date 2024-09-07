@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Application.hpp"
+#include "ECS/CoreComponents/Camera.hpp"
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/Pipeline.hpp"
 #include "ECS/Core.hpp"
@@ -45,6 +46,8 @@ private:
         auto& lightCullPass       = rg.AddRenderPass("lightCullPass", QueueTypeFlagBits::Compute);
         auto& visibleLightsBuffer = lightCullPass.AddStorageBufferOutput("visibleLightsBuffer", "", VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, true);
         auto& depthTexture        = lightCullPass.AddTextureInput("depthImage");
+        auto& debugTexture        = lightCullPass.AddStorageImageOutput("debugImage", VK_FORMAT_R8_UNORM);
+
         lightCullPass.SetInitialiseCallback(
             [&](RenderGraph& rg)
             {
@@ -52,7 +55,8 @@ private:
                 data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
                 data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
-                data.depthTextureId      = depthTexture.GetImagePointer()->GetSlot();
+                data.depthTextureId      = depthTexture.GetImagePointer()->GetSampledSlot();
+                data.debugTextureId      = debugTexture.GetImagePointer()->GetSampledSlot();
 
                 const auto* lightBuffers = m_ecs->GetSingleton<LightBuffers>();
                 data.lightNum            = lightBuffers->lightNum;
@@ -80,6 +84,7 @@ private:
                 pc.viewProj            = mainCamera->viewProj;
                 pc.cameraPos           = mainCamera->pos;
                 pc.shaderDataPtr       = m_pipeline->GetShaderDataBufferPtr(imageIndex);
+                pc.debugMode           = 1;
 
                 m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 

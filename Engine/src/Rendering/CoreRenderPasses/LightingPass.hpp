@@ -64,6 +64,8 @@ private:
         uint32_t irradianceMapIndex;
         uint32_t prefilteredEnvMapIndex;
         uint32_t BRDFLUTIndex;
+
+        uint32_t aoTextureIndex;
     };
 
     struct PushConstants
@@ -84,11 +86,13 @@ private:
         colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
+        lightingPass.AddTextureInput("debugImage");
         auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
         auto* lightBuffers        = m_ecs->GetSingletonMut<LightBuffers>();
         visibleLightsBuffer.SetBufferPointer(&lightBuffers->visibleLightsBuffer);
         auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
         auto& shadowMaps           = lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        auto& aoTexture            = lightingPass.AddTextureInput("finalAOImage");
 
         lightingPass.SetInitialiseCallback(
             [&](RenderGraph& rg)
@@ -98,9 +102,9 @@ private:
                 data.tileNums     = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
 
                 const auto* pbrEnv          = m_ecs->GetSingleton<PBREnvironment>();
-                data.irradianceMapIndex     = pbrEnv->irradianceMap.GetSlot();
-                data.prefilteredEnvMapIndex = pbrEnv->prefilteredEnvMap.GetSlot();
-                data.BRDFLUTIndex           = pbrEnv->BRDFLUT.GetSlot();
+                data.irradianceMapIndex     = pbrEnv->irradianceMap.GetSampledSlot();
+                data.prefilteredEnvMapIndex = pbrEnv->prefilteredEnvMap.GetSampledSlot();
+                data.BRDFLUTIndex           = pbrEnv->BRDFLUT.GetSampledSlot();
 
 
                 const auto* shadowBuffers = m_ecs->GetSingleton<ShadowBuffers>();
@@ -108,6 +112,7 @@ private:
 
 
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
+                data.aoTextureIndex      = aoTexture.GetImagePointer()->GetSampledSlot();
                 const auto* lightBuffers = m_ecs->GetSingleton<LightBuffers>();
                 for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
                 {

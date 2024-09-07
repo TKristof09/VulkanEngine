@@ -20,9 +20,13 @@ public:
     // In the future if we want to support multiple cameras we will probably want to use a tag with the camera component
     static void Update(const Camera& camera, const InternalTransform& transform, MainCameraData& mainCameraData)
     {
-        mainCameraData.viewProj = GetProjection(camera) * glm::inverse(transform.worldTransform);
+        mainCameraData.view     = glm::inverse(transform.worldTransform);
+        mainCameraData.viewProj = GetProjection(camera) * mainCameraData.view;
         mainCameraData.pos      = transform.worldTransform[3];
         mainCameraData.zNear    = camera.zNear;
+
+        float f                              = tan(camera.fovRadians / 2.0f);
+        mainCameraData.clipToViewSpaceConsts = glm::vec2(camera.aspect * f, f);
     }
 
 private:

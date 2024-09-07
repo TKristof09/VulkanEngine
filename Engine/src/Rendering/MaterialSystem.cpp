@@ -119,7 +119,7 @@ void MaterialSystem::UpdateMaterial(Material* material)
     {
         Texture& albedo = TextureManager::GetTexture(textureIt->second);
         m_renderer->AddTexture(&albedo);
-        mat.albedoTexture = albedo.GetSlot();
+        mat.albedoTexture = albedo.GetSampledSlot();
     }
 
     textureIt = material->textures.find("normal");
@@ -127,7 +127,7 @@ void MaterialSystem::UpdateMaterial(Material* material)
     {
         Texture& normal = TextureManager::GetTexture(textureIt->second);
         m_renderer->AddTexture(&normal);
-        mat.normalTexture = normal.GetSlot();
+        mat.normalTexture = normal.GetSampledSlot();
     }
 
     textureIt = material->textures.find("roughness");
@@ -135,7 +135,7 @@ void MaterialSystem::UpdateMaterial(Material* material)
     {
         Texture& roughness = TextureManager::GetTexture(textureIt->second);
         m_renderer->AddTexture(&roughness);
-        mat.roughnessTexture = roughness.GetSlot();
+        mat.roughnessTexture = roughness.GetSampledSlot();
     }
 
     textureIt = material->textures.find("metallic");
@@ -143,7 +143,7 @@ void MaterialSystem::UpdateMaterial(Material* material)
     {
         Texture& metallic = TextureManager::GetTexture(textureIt->second);
         m_renderer->AddTexture(&metallic);
-        mat.metallicTexture = metallic.GetSlot();
+        mat.metallicTexture = metallic.GetSampledSlot();
     }
 
     mat.albedo    = material->albedo;

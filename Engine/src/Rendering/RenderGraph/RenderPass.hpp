@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Rendering/Buffer.hpp"
 #include "Rendering/CommandBuffer.hpp"
 #include <vulkan/vulkan.h>
 
@@ -32,7 +31,7 @@ struct AttachmentInfo
     VkClearValue clearValue   = {};
 };
 
-#define MAX_DRAW_COMMANDS 10000
+constexpr uint32_t MAX_DRAW_COMMANDS = 10000;
 struct DrawCommand
 {
     uint32_t indexCount;
@@ -52,8 +51,6 @@ public:
     RenderingTextureResource& AddColorOutput(const std::string& name, AttachmentInfo attachmentInfo, const std::string& input = "");
     RenderingTextureResource& AddDepthInput(const std::string& name);
     RenderingTextureResource& AddDepthOutput(const std::string& name, AttachmentInfo attachmentInfo);
-    RenderingTextureResource& AddResolveOutput(const std::string& name);
-    RenderingTextureResource& AddDepthResolveOutput(const std::string& name);
 
     RenderingBufferResource& AddDrawCommandBuffer(const std::string& name);
 
@@ -65,6 +62,10 @@ public:
 
     RenderingBufferResource& AddStorageBufferReadOnly(const std::string& name, VkPipelineStageFlags2 stages = 0, bool external = false);
     RenderingBufferResource& AddStorageBufferOutput(const std::string& name, const std::string& input = "", VkPipelineStageFlags2 stages = 0, bool external = false);
+
+    RenderingTextureResource& AddStorageImageReadOnly(const std::string& name, VkPipelineStageFlags2 stages = 0, bool external = false);
+    RenderingTextureResource& AddStorageImageOutput(const std::string& name, const std::string& input = "", VkPipelineStageFlags2 stages = 0, VkFormat format = VK_FORMAT_UNDEFINED, bool external = false);
+    RenderingTextureResource& AddStorageImageOutput(const std::string& name, VkFormat format);
 
     RenderingTextureArrayResource& AddTextureArrayInput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
     RenderingTextureArrayResource& AddTextureArrayOutput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access);
@@ -89,7 +90,7 @@ public:
     void AddAttachmentInfo(VkRenderingAttachmentInfo info, bool isSwapchain = false)
     {
         if(isSwapchain)
-            m_swapchainAttachmentIndex = m_attachmentInfos.size();
+            m_swapchainAttachmentIndex = static_cast<int32_t>(m_attachmentInfos.size());
         m_attachmentInfos.push_back(info);
     }
     void SetRenderingInfo(VkRenderingInfo info) { m_renderingInfo = info; }
@@ -97,12 +98,10 @@ public:
 
 
     // Getter for inputs and outputs
-    const std::vector<RenderingTextureResource*>& GetColorInputs() const { return m_colorInputs; }
-    const std::vector<RenderingTextureResource*>& GetColorOutputs() const { return m_colorOutputs; }
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetColorInputs() const { return m_colorInputs; }
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetColorOutputs() const { return m_colorOutputs; }
     [[nodiscard]] RenderingTextureResource* GetDepthInput() const { return m_depthInput; }
     [[nodiscard]] RenderingTextureResource* GetDepthOutput() const { return m_depthOutput; }
-    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetResolveOutputs() const { return m_resolveOutputs; }
-    [[nodiscard]] RenderingTextureResource* GetDepthResolveOutput() const { return m_depthResolveOutput; }
 
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetDrawCommandBuffers() const { return m_drawCommandBuffers; }
 
@@ -114,6 +113,9 @@ public:
 
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetStorageBufferInputs() const { return m_storageBufferInputs; }
     [[nodiscard]] const std::vector<RenderingBufferResource*>& GetStorageBufferOutputs() const { return m_storageBufferOutputs; }
+
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetStorageImageInputs() const { return m_storageImageInputs; }
+    [[nodiscard]] const std::vector<RenderingTextureResource*>& GetStorageImageOutputs() const { return m_storageImageOutputs; }
 
     [[nodiscard]] const std::vector<RenderingTextureArrayResource*>& GetTextureArrayInputs() const { return m_textureArrayInputs; }
     [[nodiscard]] const std::vector<RenderingTextureArrayResource*>& GetTextureArrayOutputs() const { return m_textureArrayOutputs; }
@@ -147,8 +149,6 @@ private:
     std::vector<RenderingTextureResource*> m_colorOutputs;
     RenderingTextureResource* m_depthInput  = nullptr;
     RenderingTextureResource* m_depthOutput = nullptr;
-    std::vector<RenderingTextureResource*> m_resolveOutputs;
-    RenderingTextureResource* m_depthResolveOutput = nullptr;
 
     // use vector because a pass can use multiple graphics pipelines (aka shaders) so each can have their own draw commands
     std::vector<RenderingBufferResource*> m_drawCommandBuffers;
@@ -161,6 +161,9 @@ private:
 
     std::vector<RenderingBufferResource*> m_storageBufferInputs;
     std::vector<RenderingBufferResource*> m_storageBufferOutputs;
+
+    std::vector<RenderingTextureResource*> m_storageImageInputs;
+    std::vector<RenderingTextureResource*> m_storageImageOutputs;
 
     std::vector<RenderingTextureArrayResource*> m_textureArrayInputs;
     std::vector<RenderingTextureArrayResource*> m_textureArrayOutputs;

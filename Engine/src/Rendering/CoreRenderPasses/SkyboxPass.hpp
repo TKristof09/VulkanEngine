@@ -56,7 +56,7 @@ private:
 
                 m_skyboxPipeline->Bind(cb);
 
-                PushConstants pc{m_ecs->GetSingleton<MainCameraData>()->viewProj, m_envMap->GetSlot()};
+                PushConstants pc{m_ecs->GetSingleton<MainCameraData>()->viewProj, m_envMap->GetSampledSlot()};
                 m_skyboxPipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 
                 vkCmdDraw(cb.GetCommandBuffer(), 6, 1, 0, 0);

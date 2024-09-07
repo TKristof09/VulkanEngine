@@ -38,18 +38,29 @@ class LightCullPass;
 class LightingPass;
 class SkyboxPass;
 class ShadowPass;
+class GTAOPass;
+class DenoisePass;
 
 class Renderer
 {
 public:
     Renderer(std::shared_ptr<Window> window);
     ~Renderer();
+    Renderer(const Renderer&)            = delete;
+    Renderer(Renderer&&)                 = delete;
+    Renderer& operator=(const Renderer&) = delete;
+    Renderer& operator=(Renderer&&)      = delete;
     void InitilizeRenderGraph();
     void Render(double dt);
 
     Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 
     void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
+    void AddDebugUIElement(const std::shared_ptr<DebugUIElement>& element) { m_rendererDebugWindow->AddElement(element); };
+    void AddDebugUIImage(const RenderingTextureResource& image)
+    {
+        m_uiImages.push_back(image);
+    }
 
     void OnSceneSwitched(SceneSwitchedEvent e);
 
@@ -62,6 +73,8 @@ public:
 
     void AddTexture(Image* texture, SamplerConfig samplerConf = {});
     void RemoveTexture(Image* texture);
+    void AddStorageImage(Image* img);
+    void RemoveStorageImage(Image* img);
 
     DynamicBufferAllocator& GetShaderDataBuffer() { return *m_shaderDataBuffer; }
 
@@ -166,7 +179,7 @@ private:
 
     std::vector<VkQueryPool> m_queryPools;
     std::vector<uint64_t> m_queryResults;
-    uint64_t m_timestampPeriod;
+    uint64_t m_timestampPeriod{UINT64_MAX};
 
 
     VkInstance& m_instance;
@@ -174,18 +187,18 @@ private:
     VkDevice& m_device;
 
     Queue& m_graphicsQueue;
-    Queue m_presentQueue;
+    Queue m_presentQueue{};
     Queue& m_computeQueue;  // unused for now
     Queue& m_transferQueue;
 
     VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    VkSurfaceKHR m_surface;
+    VkSurfaceKHR m_surface{VK_NULL_HANDLE};
 
-    VkSwapchainKHR m_swapchain;
+    VkSwapchainKHR m_swapchain{VK_NULL_HANDLE};
     std::vector<std::shared_ptr<Image>> m_swapchainImages;
-    VkFormat m_swapchainImageFormat;
-    VkExtent2D m_swapchainExtent;
+    VkFormat m_swapchainImageFormat{VK_FORMAT_UNDEFINED};
+    VkExtent2D m_swapchainExtent{};
 
 
     std::multiset<Pipeline> m_pipelines;
@@ -201,7 +214,7 @@ private:
     std::vector<VkFence> m_inFlightFences;
     std::vector<VkFence> m_imagesInFlight;
 
-    VkDescriptorPool m_descriptorPool;
+    VkDescriptorPool m_descriptorPool{VK_NULL_HANDLE};
 
 
     size_t m_currentFrame = 0;
@@ -219,6 +232,7 @@ private:
     std::unique_ptr<DynamicBufferAllocator> m_shaderDataBuffer;
 
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
+    std::list<int32_t> m_freeStorageImageSlots;
 
     std::unique_ptr<Pipeline> m_equiToCubePipeline;
     std::unique_ptr<Pipeline> m_convoltionPipeline;
@@ -232,11 +246,15 @@ private:
     std::unique_ptr<LightCullPass> m_lightCullPass;
     std::unique_ptr<LightingPass> m_lightingPass;
     std::unique_ptr<SkyboxPass> m_skyboxPass;
+    std::unique_ptr<GTAOPass> m_gtaoPass;
+    std::unique_ptr<DenoisePass> m_denoisePass;
+
+    std::vector<RenderingTextureResource> m_uiImages;
 
     // TODO temp
     bool m_needDrawBufferReupload = false;
 
-    RenderingTextureArrayResource* m_shadowMaps;
+    RenderingTextureArrayResource* m_shadowMaps{nullptr};
 
     // ECS queries
     Query<const InternalTransform, const Renderable, TransformBuffers> m_transformsQuery;

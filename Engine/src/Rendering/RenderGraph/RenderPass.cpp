@@ -1,8 +1,6 @@
 #include "RenderPass.hpp"
 #include "RenderGraph.hpp"
-#include "vulkan/vulkan.h"
 #include "RenderingResource.hpp"
-#include "vulkan/vulkan_core.h"
 
 RenderingTextureResource& RenderPass::AddTextureInput(const std::string& name, bool external)
 {
@@ -11,22 +9,10 @@ RenderingTextureResource& RenderPass::AddTextureInput(const std::string& name, b
     if(external)
         resource.SetLifetime(RenderingResource::Lifetime::External);
 
-    // If the format is not undefined then the resource has already been specified before
-    // for example as a color output or depth output in which case we keep that texture info
-    // and we only add to its usage flags
-    if(resource.GetTextureInfo().format == VK_FORMAT_UNDEFINED)
-    {
-        TextureInfo info = {};
-        info.format      = VK_FORMAT_UNDEFINED;
-        info.usageFlags  = VK_IMAGE_USAGE_SAMPLED_BIT;
-        resource.SetTextureInfo(info);
-    }
-    else
-    {
-        TextureInfo info  = resource.GetTextureInfo();
-        info.usageFlags  |= VK_IMAGE_USAGE_SAMPLED_BIT;
-        resource.SetTextureInfo(info);
-    }
+    TextureInfo info  = resource.GetTextureInfo();
+    info.usageFlags  |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    resource.SetTextureInfo(info);
+
     resource.AddQueueUse(m_type);
     // TODO : Add proper pipeline stage
     VkPipelineStageFlags2 stage = 0;
@@ -54,8 +40,7 @@ RenderingTextureResource& RenderPass::AddColorOutput(const std::string& name, At
         info.usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
     if(attachmentInfo.clear)
     {
@@ -71,7 +56,7 @@ RenderingTextureResource& RenderPass::AddColorOutput(const std::string& name, At
     m_graph.RegisterResourceWrite(name, *this);
     m_colorOutputs.push_back(&resource);
 
-    if(input != "")
+    if(!input.empty())
     {
         auto& inputResource = m_graph.GetTextureResource(input);
         inputResource.AddQueueUse(m_type);
@@ -94,7 +79,6 @@ RenderingTextureResource& RenderPass::AddDepthInput(const std::string& name)
     TextureInfo info  = resource.GetTextureInfo();
     info.format       = VK_FORMAT_D32_SFLOAT;
     info.usageFlags  |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    info.aspectFlags  = VK_IMAGE_ASPECT_DEPTH_BIT;
     info.layout       = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
     VkClearValue clear{};
     clear.depthStencil.depth = 0.0f;
@@ -115,7 +99,6 @@ RenderingTextureResource& RenderPass::AddDepthOutput(const std::string& name, At
     TextureInfo info  = resource.GetTextureInfo();
     info.format       = VK_FORMAT_D32_SFLOAT;
     info.usageFlags  |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    info.aspectFlags  = VK_IMAGE_ASPECT_DEPTH_BIT;
     info.layout       = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
 
@@ -132,29 +115,6 @@ RenderingTextureResource& RenderPass::AddDepthOutput(const std::string& name, At
     resource.AddUse(m_id, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
     m_graph.RegisterResourceWrite(name, *this);
     m_depthOutput = &resource;
-    return resource;
-}
-
-RenderingTextureResource& RenderPass::AddResolveOutput(const std::string& name)
-{
-    auto& resource = m_graph.GetTextureResource(name);
-
-    TextureInfo info = {};
-    info.format      = VK_FORMAT_R8G8B8A8_UNORM;
-    info.usageFlags  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if(name == SWAPCHAIN_RESOURCE_NAME)
-    {
-        info.usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    }
-
-    info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    info.layout      = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-
-    resource.SetTextureInfo(info);
-    resource.AddUse(m_id, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-
-    m_graph.RegisterResourceWrite(name, *this);
-    m_resolveOutputs.push_back(&resource);
     return resource;
 }
 
@@ -260,7 +220,7 @@ RenderingBufferResource& RenderPass::AddStorageBufferOutput(const std::string& n
         resource.SetLifetime(RenderingResource::Lifetime::External);
 
     m_storageBufferOutputs.push_back(&resource);
-    if(input != "")
+    if(!input.empty())
     {
         auto& inputResource = m_graph.GetBufferResource(input);
         inputResource.AddQueueUse(m_type);
@@ -278,6 +238,97 @@ RenderingBufferResource& RenderPass::AddStorageBufferOutput(const std::string& n
     return resource;
 }
 
+RenderingTextureResource& RenderPass::AddStorageImageReadOnly(const std::string& name, VkPipelineStageFlags2 stages, bool external)
+{
+    if(stages == 0)
+    {
+        if(m_type == QueueTypeFlagBits::Graphics)
+            stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        else if(m_type == QueueTypeFlagBits::Compute)
+            stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    }
+    auto& resource = m_graph.GetTextureResource(name);
+    resource.AddUse(m_id, stages, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+    resource.AddQueueUse(m_type);
+
+    TextureInfo info  = resource.GetTextureInfo();
+    info.usageFlags  |= VK_IMAGE_USAGE_STORAGE_BIT;
+    resource.SetTextureInfo(info);
+
+
+    if(external)
+        resource.SetLifetime(RenderingResource::Lifetime::External);
+
+    m_graph.RegisterResourceRead(name, *this);
+
+    m_storageImageInputs.push_back(&resource);
+    m_storageImageOutputs.push_back(nullptr);
+    return resource;
+}
+
+RenderingTextureResource& RenderPass::AddStorageImageOutput(const std::string& name, const std::string& input, VkPipelineStageFlags2 stages, VkFormat format, bool external)
+{
+    if(stages == 0)
+    {
+        if(m_type == QueueTypeFlagBits::Graphics)
+            stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        else if(m_type == QueueTypeFlagBits::Compute)
+            stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    }
+    auto& resource = m_graph.GetTextureResource(name);
+    resource.AddUse(m_id, stages, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+    resource.AddQueueUse(m_type);
+
+    TextureInfo info  = resource.GetTextureInfo();
+    info.usageFlags  |= VK_IMAGE_USAGE_STORAGE_BIT;
+    if(resource.GetTextureInfo().format == VK_FORMAT_UNDEFINED)
+    {
+        info.format = format;
+    }
+    resource.SetTextureInfo(info);
+
+    if(external)
+        resource.SetLifetime(RenderingResource::Lifetime::External);
+
+
+    m_storageImageOutputs.push_back(&resource);
+    m_graph.RegisterResourceWrite(name, *this);
+    if(!input.empty())
+    {
+        auto& inputResource = m_graph.GetTextureResource(name);
+        inputResource.AddUse(m_id, stages, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+        inputResource.AddQueueUse(m_type);
+
+        if(inputResource.GetTextureInfo().format == VK_FORMAT_UNDEFINED)
+        {
+            TextureInfo info = {};
+            info.format      = VK_FORMAT_UNDEFINED;
+            info.usageFlags  = VK_IMAGE_USAGE_STORAGE_BIT;
+            inputResource.SetTextureInfo(info);
+        }
+        else
+        {
+            TextureInfo info  = inputResource.GetTextureInfo();
+            info.usageFlags  |= VK_IMAGE_USAGE_STORAGE_BIT;
+            inputResource.SetTextureInfo(info);
+        }
+
+        if(external)
+            inputResource.SetLifetime(RenderingResource::Lifetime::External);
+        m_storageImageInputs.push_back(&inputResource);
+        m_graph.RegisterResourceRead(input, *this);
+    }
+    else
+    {
+        m_storageImageInputs.push_back(nullptr);
+    }
+
+    return resource;
+}
+RenderingTextureResource& RenderPass::AddStorageImageOutput(const std::string& name, VkFormat format)
+{
+    return AddStorageImageOutput(name, "", 0, format, false);
+}
 RenderingTextureArrayResource& RenderPass::AddTextureArrayInput(const std::string& name, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
 {
     auto& resource = m_graph.GetTextureArrayResource(name);

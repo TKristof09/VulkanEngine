@@ -3,10 +3,13 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_shader_image_load_formatted : require
 layout (set = 0, binding = 0) uniform sampler2D textures[];
+layout (set = 0, binding = 0) uniform usampler2D texturesU[];
 layout (set = 0, binding = 0) uniform sampler2DArrayShadow shadowTextures[];
 layout (set = 0, binding = 0) uniform samplerCube cubemapTextures[];
-//layout (set = 0, binding = 1) uniform image2D storageTextures[];
+layout (set = 0, binding = 1) uniform image2D storageTextures[];
+layout (set = 0, binding = 1) uniform uimage2D storageTexturesU[];
 layout(buffer_reference, buffer_reference_align=4) readonly buffer Transforms {
     mat4 m[];
 };
@@ -28,3 +31,5 @@ layout(push_constant) uniform PC
     MaterialData materialsPtr; // accessed with glDrawId
 };
 */
+
+#define SHADER_DATA layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData

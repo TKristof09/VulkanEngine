@@ -1,0 +1,217 @@
+
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "bindings.glsl"
+#include "common.glsl"
+
+layout(local_size_x=8, local_size_y=8, local_size_z=1) in;
+layout(push_constant) uniform PC
+{
+    uint depthTexture;
+    uint aoTexture; // R32 uint texture
+    uint outputTexture; // R32 uint texture
+    float zNear;
+    vec2 texelSize;
+
+    float sigmaSpatial;
+    float sigmaIntensity;
+};
+
+struct AOTerm
+{
+    vec3 bentNormal;
+    float visibility;
+};
+
+void DecodeGather(vec4 packedDatas, out AOTerm outAOTerms[4])
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        // TODO: implement bent normal stuff
+        // vec4 unpackedData = UnpackUintToVec4(packedDatas[i]);
+        outAOTerms[i].bentNormal = vec3(0);//unpackedData.xyz;
+        outAOTerms[i].visibility = packedDatas[i];
+    }
+}
+
+float CalcGaussianWeight(float spatialDiff, float intensityDiff, float sigmaSpatial, float sigmaIntensity)
+{
+    return exp((-spatialDiff * spatialDiff / (2.0 * sigmaSpatial * sigmaSpatial)) - (intensityDiff * intensityDiff / (2.0 * sigmaIntensity * sigmaIntensity)));
+}
+
+// dispatch screenSize / 2, screenSize / 2  workgroups
+void main()
+{
+    // 3x3 bilateral filter, but we do 4 pixels at a time since we can gather a 4x4 region efficiently with textureGather
+    ivec2 baseCoord = ivec2(gl_GlobalInvocationID.xy) * 2;
+
+    vec2 uv = baseCoord * texelSize;
+
+    // for each the order is top left, top right, bottom right, bottom left
+    vec4 depthTopLeftQ = LinearizeDepth(textureGather(textures[depthTexture], uv), zNear);
+    vec4 depthTopRightQ = LinearizeDepth(textureGatherOffset(textures[depthTexture], uv, ivec2(2, 0)), zNear);
+    vec4 depthBottomLeftQ = LinearizeDepth(textureGatherOffset(textures[depthTexture], uv, ivec2(0, 2)), zNear);
+    vec4 depthBottomRightQ = LinearizeDepth(textureGatherOffset(textures[depthTexture], uv, ivec2(2, 2)), zNear);
+
+    // for each the order is top left, top right, bottom right, bottom left
+    AOTerm topLeftTerms[4];
+    AOTerm topRightTerms[4];
+    AOTerm bottomLeftTerms[4];
+    AOTerm bottomRightTerms[4];
+
+    DecodeGather(textureGather(textures[aoTexture], uv), topLeftTerms);
+    DecodeGather(textureGatherOffset(textures[aoTexture], uv, ivec2(2, 0)), topRightTerms);
+    DecodeGather(textureGatherOffset(textures[aoTexture], uv, ivec2(0, 2)), bottomLeftTerms);
+    DecodeGather(textureGatherOffset(textures[aoTexture], uv, ivec2(2, 2)), bottomRightTerms);
+
+
+    // 0   1   2  3
+    // 4   5   6  7
+    // 8   9  10 11
+    // 12 13  14 15
+
+    // top row - around the pixels 5 and 6
+    for(int i = 0; i < 2; i++)
+    {
+        ivec2 pixelCoord = baseCoord + ivec2(i, 0);
+
+        AOTerm centerAO = i == 0 ? topLeftTerms[2] : topRightTerms[3];
+
+        AOTerm leftAO        = i == 0 ? topLeftTerms[3]     : topLeftTerms[2];
+        AOTerm rightAO       = i == 0 ? topRightTerms[3]    : topRightTerms[2];
+        AOTerm topAO         = i == 0 ? topLeftTerms[1]     : topRightTerms[0];
+        AOTerm bottomAO      = i == 0 ? bottomLeftTerms[1]  : bottomRightTerms[0];
+        AOTerm topLeftAO     = i == 0 ? topLeftTerms[0]     : topLeftTerms[1];
+        AOTerm topRightAO    = i == 0 ? topRightTerms[0]    : topRightTerms[1];
+        AOTerm bottomLeftAO  = i == 0 ? bottomLeftTerms[0]  : bottomLeftTerms[1];
+        AOTerm bottomRightAO = i == 0 ? bottomRightTerms[0] : bottomRightTerms[1];
+
+
+        float centerDepth      = i == 0 ? depthTopLeftQ.z     : depthTopRightQ.w;
+        float leftDepth        = i == 0 ? depthTopLeftQ.w     : depthTopLeftQ.z;
+        float rightDepth       = i == 0 ? depthTopRightQ.w    : depthTopRightQ.z;
+        float topDepth         = i == 0 ? depthTopLeftQ.y     : depthTopRightQ.x;
+        float bottomDepth      = i == 0 ? depthBottomLeftQ.y  : depthBottomRightQ.x;
+        float topLeftDepth     = i == 0 ? depthTopLeftQ.x     : depthTopLeftQ.y;
+        float topRightDepth    = i == 0 ? depthTopRightQ.x    : depthTopRightQ.y;
+        float bottomLeftDepth  = i == 0 ? depthBottomLeftQ.x  : depthBottomLeftQ.y;
+        float bottomRightDepth = i == 0 ? depthBottomRightQ.x : depthBottomRightQ.y;
+
+        float sumVis = centerAO.visibility;
+        const float wCenter = 1.0;
+        vec3 sumNormal = centerAO.bentNormal;
+
+
+        float wLeft = CalcGaussianWeight(1, abs(leftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wRight = CalcGaussianWeight(1, abs(rightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTop = CalcGaussianWeight(1, abs(topDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottom = CalcGaussianWeight(1, abs(bottomDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTopLeft = CalcGaussianWeight(1.414, abs(topLeftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTopRight = CalcGaussianWeight(1.414, abs(topRightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottomLeft = CalcGaussianWeight(1.414, abs(bottomLeftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottomRight = CalcGaussianWeight(1.414, abs(bottomRightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+
+        sumVis += wLeft * leftAO.visibility;
+        sumVis += wRight * rightAO.visibility;
+        sumVis += wTop * topAO.visibility;
+        sumVis += wBottom * bottomAO.visibility;
+        sumVis += wTopLeft * topLeftAO.visibility;
+        sumVis += wTopRight * topRightAO.visibility;
+        sumVis += wBottomLeft * bottomLeftAO.visibility;
+        sumVis += wBottomRight * bottomRightAO.visibility;
+
+        sumNormal += wLeft * leftAO.bentNormal;
+        sumNormal += wRight * rightAO.bentNormal;
+        sumNormal += wTop * topAO.bentNormal;
+        sumNormal += wBottom * bottomAO.bentNormal;
+        sumNormal += wTopLeft * topLeftAO.bentNormal;
+        sumNormal += wTopRight * topRightAO.bentNormal;
+        sumNormal += wBottomLeft * bottomLeftAO.bentNormal;
+        sumNormal += wBottomRight * bottomRightAO.bentNormal;
+
+        float totalWeight = wCenter + wLeft + wRight + wTop + wBottom + wTopLeft + wTopRight + wBottomLeft + wBottomRight;
+
+
+        totalWeight += 0.0001; // prevent divide by zero
+        sumVis /= totalWeight;
+        sumNormal /= totalWeight;
+
+        imageStore(storageTextures[outputTexture], pixelCoord, vec4(sumVis));
+    }
+
+    // 0   1   2  3
+    // 4   5   6  7
+    // 8   9  10 11
+    // 12 13  14 15
+    // bottom row - around the pixels 9 and 10
+    for(int i = 0; i < 2; i++)
+    {
+        ivec2 pixelCoord = baseCoord + ivec2(i, 1);
+
+        AOTerm centerAO = i == 0 ? bottomLeftTerms[1] : bottomRightTerms[0];
+
+        AOTerm leftAO        = i == 0 ? bottomLeftTerms[0]  : bottomLeftTerms[1];
+        AOTerm rightAO       = i == 0 ? bottomRightTerms[0]    : bottomRightTerms[1];
+        AOTerm topAO         = i == 0 ? topLeftTerms[2]     : topRightTerms[3];
+        AOTerm bottomAO      = i == 0 ? bottomLeftTerms[2]  : bottomRightTerms[3];
+        AOTerm topLeftAO     = i == 0 ? topLeftTerms[3]     : topLeftTerms[2];
+        AOTerm topRightAO    = i == 0 ? topRightTerms[3]    : topRightTerms[2];
+        AOTerm bottomLeftAO  = i == 0 ? bottomLeftTerms[3]  : bottomLeftTerms[2];
+        AOTerm bottomRightAO = i == 0 ? bottomRightTerms[3] : bottomRightTerms[2];
+
+
+        float centerDepth      = i == 0 ? depthBottomLeftQ.y  : depthBottomRightQ.x;
+        float leftDepth        = i == 0 ? depthBottomLeftQ.x  : depthBottomLeftQ.y;
+        float rightDepth       = i == 0 ? depthBottomRightQ.x : depthBottomRightQ.y;
+        float topDepth         = i == 0 ? depthTopLeftQ.z     : depthTopRightQ.w;
+        float bottomDepth      = i == 0 ? depthBottomLeftQ.z  : depthBottomRightQ.w;
+        float topLeftDepth     = i == 0 ? depthTopLeftQ.w     : depthTopLeftQ.z;
+        float topRightDepth    = i == 0 ? depthTopRightQ.w    : depthTopRightQ.z;
+        float bottomLeftDepth  = i == 0 ? depthBottomLeftQ.w  : depthBottomLeftQ.z;
+        float bottomRightDepth = i == 0 ? depthBottomRightQ.w : depthBottomRightQ.z;
+
+        float sumVis = centerAO.visibility;
+        const float wCenter = 1.0;
+        vec3 sumNormal = centerAO.bentNormal;
+
+
+        float wLeft = CalcGaussianWeight(1, abs(leftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wRight = CalcGaussianWeight(1, abs(rightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTop = CalcGaussianWeight(1, abs(topDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottom = CalcGaussianWeight(1, abs(bottomDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTopLeft = CalcGaussianWeight(1.414, abs(topLeftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wTopRight = CalcGaussianWeight(1.414, abs(topRightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottomLeft = CalcGaussianWeight(1.414, abs(bottomLeftDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+        float wBottomRight = CalcGaussianWeight(1.414, abs(bottomRightDepth - centerDepth), sigmaSpatial, sigmaIntensity);
+
+        sumVis += wLeft * leftAO.visibility;
+        sumVis += wRight * rightAO.visibility;
+        sumVis += wTop * topAO.visibility;
+        sumVis += wBottom * bottomAO.visibility;
+        sumVis += wTopLeft * topLeftAO.visibility;
+        sumVis += wTopRight * topRightAO.visibility;
+        sumVis += wBottomLeft * bottomLeftAO.visibility;
+        sumVis += wBottomRight * bottomRightAO.visibility;
+
+        sumNormal += wLeft * leftAO.bentNormal;
+        sumNormal += wRight * rightAO.bentNormal;
+        sumNormal += wTop * topAO.bentNormal;
+        sumNormal += wBottom * bottomAO.bentNormal;
+        sumNormal += wTopLeft * topLeftAO.bentNormal;
+        sumNormal += wTopRight * topRightAO.bentNormal;
+        sumNormal += wBottomLeft * bottomLeftAO.bentNormal;
+        sumNormal += wBottomRight * bottomRightAO.bentNormal;
+
+        float totalWeight = wCenter + wLeft + wRight + wTop + wBottom + wTopLeft + wTopRight + wBottomLeft + wBottomRight;
+
+
+        totalWeight += 0.0001; // prevent divide by zero
+        sumVis /= totalWeight;
+        sumNormal /= totalWeight;
+
+        imageStore(storageTextures[outputTexture], pixelCoord, vec4(sumVis));
+    }
+
+
+}
+

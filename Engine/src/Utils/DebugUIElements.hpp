@@ -695,19 +695,51 @@ public:
         uint32_t width  = m_image->GetWidth();
         uint32_t height = m_image->GetHeight();
         float aspect    = width / (float)height;
-        if(width > (uint32_t)ImGui::GetWindowWidth())
+        if(width > (uint32_t)ImGui::GetContentRegionAvail().x)
         {
-            width = (uint32_t)ImGui::GetWindowWidth();
-            ;
+            width  = (uint32_t)ImGui::GetContentRegionAvail().x;
             height = width / aspect;
         }
-        if(height > (uint32_t)ImGui::GetWindowHeight())
-        {
-            height = (uint32_t)ImGui::GetWindowHeight();
-            ;
-            width = height * aspect;
-        }
+
+        ImVec2 pos = ImGui::GetCursorScreenPos();
         ImGui::Image(m_desc, ImVec2(width, height));
+        ImVec2 uv_min = ImVec2(0.0f, 0.0f);  // Top-left
+        ImVec2 uv_max = ImVec2(1.0f, 1.0f);  // Lower-right
+                                             //
+        if(ImGui::BeginItemTooltip())
+        {
+            float regionSize = 32.0f;  // size of region to show in zoom (in pixels of the image shown in the ui, not the original size of the image)
+            ImVec2 mousePos  = ImGui::GetMousePos();
+            float regionX    = mousePos.x - pos.x - regionSize * 0.5f;
+            float regionY    = mousePos.y - pos.y - regionSize * 0.5f;
+            float zoom       = 4.0f;
+            if(regionX < 0.0f)
+            {
+                regionX = 0.0f;
+            }
+            else if(regionX > width - regionSize)
+            {
+                regionX = width - regionSize;
+            }
+            if(regionY < 0.0f)
+            {
+                regionY = 0.0f;
+            }
+            else if(regionY > height - regionSize)
+            {
+                regionY = height - regionSize;
+            }
+
+            float widthRatio  = m_image->GetWidth() / static_cast<float>(width);
+            float heightRatio = m_image->GetHeight() / static_cast<float>(height);
+
+            ImGui::Text("Min: (%.2f, %.2f)", regionX * widthRatio, regionY * heightRatio);
+            ImGui::Text("Max: (%.2f, %.2f)", (regionX + regionSize) * widthRatio, (regionY + regionSize) * heightRatio);
+            ImVec2 uv0 = ImVec2((regionX) / width, (regionY) / height);
+            ImVec2 uv1 = ImVec2((regionX + regionSize) / width, (regionY + regionSize) / height);
+            ImGui::Image(m_desc, ImVec2(regionSize * zoom, regionSize * zoom), uv0, uv1);
+            ImGui::EndTooltip();
+        }
         ImGui::PopID();
     }
 
