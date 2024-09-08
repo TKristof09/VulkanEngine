@@ -53,6 +53,8 @@ public:
     void InitilizeRenderGraph();
     void Render(double dt);
 
+    void SetupEnvironmentMaps();
+
     Pipeline* AddPipeline(const std::string& name, PipelineCreateInfo createInfo, uint32_t priority);
 
     void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };

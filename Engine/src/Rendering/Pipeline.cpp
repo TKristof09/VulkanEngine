@@ -1,24 +1,43 @@
 #include "Pipeline.hpp"
 #include "Application.hpp"
+#include "Core/Events/EventHandler.hpp"
 #include "Rendering/VulkanContext.hpp"
 #include "Rendering/MaterialSystem.hpp"
 
-Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
+Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo m_createInfo, uint16_t priority)
     : m_name(shaderName),
-      m_type(createInfo.type),
+      m_createInfo(m_createInfo),
       m_priority(priority),
-      m_isGlobal(createInfo.isGlobal),
-      m_viewMask(createInfo.viewMask),
       m_renderer(Application::GetInstance()->GetRenderer()),
       m_shaderDataSlots({})
 {
-    if(createInfo.type == PipelineType::GRAPHICS)
+    Setup();
+
+    Application::GetInstance()->GetEventHandler()->Subscribe(this, &Pipeline::OnPipelineReload);
+
+    auto button = std::make_shared<Button>(m_name);
+    button->RegisterCallback(
+        [](Button* button)
+        {
+            PipelineReloadEvent e;
+            e.name = button->GetName();
+            Application::GetInstance()->GetEventHandler()->Send<PipelineReloadEvent>(e);
+        });
+    m_renderer->AddDebugUIElement(button);
+}
+
+void Pipeline::Setup()
+{
+    // m_shaderDataSlots.clear();
+    m_vertexInputAttributes.clear();
+
+    if(m_createInfo.type == PipelineType::GRAPHICS)
     {
-        if(createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
+        if(m_createInfo.stages & VK_SHADER_STAGE_VERTEX_BIT)
         {
             m_shaders.emplace_back(m_name, VK_SHADER_STAGE_VERTEX_BIT, this);
         }
-        if(createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+        if(m_createInfo.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
         {
             m_shaders.emplace_back(m_name, VK_SHADER_STAGE_FRAGMENT_BIT, this);
         }
@@ -29,15 +48,16 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo,
     }
 
 
-    if(createInfo.type == PipelineType::GRAPHICS)
-        CreateGraphicsPipeline(createInfo);
+    if(m_createInfo.type == PipelineType::GRAPHICS)
+        CreateGraphicsPipeline(m_createInfo);
     else
-        CreateComputePipeline(createInfo);
+        CreateComputePipeline(m_createInfo);
 
     for(auto& shader : m_shaders)
     {
         shader.DestroyShaderModule();
     }
+    m_shaders.clear();
 
     VK_SET_DEBUG_NAME(m_pipeline, VK_OBJECT_TYPE_PIPELINE, m_name.c_str());
 }
@@ -53,13 +73,31 @@ Pipeline::~Pipeline()
     }
 }
 
+
+void Pipeline::OnPipelineReload(PipelineReloadEvent e)
+{
+    if(m_name == e.name)
+    {
+        LOG_INFO("Reloading pipeline: {}", m_name);
+
+        vkDeviceWaitIdle(VulkanContext::GetDevice());
+        vkDestroyPipeline(VulkanContext::GetDevice(), m_pipeline, nullptr);
+        vkDestroyPipelineLayout(VulkanContext::GetDevice(), m_layout, nullptr);
+        m_pipeline = VK_NULL_HANDLE;
+        m_layout   = VK_NULL_HANDLE;
+
+        Setup();
+    }
+}
+
+
 uint64_t Pipeline::GetMaterialBufferPtr() const
 {
     return Application::GetInstance()->GetMaterialSystem()->GetMaterialBufferAddress(m_name);
 }
 
 
-void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
+void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& m_createInfo)
 {
     std::vector<VkPipelineShaderStageCreateInfo> stagesCI;
     for(Shader& shader : m_shaders)
@@ -97,18 +135,18 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     viewportState.scissorCount                      = 1;
     VkViewport viewport                             = {};
     VkRect2D scissor                                = {};
-    if(!createInfo.useDynamicViewport)
+    if(!m_createInfo.useDynamicViewport)
     {
-        viewport.width    = (float)createInfo.viewportExtent.width;
-        viewport.height   = -(float)createInfo.viewportExtent.height;
+        viewport.width    = (float)m_createInfo.viewportExtent.width;
+        viewport.height   = -(float)m_createInfo.viewportExtent.height;
         viewport.x        = 0.f;
-        viewport.y        = (float)createInfo.viewportExtent.height;
+        viewport.y        = (float)m_createInfo.viewportExtent.height;
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
 
         scissor.offset = {0, 0};
-        scissor.extent = createInfo.viewportExtent;
+        scissor.extent = m_createInfo.viewportExtent;
 
 
         viewportState.pViewports = &viewport;
@@ -118,7 +156,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
 
     // ##################### DYNAMIC VIEWPORT #####################
     std::vector<VkDynamicState> dynamicStates;
-    if(createInfo.useDynamicViewport)
+    if(m_createInfo.useDynamicViewport)
     {
         dynamicStates.push_back(VK_DYNAMIC_STATE_VIEWPORT);
         dynamicStates.push_back(VK_DYNAMIC_STATE_SCISSOR);
@@ -135,7 +173,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     rasterizer.cullMode                               = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace                              = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.polygonMode                            = VK_POLYGON_MODE_FILL;
-    rasterizer.depthClampEnable                       = createInfo.depthClampEnable;
+    rasterizer.depthClampEnable                       = m_createInfo.depthClampEnable;
     rasterizer.rasterizerDiscardEnable                = false;
     rasterizer.lineWidth                              = 1.0f;
     rasterizer.depthBiasEnable                        = false;
@@ -144,13 +182,13 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     multisample.sType                                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample.sampleShadingEnable                  = VK_TRUE;
     multisample.minSampleShading                     = 0.2f;  // closer to 1 is smoother
-    multisample.rasterizationSamples                 = createInfo.useMultiSampling ? createInfo.msaaSamples : VK_SAMPLE_COUNT_1_BIT;
+    multisample.rasterizationSamples                 = m_createInfo.useMultiSampling ? m_createInfo.msaaSamples : VK_SAMPLE_COUNT_1_BIT;
 
 
     // ##################### COLOR BLEND #####################
     VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
     colorBlendAttachment.colorWriteMask                      = VK_COLOR_COMPONENT_A_BIT | VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
-    colorBlendAttachment.blendEnable                         = createInfo.useColorBlend;
+    colorBlendAttachment.blendEnable                         = m_createInfo.useColorBlend;
     colorBlendAttachment.srcColorBlendFactor                 = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor                 = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendAttachment.colorBlendOp                        = VK_BLEND_OP_ADD;
@@ -168,13 +206,13 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     // ##################### DEPTH #####################
     VkPipelineDepthStencilStateCreateInfo depthStencil = {};
     depthStencil.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable                       = createInfo.useDepth;
-    depthStencil.depthWriteEnable                      = createInfo.depthWriteEnable;
-    depthStencil.depthCompareOp                        = createInfo.depthCompareOp;  // not OP_LESS because we have a depth prepass
+    depthStencil.depthTestEnable                       = m_createInfo.useDepth;
+    depthStencil.depthWriteEnable                      = m_createInfo.depthWriteEnable;
+    depthStencil.depthCompareOp                        = m_createInfo.depthCompareOp;  // not OP_LESS because we have a depth prepass
     // depthStencil.depthBoundsTestEnable	= VK_TRUE;
     // depthStencil.minDepthBounds			= 0.0f;
     // depthStencil.maxDepthBounds			= 1.0f;
-    depthStencil.stencilTestEnable                     = createInfo.useStencil;
+    depthStencil.stencilTestEnable                     = m_createInfo.useStencil;
 
 
     // ##################### LAYOUT #####################
@@ -193,21 +231,21 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     // ##################### RENDERING #####################
     VkPipelineRenderingCreateInfo renderingCreateInfo = {};
     renderingCreateInfo.sType                         = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingCreateInfo.viewMask                      = createInfo.viewMask;
+    renderingCreateInfo.viewMask                      = m_createInfo.viewMask;
     VkFormat defaultColorFormat                       = VulkanContext::GetSwapchainImageFormat();
-    if(createInfo.colorFormats.empty() && createInfo.useColor)
+    if(m_createInfo.colorFormats.empty() && m_createInfo.useColor)
     {
         renderingCreateInfo.colorAttachmentCount    = 1;
         renderingCreateInfo.pColorAttachmentFormats = &defaultColorFormat;
     }
     else
     {
-        renderingCreateInfo.colorAttachmentCount    = createInfo.colorFormats.size();
-        renderingCreateInfo.pColorAttachmentFormats = createInfo.colorFormats.data();
+        renderingCreateInfo.colorAttachmentCount    = m_createInfo.colorFormats.size();
+        renderingCreateInfo.pColorAttachmentFormats = m_createInfo.colorFormats.data();
     }
 
-    renderingCreateInfo.depthAttachmentFormat   = createInfo.useDepth ? createInfo.depthFormat : VK_FORMAT_UNDEFINED;
-    renderingCreateInfo.stencilAttachmentFormat = createInfo.useStencil ? createInfo.stencilFormat : VK_FORMAT_UNDEFINED;
+    renderingCreateInfo.depthAttachmentFormat   = m_createInfo.useDepth ? m_createInfo.depthFormat : VK_FORMAT_UNDEFINED;
+    renderingCreateInfo.stencilAttachmentFormat = m_createInfo.useStencil ? m_createInfo.stencilFormat : VK_FORMAT_UNDEFINED;
 
     // ##################### PIPELINE #####################
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -221,15 +259,15 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     pipelineInfo.pMultisampleState            = &multisample;
     pipelineInfo.pColorBlendState             = &colorBlend;
     pipelineInfo.pDepthStencilState           = &depthStencil;
-    if(createInfo.allowDerivatives)
+    if(m_createInfo.allowDerivatives)
         pipelineInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
-    else if(createInfo.parent)
+    else if(m_createInfo.parent)
     {
         pipelineInfo.flags              = VK_PIPELINE_CREATE_DERIVATIVE_BIT;
-        pipelineInfo.basePipelineHandle = createInfo.parent->m_pipeline;
+        pipelineInfo.basePipelineHandle = m_createInfo.parent->m_pipeline;
         pipelineInfo.basePipelineIndex  = -1;
     }
-    if(createInfo.useDynamicViewport)
+    if(m_createInfo.useDynamicViewport)
         pipelineInfo.pDynamicState = &dynamicState;
 
     pipelineInfo.layout     = m_layout;
@@ -241,7 +279,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo)
     VK_CHECK(vkCreateGraphicsPipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline), "Failed to create graphics pipeline");
 }
 
-void Pipeline::CreateComputePipeline(const PipelineCreateInfo& createInfo)
+void Pipeline::CreateComputePipeline(const PipelineCreateInfo& m_createInfo)
 {
     VkPipelineShaderStageCreateInfo shaderCi = {};
     shaderCi.sType                           = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -266,12 +304,12 @@ void Pipeline::CreateComputePipeline(const PipelineCreateInfo& createInfo)
     pipelineCI.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipelineCI.layout                      = m_layout;
     pipelineCI.stage                       = shaderCi;
-    if(createInfo.allowDerivatives)
+    if(m_createInfo.allowDerivatives)
         pipelineCI.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
-    else if(createInfo.parent)
+    else if(m_createInfo.parent)
     {
         pipelineCI.flags              = VK_PIPELINE_CREATE_DERIVATIVE_BIT;
-        pipelineCI.basePipelineHandle = createInfo.parent->m_pipeline;
+        pipelineCI.basePipelineHandle = m_createInfo.parent->m_pipeline;
         pipelineCI.basePipelineIndex  = -1;
     }
 
@@ -280,7 +318,7 @@ void Pipeline::CreateComputePipeline(const PipelineCreateInfo& createInfo)
 
 void Pipeline::Bind(CommandBuffer& cb) const
 {
-    switch(m_type)
+    switch(m_createInfo.type)
     {
     case PipelineType::GRAPHICS:
         vkCmdBindPipeline(cb.GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);

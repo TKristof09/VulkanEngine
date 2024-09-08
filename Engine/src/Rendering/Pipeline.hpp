@@ -54,11 +54,18 @@ struct PipelineCreateInfo
 };
 
 
+struct PipelineReloadEvent : public Event
+{
+    std::string name;
+};
+
 class Pipeline
 {
 public:
     Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority = std::numeric_limits<uint16_t>::max());
     ~Pipeline();
+
+    void OnPipelineReload(PipelineReloadEvent e);
 
     friend bool operator<(const Pipeline& lhs, const Pipeline& rhs)
     {
@@ -72,12 +79,10 @@ public:
 
     Pipeline(Pipeline&& other) noexcept
         : m_priority(other.m_priority),
-          m_isGlobal(other.m_isGlobal),
           m_name(std::move(other.m_name)),
           m_shaders(std::move(other.m_shaders)),
           m_pipeline(other.m_pipeline),
           m_layout(other.m_layout),
-          m_viewMask(other.m_viewMask),
           m_materialBufferPtr(other.m_materialBufferPtr),
           m_usesDescriptorSet(other.m_usesDescriptorSet),
           m_vertexInputAttributes(std::move(other.m_vertexInputAttributes)),
@@ -93,12 +98,10 @@ public:
         if(this == &other)
             return *this;
         m_priority              = other.m_priority;
-        m_isGlobal              = other.m_isGlobal;
         m_name                  = std::move(other.m_name);
         m_shaders               = std::move(other.m_shaders);
         m_pipeline              = other.m_pipeline;
         m_layout                = other.m_layout;
-        m_viewMask              = other.m_viewMask;
         m_materialBufferPtr     = other.m_materialBufferPtr;
         m_usesDescriptorSet     = other.m_usesDescriptorSet;
         m_vertexInputAttributes = std::move(other.m_vertexInputAttributes);
@@ -117,7 +120,7 @@ public:
         return m_renderer->GetShaderDataBuffer().GetDeviceAddress(m_shaderDataSlots[imageIndex]);
     }
     [[nodiscard]] uint64_t GetMaterialBufferPtr() const;
-    [[nodiscard]] uint32_t GetViewMask() const { return m_viewMask; }
+    [[nodiscard]] uint32_t GetViewMask() const { return m_createInfo.viewMask; }
 
 private:
     friend class Renderer;
@@ -125,12 +128,14 @@ private:
     friend class DescriptorSetAllocator;
     friend class Shader;
 
+    void Setup();
+
     void CreateGraphicsPipeline(const PipelineCreateInfo& createInfo);
     void CreateComputePipeline(const PipelineCreateInfo& createInfo);
 
     [[nodiscard]] inline VkPipelineBindPoint GetBindPoint() const
     {
-        switch(m_type)
+        switch(m_createInfo.type)
         {
         case PipelineType::GRAPHICS:
             return VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -144,15 +149,15 @@ private:
 
     Renderer* m_renderer;
 
-    PipelineType m_type;
-    uint16_t m_priority;
-    bool m_isGlobal;
     std::string m_name;
+    PipelineCreateInfo m_createInfo;
+    uint16_t m_priority;
     std::vector<Shader> m_shaders;
+
+
     VkPipeline m_pipeline;
     VkPipelineLayout m_layout;
 
-    uint32_t m_viewMask          = 0;
     uint64_t m_materialBufferPtr = 0;
 
 
@@ -182,5 +187,7 @@ void Pipeline::UploadShaderData(T* data, uint32_t imageIndex, uint32_t offset, u
             m_shaderDataSlots.push_back(slot);
         }
     }
+    assert(m_shaderDataSlots.size() == NUM_FRAMES_IN_FLIGHT && "Shader should only have one shaderdata per frame in flight");
+
     m_renderer->GetShaderDataBuffer().UploadData(m_shaderDataSlots[imageIndex], data, offset, size);
 }

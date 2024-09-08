@@ -30,6 +30,7 @@ Application::Application(uint32_t width, uint32_t height, uint32_t frameRate, co
     m_window = std::make_shared<Window>(width, height, title);
 
     m_renderer = std::make_unique<Renderer>(m_window);
+    m_renderer->SetupEnvironmentMaps();
 
     m_materialSystem = std::make_unique<MaterialSystem>();
 

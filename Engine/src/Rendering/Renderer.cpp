@@ -140,20 +140,18 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     CreateDescriptorSet();
     CreatePushConstants();
 
-    CreatePipeline();
+
     CreateDebugUI();
+    m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
+    AddDebugUIWindow(m_rendererDebugWindow.get());
+
     CreateCommandBuffers();
     CreateSyncObjects();
 
-    vkDeviceWaitIdle(m_device);
-    CreateEnvironmentMap();
 
     // Create default sampler
     VulkanContext::m_textureSampler = m_samplers.emplace(SamplerConfig{}, SamplerConfig{}).first->second.GetVkSampler();
 
-
-    m_rendererDebugWindow = std::make_unique<DebugUIWindow>("Renderer");
-    AddDebugUIWindow(m_rendererDebugWindow.get());
 
     m_vertexBuffer = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5);
     m_indexBuffer  = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6);
@@ -185,6 +183,12 @@ Renderer::Renderer(std::shared_ptr<Window> window)
 
 
     vkDeviceWaitIdle(VulkanContext::GetDevice());
+}
+
+void Renderer::SetupEnvironmentMaps()
+{
+    CreatePipeline();
+    CreateEnvironmentMap();
 }
 
 Renderer::~Renderer()
@@ -1821,7 +1825,7 @@ std::vector<const char*> GetExtensions()
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = nullptr;
-    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    glfwExtensions              = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 #ifdef VDEBUG
