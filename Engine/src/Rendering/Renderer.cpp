@@ -811,6 +811,22 @@ void Renderer::InitilizeRenderGraph()
             uiPass.AddTextureInput(image.GetName());
         }
 
+        auto shaderButtons = std::make_shared<TreeNode>("Shaders");
+        for(auto name : m_shaderButtons)
+        {
+            std::string shaderName{name};
+            auto button = std::make_shared<Button>("Reload " + shaderName);
+            button->RegisterCallback(
+                [shaderName](Button* button)
+                {
+                    PipelineReloadEvent e;
+                    e.name = shaderName;
+                    Application::GetInstance()->GetEventHandler()->Send<PipelineReloadEvent>(e);
+                });
+            shaderButtons->AddElement(button);
+        }
+        m_rendererDebugWindow->AddElement(shaderButtons);
+
         uiPass.SetInitialiseCallback(
             [&](RenderGraph& /*rg*/)
             {

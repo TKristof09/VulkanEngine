@@ -59,6 +59,8 @@ public:
 
     void AddDebugUIWindow(DebugUIWindow* window) { m_debugUI->AddWindow(window); };
     void AddDebugUIElement(const std::shared_ptr<DebugUIElement>& element) { m_rendererDebugWindow->AddElement(element); };
+    void AddShaderButton(std::string_view name) { m_shaderButtons.push_back(name); };
+
     void AddDebugUIImage(const RenderingTextureResource& image)
     {
         m_uiImages.push_back(image);
@@ -252,6 +254,7 @@ private:
     std::unique_ptr<DenoisePass> m_denoisePass;
 
     std::vector<RenderingTextureResource> m_uiImages;
+    std::vector<std::string_view> m_shaderButtons;
 
     // TODO temp
     bool m_needDrawBufferReupload = false;

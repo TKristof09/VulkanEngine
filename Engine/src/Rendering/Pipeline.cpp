@@ -15,15 +15,7 @@ Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo m_createInf
 
     Application::GetInstance()->GetEventHandler()->Subscribe(this, &Pipeline::OnPipelineReload);
 
-    auto button = std::make_shared<Button>(m_name);
-    button->RegisterCallback(
-        [](Button* button)
-        {
-            PipelineReloadEvent e;
-            e.name = button->GetName();
-            Application::GetInstance()->GetEventHandler()->Send<PipelineReloadEvent>(e);
-        });
-    m_renderer->AddDebugUIElement(button);
+    m_renderer->AddShaderButton(m_name);
 }
 
 void Pipeline::Setup()
