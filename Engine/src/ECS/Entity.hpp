@@ -81,7 +81,7 @@ public:
 
     void Print() const
     {
-        LOG_INFO("Entity {0} : {1}", m_entity.name().c_str(), m_entity.type().str());
+        LOG_INFO("Entity {0} : {1}", m_entity.name().c_str(), m_entity.type().str().c_str());
     }
 
 private:
