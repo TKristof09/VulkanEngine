@@ -36,7 +36,7 @@ RenderPass& RenderGraph::AddRenderPass(const std::string& name, QueueTypeFlagBit
     if(it != m_renderPassIds.end())
         return *m_renderPasses[it->second];
 
-    uint32_t id = m_renderPasses.size();
+    uint32_t id = static_cast<uint32_t>(m_renderPasses.size());
     m_renderPasses.emplace_back(std::make_unique<RenderPass>(*this, id, type));
     m_renderPasses.back()->SetName(name);
     m_renderPassIds[name] = id;
@@ -59,7 +59,7 @@ RenderingTextureResource& RenderGraph::GetTextureResource(const std::string& nam
         LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
         assert(false);
     }
-    m_resourceIds[name] = m_resources.size();
+    m_resourceIds[name] = static_cast<uint32_t>(m_resources.size());
     m_resources.push_back(std::make_unique<RenderingTextureResource>(name));
     return static_cast<RenderingTextureResource&>(*m_resources.back());
 }
@@ -75,7 +75,7 @@ RenderingBufferResource& RenderGraph::GetBufferResource(const std::string& name)
         LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
         assert(false);
     }
-    m_resourceIds[name] = m_resources.size();
+    m_resourceIds[name] = static_cast<uint32_t>(m_resources.size());
     m_resources.push_back(std::make_unique<RenderingBufferResource>(name));
     return static_cast<RenderingBufferResource&>(*m_resources.back());
 }
@@ -91,7 +91,7 @@ RenderingTextureArrayResource& RenderGraph::GetTextureArrayResource(const std::s
         LOG_ERROR("Trying to get a resource that doesn't exist after the graph has been built: {}", name);
         assert(false);
     }
-    m_resourceIds[name] = m_resources.size();
+    m_resourceIds[name] = static_cast<uint32_t>(m_resources.size());
     m_resources.push_back(std::make_unique<RenderingTextureArrayResource>(name));
     return static_cast<RenderingTextureArrayResource&>(*m_resources.back());
 }
@@ -227,7 +227,7 @@ void RenderGraph::CreatePhysicalResources()
     {
         if(resource->GetPhysicalId() == -1)
         {
-            uint32_t id = imageInfos.size();
+            uint32_t id = static_cast<uint32_t>(imageInfos.size());
             resource->SetPhysicalId(id);
 
             auto inputTextureInfo = resource->GetTextureInfo();
@@ -250,8 +250,8 @@ void RenderGraph::CreatePhysicalResources()
                 break;
             case SizeModifier::SwapchainRelative:
                 {
-                    info.width  = VulkanContext::GetSwapchainExtent().width * inputTextureInfo.width;
-                    info.height = VulkanContext::GetSwapchainExtent().height * inputTextureInfo.height;
+                    info.width  = static_cast<int32_t>(static_cast<float>(VulkanContext::GetSwapchainExtent().width) * inputTextureInfo.width);
+                    info.height = static_cast<int32_t>(static_cast<float>(VulkanContext::GetSwapchainExtent().height) * inputTextureInfo.height);
                 }
                 break;
             default:
@@ -274,7 +274,7 @@ void RenderGraph::CreatePhysicalResources()
         if(resource->GetPhysicalId() == -1)
         {
             auto bufferInfo = resource->GetBufferInfo();
-            uint32_t id     = m_transientBuffers.size();
+            uint32_t id     = static_cast<uint32_t>(m_transientBuffers.size());
             resource->SetPhysicalId(id);
 
             BufferCreateInfo info{};
@@ -594,7 +594,7 @@ void RenderGraph::CreatePhysicalPasses()
         }
         // TODO redo this probably, currently RenderPass::attachmentinofs contain all the attachments not just color
         // so assigning this way to pColorAttachments seems very error prone
-        rendering.colorAttachmentCount = pass->GetColorOutputs().size();
+        rendering.colorAttachmentCount = static_cast<uint32_t>(pass->GetColorOutputs().size());
         rendering.pColorAttachments    = pass->GetAttachmentInfos().data();
         pass->SetRenderingInfo(rendering);
 
@@ -678,11 +678,11 @@ void RenderGraph::AddSynchronization()
                 if(it == resource->GetUsages().end())
                     continue;
 
-                auto [stages, usage] = it->second;
-                if(!HasWriteAccess(usage) && srcReadOnly && (ConvertAccessToLayout(usage) == srcLayout))
+                auto [stages, resUsage] = it->second;
+                if(!HasWriteAccess(resUsage) && srcReadOnly && (ConvertAccessToLayout(resUsage) == srcLayout))
                 {
                     transitionBarrier.srcStageMask  |= stages;
-                    transitionBarrier.srcAccessMask |= usage;
+                    transitionBarrier.srcAccessMask |= resUsage;
                 }
             }
         }
@@ -691,23 +691,23 @@ void RenderGraph::AddSynchronization()
         for(uint32_t dstIndex = srcIndex + 1; dstIndex < m_orderedPasses.size(); ++dstIndex)
         {
             uint32_t dstPassId = m_orderedPasses[dstIndex]->GetId();
-            auto it            = resource->GetUsages().find(dstPassId);
+            auto usageIt       = resource->GetUsages().find(dstPassId);
 
-            if(it == resource->GetUsages().end())
+            if(usageIt == resource->GetUsages().end())
                 continue;
 
             isUsedAfter             = true;
-            auto [stages, usage]    = it->second;
-            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
-            bool dstReadOnly        = !HasWriteAccess(usage);
+            auto [stages, resUsage] = usageIt->second;
+            VkImageLayout dstLayout = ConvertAccessToLayout(resUsage);
+            bool dstReadOnly        = !HasWriteAccess(resUsage);
 
             VkPipelineStageFlags2 batchedSrcStage = srcStage;
             VkAccessFlags2 batchedSrcAccess       = srcAccess;
 
             for(uint32_t k = 0; k < srcIndex; ++k)
             {
-                auto it = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
-                if(it != m_events.end())
+                auto eventIt = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
+                if(eventIt != m_events.end())
                 {
                     // R(prev)->R(src)->X(dst) and no layout transition between the Rs then we remove R1->X but we need to add back the sync from R1->W because since R1 and R2 aren't synced there wouldn't be a sync chain syncing R1 with W so we add R1's stage and access flag to the R2->W sync
                     // in addition, by doing this we basically regroup the syncing of a chain of reads (without layout transitions) into a single sync at the end of the chain
@@ -719,13 +719,13 @@ void RenderGraph::AddSynchronization()
                     if(!HasWriteAccess(prevAccess) && srcReadOnly && (ConvertAccessToLayout(prevAccess) == srcLayout))
                     {
                         VkImageMemoryBarrier2 barrier;
-                        if(it->second.GetBarrier(img, barrier) && !HasWriteAccess(barrier.srcAccessMask))
+                        if(eventIt->second.GetBarrier(img, barrier) && !HasWriteAccess(barrier.srcAccessMask))
                         {
                             batchedSrcStage  |= barrier.srcStageMask;
                             batchedSrcAccess |= barrier.srcAccessMask;
                         }
                     }
-                    it->second.RemoveBarrier(resource->GetImagePointer()->GetImage());
+                    eventIt->second.RemoveBarrier(resource->GetImagePointer()->GetImage());
                 }
             }
 
@@ -737,7 +737,7 @@ void RenderGraph::AddSynchronization()
                     transitionBarrier.srcStageMask        |= batchedSrcStage;
                     transitionBarrier.srcAccessMask       |= batchedSrcAccess;
                     transitionBarrier.dstStageMask         = stages;
-                    transitionBarrier.dstAccessMask        = usage;
+                    transitionBarrier.dstAccessMask        = resUsage;
                     transitionBarrier.oldLayout            = srcLayout;
                     transitionBarrier.newLayout            = dstLayout;
                     transitionBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
@@ -759,7 +759,7 @@ void RenderGraph::AddSynchronization()
             if(transitionIndex != -1)
             {
                 transitionBarrier.dstStageMask  |= stages;
-                transitionBarrier.dstAccessMask |= usage;
+                transitionBarrier.dstAccessMask |= resUsage;
             }
             else
             {
@@ -771,7 +771,7 @@ void RenderGraph::AddSynchronization()
                 barrier.srcStageMask        = batchedSrcStage;
                 barrier.dstStageMask        = stages;
                 barrier.srcAccessMask       = batchedSrcAccess;
-                barrier.dstAccessMask       = usage;
+                barrier.dstAccessMask       = resUsage;
                 barrier.oldLayout           = srcLayout;  // srcLayout should be equal to dstLayout
                 barrier.newLayout           = dstLayout;  // so no transition
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -813,15 +813,15 @@ void RenderGraph::AddSynchronization()
             VkImageLayout dstLayout               = srcLayout;
 
             int32_t lastWrite = -1;
-            bool first        = true;
-            for(int32_t k = 0; k < srcIndex; ++k)
+            first             = true;
+            for(uint32_t k = 0; k < srcIndex; ++k)
             {
                 auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
                 if(it == resource->GetUsages().end())
                     continue;
 
-                auto [stages, usage] = it->second;
-                bool needsTransition = (ConvertAccessToLayout(usage) != dstLayout);
+                auto [stages, resUsage] = it->second;
+                bool needsTransition    = (ConvertAccessToLayout(resUsage) != dstLayout);
                 // if the first use next frame doesnt need a transition then we dont need to do anything
                 if(first && !needsTransition)
                     break;
@@ -829,14 +829,14 @@ void RenderGraph::AddSynchronization()
                 // also dont need to do it after the first write because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
                 if((first || !needsTransition) && lastWrite == -1)
                 {
-                    dstLayout         = ConvertAccessToLayout(usage);
+                    dstLayout         = ConvertAccessToLayout(resUsage);
                     batchedDstStage  |= stages;
-                    batchedDstAccess |= usage;
+                    batchedDstAccess |= resUsage;
                 }
 
-                if(HasWriteAccess(usage))
+                if(HasWriteAccess(resUsage))
                 {
-                    lastWrite = k;
+                    lastWrite = static_cast<int32_t>(k);
                 }
                 first = false;
             }
@@ -844,16 +844,16 @@ void RenderGraph::AddSynchronization()
             // add read accesses after the last write to the srcStage and srcAccess because there wont be any sync between those reads and the final read, so the transition barrier needs to also wait on those reads to finish
             if(srcReadOnly)
             {
-                for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+                for(uint32_t k = lastWrite + 1; k < srcIndex; ++k)
                 {
                     auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
                     if(it == resource->GetUsages().end())
                         continue;
 
-                    auto [stages, usage] = it->second;
+                    auto [stages, resUsage] = it->second;
 
                     batchedSrcStage  |= stages;
-                    batchedSrcAccess |= usage;
+                    batchedSrcAccess |= resUsage;
                 }
             }
 
@@ -877,7 +877,7 @@ void RenderGraph::AddSynchronization()
 
         if(transitionIndex != -1 || (!isUsedAfter && resource->GetName() != SWAPCHAIN_RESOURCE_NAME))
         {
-            if(srcIndex + 1 == transitionIndex || !isUsedAfter)
+            if(srcIndex + 1 == static_cast<uint32_t>(transitionIndex) || !isUsedAfter)
             {
                 m_imageBarriers[srcPassId].push_back(transitionBarrier);
             }
@@ -926,11 +926,11 @@ void RenderGraph::AddSynchronization()
                 if(it == resource->GetUsages().end())
                     continue;
 
-                auto [stages, usage] = it->second;
-                if(!HasWriteAccess(usage) && srcReadOnly && (ConvertAccessToLayout(usage) == srcLayout))
+                auto [stages, resUsage] = it->second;
+                if(!HasWriteAccess(resUsage) && srcReadOnly && (ConvertAccessToLayout(resUsage) == srcLayout))
                 {
                     transitionBarrier.srcStageMask  |= stages;
-                    transitionBarrier.srcAccessMask |= usage;
+                    transitionBarrier.srcAccessMask |= resUsage;
                 }
             }
         }
@@ -944,9 +944,9 @@ void RenderGraph::AddSynchronization()
                 continue;
 
             isUsedAfter             = true;
-            auto [stages, usage]    = it->second;
-            VkImageLayout dstLayout = ConvertAccessToLayout(usage);
-            bool dstReadOnly        = !HasWriteAccess(usage);
+            auto [stages, resUsage] = it->second;
+            VkImageLayout dstLayout = ConvertAccessToLayout(resUsage);
+            bool dstReadOnly        = !HasWriteAccess(resUsage);
 
             VkPipelineStageFlags2 batchedSrcStage = srcStage;
             VkAccessFlags2 batchedSrcAccess       = srcAccess;
@@ -960,7 +960,7 @@ void RenderGraph::AddSynchronization()
                     transitionBarrier.srcStageMask        |= batchedSrcStage;
                     transitionBarrier.srcAccessMask       |= batchedSrcAccess;
                     transitionBarrier.dstStageMask         = stages;
-                    transitionBarrier.dstAccessMask        = usage;
+                    transitionBarrier.dstAccessMask        = resUsage;
                     transitionBarrier.oldLayout            = srcLayout;
                     transitionBarrier.newLayout            = dstLayout;
                     transitionBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
@@ -982,7 +982,7 @@ void RenderGraph::AddSynchronization()
             if(transitionIndex != -1)
             {
                 transitionBarrier.dstStageMask  |= stages;
-                transitionBarrier.dstAccessMask |= usage;
+                transitionBarrier.dstAccessMask |= resUsage;
             }
             else
             {
@@ -994,7 +994,7 @@ void RenderGraph::AddSynchronization()
                 barrier.srcStageMask        = batchedSrcStage;
                 barrier.dstStageMask        = stages;
                 barrier.srcAccessMask       = batchedSrcAccess;
-                barrier.dstAccessMask       = usage;
+                barrier.dstAccessMask       = resUsage;
                 barrier.oldLayout           = srcLayout;  // srcLayout should be equal to dstLayout
                 barrier.newLayout           = dstLayout;  // so no transition
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1026,15 +1026,15 @@ void RenderGraph::AddSynchronization()
             VkImageLayout dstLayout               = srcLayout;
 
             int32_t lastWrite = -1;
-            bool first        = true;
-            for(int32_t k = 0; k < srcIndex; ++k)
+            first             = true;
+            for(uint32_t k = 0; k < srcIndex; ++k)
             {
                 auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
                 if(it == resource->GetUsages().end())
                     continue;
 
-                auto [stages, usage] = it->second;
-                bool needsTransition = (ConvertAccessToLayout(usage) != dstLayout);
+                auto [stages, resUsage] = it->second;
+                bool needsTransition    = (ConvertAccessToLayout(resUsage) != dstLayout);
                 // if the first use next frame doesnt need a transition then we dont need to do anything
                 if(first && !needsTransition)
                     break;
@@ -1042,14 +1042,14 @@ void RenderGraph::AddSynchronization()
                 // also dont need to do it after the first write because later passes will be synced to the pass that writes anyway so we'd just be insterting redundant sync
                 if((first || !needsTransition) && lastWrite == -1)
                 {
-                    dstLayout         = ConvertAccessToLayout(usage);
+                    dstLayout         = ConvertAccessToLayout(resUsage);
                     batchedDstStage  |= stages;
-                    batchedDstAccess |= usage;
+                    batchedDstAccess |= resUsage;
                 }
 
-                if(HasWriteAccess(usage))
+                if(HasWriteAccess(resUsage))
                 {
-                    lastWrite = k;
+                    lastWrite = static_cast<int32_t>(k);
                 }
                 first = false;
             }
@@ -1058,16 +1058,16 @@ void RenderGraph::AddSynchronization()
 
             if(srcReadOnly)
             {
-                for(int32_t k = lastWrite + 1; k < srcIndex; ++k)
+                for(uint32_t k = lastWrite + 1; k < srcIndex; ++k)
                 {
                     auto it = resource->GetUsages().find(m_orderedPasses[k]->GetId());
                     if(it == resource->GetUsages().end())
                         continue;
 
-                    auto [stages, usage] = it->second;
+                    auto [stages, resUsage] = it->second;
 
                     batchedSrcStage  |= stages;
-                    batchedSrcAccess |= usage;
+                    batchedSrcAccess |= resUsage;
                 }
             }
             // if we get into this if then the resource isnt used this frame so the transition barrier isnt filled so we can just fill it and add it like a normal transition barrier instead of doing a brand new barrier
@@ -1105,8 +1105,8 @@ void RenderGraph::AddSynchronization()
         uint32_t srcPassId = m_orderedPasses[i]->GetId();
         for(uint32_t j = i + 1; j < m_orderedPasses.size(); ++j)
         {
-            auto it = resource->GetUsages().find(m_orderedPasses[j]->GetId());
-            if(it == resource->GetUsages().end())
+            auto usageIt = resource->GetUsages().find(m_orderedPasses[j]->GetId());
+            if(usageIt == resource->GetUsages().end())
                 continue;
 
             uint32_t dstPassId = m_orderedPasses[j]->GetId();
@@ -1114,12 +1114,12 @@ void RenderGraph::AddSynchronization()
             // see comment in SetupImageSync for why we do this
             for(uint32_t k = 0; k < j; ++k)
             {
-                auto it = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
-                if(it != m_events.end())
-                    it->second.RemoveBarrier(resource->GetBufferPointer()->GetVkBuffer());
+                auto eventIt = m_events.find({m_orderedPasses[k]->GetId(), dstPassId});
+                if(eventIt != m_events.end())
+                    eventIt->second.RemoveBarrier(resource->GetBufferPointer()->GetVkBuffer());
             }
 
-            auto [stages, usage] = it->second;
+            auto [stages, resUsage] = usageIt->second;
             if(stages & alreadySyncedStages)
                 continue;
 
@@ -1129,7 +1129,7 @@ void RenderGraph::AddSynchronization()
             barrier.srcStageMask        = srcStage;
             barrier.dstStageMask        = stages;
             barrier.srcAccessMask       = srcAccess;
-            barrier.dstAccessMask       = usage;
+            barrier.dstAccessMask       = resUsage;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.buffer              = resource->GetBufferPointer()->GetVkBuffer();
@@ -1244,7 +1244,7 @@ void RenderGraph::AddSynchronization()
     }
 
     auto* renderTargetResource = m_resources[m_resourceIds[SWAPCHAIN_RESOURCE_NAME]].get();
-    for(uint32_t i = m_orderedPasses.size() - 1; i >= 0; --i)
+    for(size_t i = m_orderedPasses.size() - 1; i >= 0; --i)
     {
         auto it = renderTargetResource->GetUsages().find(m_orderedPasses[i]->GetId());
         if(it != renderTargetResource->GetUsages().end())
@@ -1337,7 +1337,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
             dependencies.push_back(event->GetDependencyInfo());
         }
         if(!events.empty())
-            vkCmdWaitEvents2(cb.GetCommandBuffer(), events.size(), events.data(), dependencies.data());
+            vkCmdWaitEvents2(cb.GetCommandBuffer(), static_cast<uint32_t>(events.size()), events.data(), dependencies.data());
 
 
         VK_START_DEBUG_LABEL(cb, pass->GetName().c_str());
@@ -1347,9 +1347,9 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         VkDependencyInfo dependencyInfo{};
         dependencyInfo.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
         dependencyInfo.dependencyFlags          = 0;
-        dependencyInfo.bufferMemoryBarrierCount = m_bufferBarriers[pass->GetId()].size();
+        dependencyInfo.bufferMemoryBarrierCount = static_cast<uint32_t>(m_bufferBarriers[pass->GetId()].size());
         dependencyInfo.pBufferMemoryBarriers    = m_bufferBarriers[pass->GetId()].data();
-        dependencyInfo.imageMemoryBarrierCount  = m_imageBarriers[pass->GetId()].size();
+        dependencyInfo.imageMemoryBarrierCount  = static_cast<uint32_t>(m_imageBarriers[pass->GetId()].size());
         dependencyInfo.pImageMemoryBarriers     = m_imageBarriers[pass->GetId()].data();
 
         if(dependencyInfo.bufferMemoryBarrierCount > 0 || dependencyInfo.imageMemoryBarrierCount > 0)
@@ -1370,7 +1370,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         VkDependencyInfo arrayDependencyInfo{};
         arrayDependencyInfo.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
         arrayDependencyInfo.dependencyFlags         = 0;
-        arrayDependencyInfo.imageMemoryBarrierCount = imageBarriers.size();
+        arrayDependencyInfo.imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers.size());
         arrayDependencyInfo.pImageMemoryBarriers    = imageBarriers.data();
         if(arrayDependencyInfo.imageMemoryBarrierCount > 0)
             vkCmdPipelineBarrier2(cb.GetCommandBuffer(), &arrayDependencyInfo);

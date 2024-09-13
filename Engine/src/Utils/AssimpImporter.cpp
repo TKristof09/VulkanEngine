@@ -59,14 +59,14 @@ void AssimpImporter::ProcessNode(const aiNode* node, const aiScene* scene, ECS* 
     }
     else
     {
-        for(int i = 0; i < node->mNumMeshes; ++i)
+        for(uint32_t i = 0; i < node->mNumMeshes; ++i)
         {
             auto name = scene->mMeshes[node->mMeshes[i]]->mName.length == 0 ? std::string(node->mName.C_Str()) + std::to_string(i) : scene->mMeshes[node->mMeshes[i]]->mName.C_Str();
             LoadMesh(scene->mMeshes[node->mMeshes[i]], scene, ecs->CreateChildEntity(&entity, name));
         }
     }
 
-    for(int i = 0; i < node->mNumChildren; ++i)
+    for(uint32_t i = 0; i < node->mNumChildren; ++i)
     {
         ProcessNode(node->mChildren[i], scene, ecs, ecs->CreateChildEntity(&entity, node->mChildren[i]->mName.C_Str()));
     }
@@ -101,7 +101,7 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
     for(unsigned int i = 0; i < mesh->mNumFaces; ++i)
     {
         aiFace face = mesh->mFaces[i];
-        for(int j = 0; j < face.mNumIndices; ++j)
+        for(uint32_t j = 0; j < face.mNumIndices; ++j)
         {
             indices.push_back(face.mIndices[j]);
         }

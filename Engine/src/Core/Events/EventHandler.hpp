@@ -83,7 +83,7 @@ void EventHandler::Subscribe(Class* owner, void (Class::*Callback)(ComponentAdde
     {
         ECS* ecs = Application::GetInstance()->GetScene()->GetECS();
         ecs->AddObserver<ComponentType>(ECSEvent::OnAdd,
-                                        [this](flecs::entity e, ComponentType& component)
+                                        [this](flecs::entity e, ComponentType& /*component*/)
                                         {
                                             ComponentAdded<ComponentType> event;
                                             event.entity = Entity(e);
@@ -95,7 +95,7 @@ void EventHandler::Subscribe(Class* owner, void (Class::*Callback)(ComponentAdde
             [this](SceneSwitchedEvent e)
             {
                 e.newScene->ecs->AddObserver<ComponentType>(ECSEvent::OnAdd,
-                                                            [this](flecs::entity e, ComponentType& component)
+                                                            [this](flecs::entity e, ComponentType& /*component*/)
                                                             {
                                                                 ComponentAdded<ComponentType> event;
                                                                 event.entity = Entity(e);
@@ -144,7 +144,7 @@ void EventHandler::Subscribe(Class* owner, void (Class::*Callback)(ComponentRemo
     {
         ECS* ecs = Application::GetInstance()->GetScene()->GetECS();
         ecs->AddObserver<ComponentType>(ECSEvent::OnRemove,
-                                        [this](flecs::entity e, ComponentType& component)
+                                        [this](flecs::entity e, ComponentType& /*component*/)
                                         {
                                             ComponentRemoved<ComponentType> event;
                                             event.entity = Entity(e);
@@ -156,7 +156,7 @@ void EventHandler::Subscribe(Class* owner, void (Class::*Callback)(ComponentRemo
             [this](SceneSwitchedEvent e)
             {
                 e.newScene->ecs->AddObserver<ComponentType>(ECSEvent::OnRemove,
-                                                            [this](flecs::entity e, ComponentType& component)
+                                                            [this](flecs::entity e, ComponentType& /*component*/)
                                                             {
                                                                 ComponentRemoved<ComponentType> event;
                                                                 event.entity = Entity(e);

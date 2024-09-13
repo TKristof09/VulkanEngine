@@ -7,7 +7,7 @@
 std::unordered_map<std::type_index, PropertyDrawFunction> HierarchyUI::m_propertyDrawFunctions = {};
 
 
-HierarchyUI::HierarchyUI(Scene* scene, Renderer* renderer, MaterialSystem* materialSystem)
+HierarchyUI::HierarchyUI(Scene*  /*scene*/, Renderer* renderer, MaterialSystem* materialSystem)
     : m_hierarchyWindow(DebugUIWindow("Hierarchy")),
       m_propertiesWindow(DebugUIWindow("Properties")),
       m_renderer(renderer)

@@ -153,10 +153,10 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     VulkanContext::m_textureSampler = m_samplers.emplace(SamplerConfig{}, SamplerConfig{}).first->second.GetVkSampler();
 
 
-    m_vertexBuffer = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 5e5);
-    m_indexBuffer  = std::make_unique<DynamicBufferAllocator>(5e6, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5e6);
+    m_vertexBuffer = std::make_unique<DynamicBufferAllocator>(5'000'000, sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 500'000);
+    m_indexBuffer  = std::make_unique<DynamicBufferAllocator>(5'000'000, sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 5'000'000);
 
-    m_shaderDataBuffer = std::make_unique<DynamicBufferAllocator>(1e5, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e3, true);  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
+    m_shaderDataBuffer = std::make_unique<DynamicBufferAllocator>(100'000, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 10'000, true);  // objectSize = 1 byte because each shader data can be diff size so we "store them as bytes"
     VK_SET_DEBUG_NAME(m_shaderDataBuffer->GetVkBuffer(), VK_OBJECT_TYPE_BUFFER, "ShaderDataBuffer");
 
 
@@ -169,11 +169,11 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     auto* shadowBuffers    = m_ecs->GetSingletonMut<ShadowBuffers>();
     auto* lightBuffers     = m_ecs->GetSingletonMut<LightBuffers>();
 
-    uint32_t totaltiles = ceil(m_swapchainExtent.width / 16.f) * ceil(m_swapchainExtent.height / 16.f);
+    uint32_t totaltiles = static_cast<uint32_t>(glm::ceil(m_swapchainExtent.width / 16.f) * glm::ceil(m_swapchainExtent.height / 16.f));
     lightBuffers->visibleLightsBuffer.Allocate(totaltiles * sizeof(TileLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);  // MAX_LIGHTS_PER_TILE
     for(int32_t i = 0; i < NUM_FRAMES_IN_FLIGHT; ++i)
     {
-        transformBuffers->buffers.emplace_back(5e5, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 1e5, true);
+        transformBuffers->buffers.emplace_back(50'000, sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 10'000, true);
 
         shadowBuffers->matricesBuffers.emplace_back(100, sizeof(ShadowMatrices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, true);
         shadowBuffers->indicesBuffers.emplace_back(100, sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 100, false);
@@ -345,7 +345,7 @@ void Renderer::CreateInstance()
 
     VkValidationFeaturesEXT features       = {};
     features.sType                         = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
-    features.enabledValidationFeatureCount = enables.size();
+    features.enabledValidationFeatureCount = static_cast<uint32_t>(enables.size());
     features.pEnabledValidationFeatures    = enables.data();
 
     debugCreateInfo.pNext = &features;
@@ -518,7 +518,7 @@ void Renderer::CreateSwapchain()
     if(indices.graphicsFamily != indices.presentationFamily)
     {
         createInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;  // if the two queues are different then we need to share between them
-        createInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+        createInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size());
         createInfo.pQueueFamilyIndices   = queueFamilyIndices.data();
     }
     else
@@ -748,7 +748,7 @@ void Renderer::CreateDescriptorSet()
     flags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
 
     flags.pBindingFlags = bindingFlags.data();
-    flags.bindingCount  = bindingFlags.size();
+    flags.bindingCount  = static_cast<uint32_t>(bindingFlags.size());
 
     VkDescriptorSetLayoutCreateInfo createInfo = {};
     createInfo.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -775,7 +775,7 @@ void Renderer::CreatePushConstants()
 {
     VulkanContext::m_globalPushConstantRange.stageFlags = VK_SHADER_STAGE_ALL;
     VulkanContext::m_globalPushConstantRange.offset     = 0;
-    VulkanContext::m_globalPushConstantRange.size       = sizeof(PushConstants);
+    VulkanContext::m_globalPushConstantRange.size       = 128;  // sizeof(PushConstants);
 }
 
 void Renderer::CreateUniformBuffers()
@@ -818,7 +818,7 @@ void Renderer::InitilizeRenderGraph()
             std::string shaderName{name};
             auto button = std::make_shared<Button>("Reload " + shaderName);
             button->RegisterCallback(
-                [shaderName](Button* button)
+                [shaderName](Button* /*button*/)
                 {
                     PipelineReloadEvent e;
                     e.name = shaderName;
@@ -1191,7 +1191,7 @@ void Renderer::CreateEnvironmentMap()
         */
 
 
-        for(int i = 0; i < mipLevels; ++i)
+        for(uint32_t i = 0; i < mipLevels; ++i)
         {
             uint32_t mipWidth                  = (512 >> i);
             uint32_t mipHeight                 = (512 >> i);
@@ -1288,9 +1288,9 @@ std::tuple<std::array<glm::mat4, NUM_CASCADES>, std::array<glm::mat4, NUM_CASCAD
     std::array<glm::mat4, NUM_CASCADES> resV{};
     std::array<glm::vec2, NUM_CASCADES> zPlanes{};
 
-    float maxDepthNDC  = zNear / maxDepth;
-    float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
-    float step         = maxDepth / NUM_CASCADES;
+    // float maxDepthNDC = zNear / maxDepth;
+    // float depthNDCStep = (1 - maxDepthNDC) / NUM_CASCADES;
+    // float step         = maxDepth / NUM_CASCADES;
 
     const float lambda = 0.3f;
 
@@ -1621,8 +1621,8 @@ void Renderer::OnSceneSwitched(SceneSwitchedEvent e)
 void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
 {
     // TODO don't keep the vertex and index vectors after sending them to gpu
-    const Mesh* mesh         = e.entity.GetComponent<Mesh>();
-    VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
+    const Mesh* mesh = e.entity.GetComponent<Mesh>();
+    // VkDeviceSize vBufferSize = sizeof(mesh->vertices[0]) * mesh->vertices.size();
     Renderable comp{};
 
 
@@ -1632,23 +1632,23 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
 
     m_vertexBuffer->UploadData(vertexSlot, mesh->vertices.data());
 
-    comp.vertexOffset = vertexSlot;
-    comp.vertexCount  = mesh->vertices.size();
+    comp.vertexOffset = static_cast<uint32_t>(vertexSlot);
+    comp.vertexCount  = static_cast<uint32_t>(mesh->vertices.size());
 
     bool didIBResize   = false;
     uint64_t indexSlot = m_indexBuffer->Allocate(mesh->indices.size(), didIBResize, &comp);
 
     m_indexBuffer->UploadData(indexSlot, mesh->indices.data());
 
-    comp.indexOffset = indexSlot;
-    comp.indexCount  = mesh->indices.size();
+    comp.indexOffset = static_cast<uint32_t>(indexSlot);
+    comp.indexCount  = static_cast<uint32_t>(mesh->indices.size());
 
     if(didVBResize)
     {
         for(const auto& [slot, info] : m_vertexBuffer->GetAllocationInfos())
         {
             auto* renderable         = (Renderable*)info.pUserData;  // TODO
-            renderable->vertexOffset = slot;
+            renderable->vertexOffset = static_cast<uint32_t>(slot);
         }
     }
 
@@ -1657,7 +1657,7 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
         for(const auto& [slot, info] : m_indexBuffer->GetAllocationInfos())
         {
             auto* renderable        = (Renderable*)info.pUserData;
-            renderable->indexOffset = slot;
+            renderable->indexOffset = static_cast<uint32_t>(slot);
         }
     }
 
@@ -1670,10 +1670,9 @@ void Renderer::OnMeshComponentAdded(ComponentAdded<Mesh> e)
     auto* transformBuffers = m_ecs->GetSingletonMut<TransformBuffers>();
     for(auto& buffer : transformBuffers->buffers)
     {
-        slot = buffer.Allocate(1);
+        slot = static_cast<uint32_t>(buffer.Allocate(1));
     }
     comp.objectID = slot;
-
 
     m_needDrawBufferReupload = true;
 
@@ -1709,7 +1708,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     ++lightBuffers->lightNum;
     uint32_t slot = 0;
     for(auto& buffer : lightBuffers->buffers)
-        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = static_cast<uint32_t>(buffer.Allocate(1));  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<DirectionalLight>();
     comp->_slot = slot;
@@ -1720,7 +1719,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     auto* shadowBuffers   = m_ecs->GetSingletonMut<ShadowBuffers>();
     uint32_t matricesSlot = 0;
     for(auto& buffer : shadowBuffers->matricesBuffers)
-        matricesSlot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+        matricesSlot = static_cast<uint32_t>(buffer.Allocate(1));  // slot should be the same for all of these, since we allocate to every buffer every time
 
     light->matricesSlot = matricesSlot;
 
@@ -1738,7 +1737,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     ci.usage       = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ci.layerCount  = NUM_CASCADES;
 
-    slot              = m_shadowmaps.size();
+    slot              = static_cast<uint32_t>(m_shadowmaps.size());
     comp->_shadowSlot = slot;
 
 
@@ -1756,7 +1755,7 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     m_renderGraph.GetTextureArrayResource("shadowMaps").AddImagePointer(img);
     for(auto& buffer : shadowBuffers->indicesBuffers)
     {
-        uint32_t shadowSlot = buffer.Allocate(1);
+        uint64_t shadowSlot = buffer.Allocate(1);
         uint32_t imgSlot    = img->GetSampledSlot();
         buffer.UploadData(shadowSlot, &imgSlot);
     }
@@ -1787,7 +1786,7 @@ void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
     ++lightBuffers->lightNum;
     uint32_t slot = 0;
     for(auto& buffer : lightBuffers->buffers)
-        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = static_cast<uint32_t>(buffer.Allocate(1));  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<PointLight>();
     comp->_slot = slot;

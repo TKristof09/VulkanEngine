@@ -29,6 +29,8 @@ struct TransformBuffers
         buffers.reserve(NUM_FRAMES_IN_FLIGHT);
     }
 
+    ~TransformBuffers() = default;
+
     TransformBuffers(const TransformBuffers&)            = delete;
     TransformBuffers& operator=(const TransformBuffers&) = delete;
 
@@ -46,6 +48,9 @@ struct PBREnvironment
         : irradianceMap(std::move(irradianceMap)), prefilteredEnvMap(std::move(prefilteredEnvMap)), BRDFLUT(std::move(BRDFLUT))
     {
     }
+
+    ~PBREnvironment() = default;
+
     PBREnvironment(const PBREnvironment&)            = delete;
     PBREnvironment& operator=(const PBREnvironment&) = delete;
 
@@ -65,6 +70,8 @@ struct ShadowBuffers
         indicesBuffers.reserve(NUM_FRAMES_IN_FLIGHT);
     }
 
+    ~ShadowBuffers() = default;
+
     ShadowBuffers(const ShadowBuffers&)            = delete;
     ShadowBuffers& operator=(const ShadowBuffers&) = delete;
 
@@ -82,6 +89,8 @@ struct LightBuffers
     {
         buffers.reserve(NUM_FRAMES_IN_FLIGHT);
     }
+
+    ~LightBuffers() = default;
 
     LightBuffers(const LightBuffers&)            = delete;
     LightBuffers& operator=(const LightBuffers&) = delete;

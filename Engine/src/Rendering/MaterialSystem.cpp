@@ -96,10 +96,6 @@ void MaterialSystem::OnMaterialComponentRemoved(ComponentRemoved<Material> e)
 
     m_registry[shaderName]--;
 
-    Pipeline* pipeline = m_renderer->m_pipelinesRegistry[shaderName];
-
-    uint32_t numSwapchainImages = m_renderer->m_swapchainImages.size();
-
 
     m_freeTextureSlots[shaderName].push(comp->_textureSlot);
 }

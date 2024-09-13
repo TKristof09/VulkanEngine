@@ -13,7 +13,7 @@ PoolAllocator::~PoolAllocator()
 	m_freeList = nullptr;
 }
 
-void* PoolAllocator::Allocate(size_t size, uint8_t alignment)
+void* PoolAllocator::Allocate(size_t  /*size*/, uint8_t  /*alignment*/)
 {
 	if(m_freeList == nullptr) // no free space available
 		return nullptr;

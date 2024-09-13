@@ -301,15 +301,15 @@ RenderingTextureResource& RenderPass::AddStorageImageOutput(const std::string& n
 
         if(inputResource.GetTextureInfo().format == VK_FORMAT_UNDEFINED)
         {
-            TextureInfo info = {};
-            info.format      = VK_FORMAT_UNDEFINED;
-            info.usageFlags  = VK_IMAGE_USAGE_STORAGE_BIT;
+            info            = {};
+            info.format     = VK_FORMAT_UNDEFINED;
+            info.usageFlags = VK_IMAGE_USAGE_STORAGE_BIT;
             inputResource.SetTextureInfo(info);
         }
         else
         {
-            TextureInfo info  = inputResource.GetTextureInfo();
-            info.usageFlags  |= VK_IMAGE_USAGE_STORAGE_BIT;
+            info             = inputResource.GetTextureInfo();
+            info.usageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
             inputResource.SetTextureInfo(info);
         }
 

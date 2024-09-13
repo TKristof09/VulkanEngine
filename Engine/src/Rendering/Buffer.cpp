@@ -397,7 +397,7 @@ void DynamicBufferAllocator::UploadData(const std::vector<uint64_t>& slots, cons
         CommandBuffer cb(VulkanContext::GetTransferQueue());
         vkDeviceWaitIdle(VulkanContext::GetDevice());
         cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-        vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), copyRegions.size(), copyRegions.data());
+        vkCmdCopyBuffer(cb.GetCommandBuffer(), m_stagingBuffer.GetVkBuffer(), dst->GetVkBuffer(), static_cast<uint32_t>(copyRegions.size()), copyRegions.data());
 
         cb.Submit(VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);
         vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);
@@ -441,7 +441,7 @@ void DynamicBufferAllocator::Resize()
     CommandBuffer cb(VulkanContext::GetTransferQueue());
     cb.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     // don't need to sync because we only read from the old buffer
-    vkCmdCopyBuffer(cb.GetCommandBuffer(), m_buffer.GetVkBuffer(), m_tempBuffer.GetVkBuffer(), copyRegions.size(), copyRegions.data());
+    vkCmdCopyBuffer(cb.GetCommandBuffer(), m_buffer.GetVkBuffer(), m_tempBuffer.GetVkBuffer(), static_cast<uint32_t>(copyRegions.size()), copyRegions.data());
 
     cb.Submit(VK_NULL_HANDLE, 0, VK_NULL_HANDLE, m_fence);
     vkWaitForFences(VulkanContext::GetDevice(), 1, &m_fence, VK_TRUE, UINT64_MAX);

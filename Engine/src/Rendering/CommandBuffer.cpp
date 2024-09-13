@@ -131,12 +131,12 @@ void CommandBuffer::Submit(const std::vector<VkSemaphore>& waitSemaphores, const
     submitInfo.pCommandBuffers    = &m_commandBuffer;
 
 
-    submitInfo.waitSemaphoreCount = waitSemaphores.size();
+    submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
     submitInfo.pWaitSemaphores    = waitSemaphores.data();
     submitInfo.pWaitDstStageMask  = waitStages.data();
 
 
-    submitInfo.signalSemaphoreCount = signalSemaphores.size();
+    submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
     submitInfo.pSignalSemaphores    = signalSemaphores.data();
 
     if(fence != VK_NULL_HANDLE)

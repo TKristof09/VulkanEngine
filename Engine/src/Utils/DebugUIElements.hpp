@@ -21,7 +21,7 @@ class DebugUIElement
 public:
     virtual ~DebugUIElement() = default;
     virtual void Update()     = 0;
-    virtual void Deselect(bool recursive = false){};
+    virtual void Deselect(bool /*recursive = false*/) {}
 
     std::string GetName() const
     {
@@ -696,12 +696,12 @@ public:
     void Update() override
     {
         ImGui::PushID(this);
-        uint32_t width  = m_image->GetWidth();
-        uint32_t height = m_image->GetHeight();
-        float aspect    = width / (float)height;
-        if(width > (uint32_t)ImGui::GetContentRegionAvail().x)
+        float width  = static_cast<float>(m_image->GetWidth());
+        float height = static_cast<float>(m_image->GetHeight());
+        float aspect = width / height;
+        if(width > ImGui::GetContentRegionAvail().x)
         {
-            width  = (uint32_t)ImGui::GetContentRegionAvail().x;
+            width  = ImGui::GetContentRegionAvail().x;
             height = width / aspect;
         }
 
@@ -834,7 +834,7 @@ public:
         {
             if(!m_elements.empty())
             {
-                ImGui::BeginTable("table1", m_columnHeights.size());
+                ImGui::BeginTable("table1", static_cast<int>(m_columnHeights.size()));
 
                 uint32_t lastRow = 0;
                 ImGui::TableNextRow();

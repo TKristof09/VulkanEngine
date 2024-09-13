@@ -2,7 +2,7 @@
 
 #include "Core/Events/Event.hpp"
 
-class Scene;
+struct Scene;
 struct SceneSwitchedEvent : public Event
 {
     Scene* newScene;

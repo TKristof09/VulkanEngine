@@ -8,8 +8,8 @@
 #include "ECS/Core.hpp"
 #include "ECS/Entity.hpp"
 
-class Vertex;
-class Mesh;
+struct Vertex;
+struct Mesh;
 class AssimpImporter
 {
 public:

@@ -130,8 +130,8 @@ private:
 
     void Setup();
 
-    void CreateGraphicsPipeline(const PipelineCreateInfo& createInfo);
-    void CreateComputePipeline(const PipelineCreateInfo& createInfo);
+    void CreateGraphicsPipeline();
+    void CreateComputePipeline();
 
     [[nodiscard]] inline VkPipelineBindPoint GetBindPoint() const
     {
@@ -166,7 +166,7 @@ private:
     std::vector<VkVertexInputAttributeDescription> m_vertexInputAttributes;
     std::optional<VkVertexInputBindingDescription> m_vertexInputBinding;  // only support one for now
 
-    std::vector<uint32_t> m_shaderDataSlots;
+    std::vector<uint64_t> m_shaderDataSlots;
 };
 
 

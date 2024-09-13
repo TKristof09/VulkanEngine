@@ -1,6 +1,6 @@
 #pragma once
 
-#include "flecs.h"
+#include <flecs.h>
 #include "ECS/Entity.hpp"
 #include "ECS/Query.hpp"
 #include "ECS/Observer.hpp"
@@ -70,6 +70,9 @@ public:
             return m_world.observer<Component>().event(flecs::OnSet).each(callback);
         case ECSEvent::OnRemove:
             return m_world.observer<Component>().event(flecs::OnRemove).each(callback);
+        default:
+            assert(false && "Unsupported event type");
+            return flecs::observer();
         }
     }
     void EnableRESTEditor()

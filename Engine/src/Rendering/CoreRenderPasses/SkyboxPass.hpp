@@ -50,7 +50,7 @@ private:
         skyboxPass.AddColorOutput("skyboxImage", {}, "colorImage");
         skyboxPass.AddDepthInput("depthImage");
         skyboxPass.SetExecutionCallback(
-            [&](CommandBuffer& cb, uint32_t imageIndex)
+            [&](CommandBuffer& cb, uint32_t /*imageIndex*/)
             {
                 vkCmdBeginRendering(cb.GetCommandBuffer(), skyboxPass.GetRenderingInfo());
 

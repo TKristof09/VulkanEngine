@@ -80,7 +80,7 @@ void Application::Run()
 
 
         Time::SetDelta(deltaTime);
-        m_currentScene->ecs->Update(deltaTime);
+        m_currentScene->ecs->Update(static_cast<float>(deltaTime));
 
         m_renderer->Render(deltaTime);
     }

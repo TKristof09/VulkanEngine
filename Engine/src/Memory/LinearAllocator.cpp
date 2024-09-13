@@ -33,7 +33,7 @@ void* LinearAllocator::Allocate(size_t size, uint8_t alignment)
     return asVoidPtr;  // return the start address of the allocated memory
 }
 
-void LinearAllocator::Free(void* p)
+void LinearAllocator::Free(void*  /*p*/)
 {
     assert(false && "Linear allocator doesn't support free. Use clear instead");
 }

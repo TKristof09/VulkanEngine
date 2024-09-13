@@ -89,7 +89,7 @@ public:
     using ResizeCallback = std::function<void(DynamicBufferAllocator*)>;
 
     // stagingBufferSize is ignored if mappable is true
-    DynamicBufferAllocator(uint64_t startingSize, uint32_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, bool mappable = false)
+    DynamicBufferAllocator(uint64_t startingSize, uint64_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, bool mappable = false)
         : m_currentSize(startingSize * elementSize),
           m_elementSize(elementSize),
           m_stagingBufferSize(stagingBufferSize * elementSize),
@@ -98,7 +98,7 @@ public:
     {
         Initialize();
     }
-    DynamicBufferAllocator(uint64_t startingSize, uint32_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, ResizeCallback callback, bool mappable = false)
+    DynamicBufferAllocator(uint64_t startingSize, uint64_t elementSize, VkBufferUsageFlags usage, uint64_t stagingBufferSize, ResizeCallback callback, bool mappable = false)
         : m_currentSize(startingSize * elementSize),
           m_elementSize(elementSize),
           m_stagingBufferSize(stagingBufferSize * elementSize),
@@ -186,7 +186,7 @@ private:
     }
 
     uint64_t m_currentSize;        // in bytes
-    uint32_t m_elementSize;        // in bytes
+    uint64_t m_elementSize;        // in bytes
     uint64_t m_stagingBufferSize;  // in bytes
     VkBufferUsageFlags m_usage;
     bool m_mappable;

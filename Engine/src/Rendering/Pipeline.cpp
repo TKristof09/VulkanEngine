@@ -41,9 +41,9 @@ void Pipeline::Setup()
 
 
     if(m_createInfo.type == PipelineType::GRAPHICS)
-        CreateGraphicsPipeline(m_createInfo);
+        CreateGraphicsPipeline();
     else
-        CreateComputePipeline(m_createInfo);
+        CreateComputePipeline();
 
     for(auto& shader : m_shaders)
     {
@@ -89,7 +89,7 @@ uint64_t Pipeline::GetMaterialBufferPtr() const
 }
 
 
-void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& m_createInfo)
+void Pipeline::CreateGraphicsPipeline()
 {
     std::vector<VkPipelineShaderStageCreateInfo> stagesCI;
     for(Shader& shader : m_shaders)
@@ -232,7 +232,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& m_createInfo)
     }
     else
     {
-        renderingCreateInfo.colorAttachmentCount    = m_createInfo.colorFormats.size();
+        renderingCreateInfo.colorAttachmentCount    = static_cast<uint32_t>(m_createInfo.colorFormats.size());
         renderingCreateInfo.pColorAttachmentFormats = m_createInfo.colorFormats.data();
     }
 
@@ -271,7 +271,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineCreateInfo& m_createInfo)
     VK_CHECK(vkCreateGraphicsPipelines(VulkanContext::GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline), "Failed to create graphics pipeline");
 }
 
-void Pipeline::CreateComputePipeline(const PipelineCreateInfo& m_createInfo)
+void Pipeline::CreateComputePipeline()
 {
     VkPipelineShaderStageCreateInfo shaderCi = {};
     shaderCi.sType                           = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

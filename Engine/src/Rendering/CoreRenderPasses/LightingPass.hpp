@@ -54,6 +54,11 @@ public:
         Application::GetInstance()->GetRenderer()->AddDebugUIElement(m_statsText);
     }
 
+    ~LightingPass()
+    {
+        vkDestroyQueryPool(VulkanContext::GetDevice(), m_queryPool, nullptr);
+    }
+
 
     void OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     {
@@ -104,19 +109,21 @@ private:
         auto& lightingPass         = rg.AddRenderPass("lightingPass", QueueTypeFlagBits::Graphics);
         AttachmentInfo colorInfo   = {};
         colorInfo.clear            = true;
-        colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+        colorInfo.clearValue.color = {
+            {0.0f, 0.0f, 0.0f, 1.0f}
+        };
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
         lightingPass.AddTextureInput("debugImage");
         auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
         auto* lightBuffers        = m_ecs->GetSingletonMut<LightBuffers>();
         visibleLightsBuffer.SetBufferPointer(&lightBuffers->visibleLightsBuffer);
-        auto& lightingDrawCommands = lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
-        auto& shadowMaps           = lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-        auto& aoTexture            = lightingPass.AddTextureInput("finalAOImage");
+        lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
+        lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        auto& aoTexture = lightingPass.AddTextureInput("finalAOImage");
 
         lightingPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
+            [&](RenderGraph& /*rg*/)
             {
                 ShaderData data   = {};
                 data.viewportSize = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);
@@ -146,7 +153,7 @@ private:
         lightingPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
-                vkCmdResetQueryPool(cb.GetCommandBuffer(), m_queryPool, imageIndex, 1);
+                vkCmdResetQueryPool(cb.GetCommandBuffer(), m_queryPool, m_queryIndex, 1);
                 vkCmdBeginRendering(cb.GetCommandBuffer(), lightingPass.GetRenderingInfo());
 
 
@@ -163,12 +170,12 @@ private:
 
                 const auto* drawCmds = m_ecs->GetSingleton<DrawCommandBuffer>();
 
-                vkCmdBeginQuery(cb.GetCommandBuffer(), m_queryPool, imageIndex, 0);
+                vkCmdBeginQuery(cb.GetCommandBuffer(), m_queryPool, m_queryIndex, 0);
                 m_pipeline->Bind(cb);
                 m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), drawCmds->buffer.GetVkBuffer(), 0, drawCmds->count, sizeof(DrawCommand));
 
-                vkCmdEndQuery(cb.GetCommandBuffer(), m_queryPool, imageIndex);
+                vkCmdEndQuery(cb.GetCommandBuffer(), m_queryPool, m_queryIndex);
 
                 vkCmdEndRendering(cb.GetCommandBuffer());
 
@@ -177,7 +184,7 @@ private:
                     uint32_t dataSize = static_cast<uint32_t>(m_queryResults.size() * sizeof(uint64_t));
                     uint32_t stride   = dataSize;
 
-                    vkGetQueryPoolResults(VulkanContext::GetDevice(), m_queryPool, (imageIndex - 1) % NUM_FRAMES_IN_FLIGHT, 1, dataSize, m_queryResults.data(), stride, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+                    vkGetQueryPoolResults(VulkanContext::GetDevice(), m_queryPool, (m_queryIndex - 1 + NUM_FRAMES_IN_FLIGHT) % NUM_FRAMES_IN_FLIGHT, 1, dataSize, m_queryResults.data(), stride, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
 
                     std::stringstream stats;
                     stats << "Lighting Pass Stats:\n";
@@ -187,7 +194,8 @@ private:
                     }
                     m_statsText->SetText(stats.str());
                 }
-                m_canQuery = true;
+                m_canQuery   = true;
+                m_queryIndex = (m_queryIndex + 1) % NUM_FRAMES_IN_FLIGHT;
             });
     }
 
@@ -197,5 +205,6 @@ private:
     std::shared_ptr<Text> m_statsText;
     std::vector<uint64_t> m_queryResults;
     std::vector<std::string> m_queryNames;
-    bool m_canQuery = false;
+    bool m_canQuery      = false;
+    uint8_t m_queryIndex = 0;
 };

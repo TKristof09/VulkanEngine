@@ -130,7 +130,7 @@ void pbr_spheres(ECS* ecs)
     {
         for(int j = 0; j < gridSize; ++j)
         {
-            int index = i * gridSize + j;
+            // int index = i * gridSize + j;
             Entity e  = AssimpImporter::LoadFile(names[rand() % names.size()], ecs, &parent);
             auto* tt  = e.GetComponentMut<Transform>();
             tt->pos   = {(i - gridSize / 2.f) * 3, 0.0f, (j - gridSize / 2.f) * 3};
@@ -142,7 +142,7 @@ void pbr_spheres(ECS* ecs)
     {
         for(int j = 0; j < gridSize; ++j)
         {
-            int index      = i * gridSize + j;
+            // int index      = i * gridSize + j;
             Entity e       = AssimpImporter::LoadFile("models/cube.obj", ecs, &parent);
             auto* tt       = e.GetComponentMut<Transform>();
             tt->pos        = {(i - gridSize / 2.f) * 3, j * 3, -10.0f};

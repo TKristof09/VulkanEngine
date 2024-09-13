@@ -36,7 +36,7 @@ public:
         createInfo.addressModeV            = config.addressMode;
         createInfo.addressModeW            = config.addressMode;
         createInfo.anisotropyEnable        = config.anisotropy != 0;
-        createInfo.maxAnisotropy           = config.anisotropy;
+        createInfo.maxAnisotropy           = static_cast<float>(config.anisotropy);
         createInfo.borderColor             = config.borderColor;
         createInfo.unnormalizedCoordinates = VK_FALSE;
         createInfo.compareEnable           = config.depthCompareOp != VK_COMPARE_OP_NEVER;

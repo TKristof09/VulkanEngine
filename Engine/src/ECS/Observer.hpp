@@ -1,5 +1,5 @@
 #pragma once
-#include "flecs.h"
+#include <flecs.h>
 
 using Observer = flecs::observer;
 

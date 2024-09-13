@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/glm.hpp>
 
 
 namespace MathUtils
@@ -30,7 +31,7 @@ inline uint32_t HilbertIndex(uint32_t x, uint32_t y, uint32_t level)
 inline std::vector<uint32_t> GenerateHilbertLUT(uint32_t size)
 {
     std::vector<uint32_t> lut(size * size);
-    uint32_t level = std::log2(size);
+    uint32_t level = static_cast<uint32_t>(glm::floor(std::log2(size)));
     for(uint32_t y = 0; y < size; ++y)
     {
         for(uint32_t x = 0; x < size; ++x)

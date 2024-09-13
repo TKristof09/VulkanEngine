@@ -49,7 +49,7 @@ private:
         auto& debugTexture        = lightCullPass.AddStorageImageOutput("debugImage", VK_FORMAT_R8_UNORM);
 
         lightCullPass.SetInitialiseCallback(
-            [&](RenderGraph& rg)
+            [&](RenderGraph& /*rg*/)
             {
                 ShaderData data          = {};
                 data.viewportSize        = glm::ivec2(VulkanContext::GetSwapchainExtent().width, VulkanContext::GetSwapchainExtent().height);

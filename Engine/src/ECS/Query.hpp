@@ -1,5 +1,5 @@
 #pragma once
-#include "flecs.h"
+#include <flecs.h>
 
 template<typename... Components>
 using Query = flecs::query<Components...>;

@@ -83,7 +83,7 @@ Shader::Shader(const std::string& filename, VkShaderStageFlagBits stage, Pipelin
 
         // TODO figure out how to do this better
         // data = std::vector<uint32_t>(reinterpret_cast<uint32_t*>(temp.data()), reinterpret_cast<uint32_t*>(temp.data()) + filesize / sizeof(uint32_t));
-        data = Compile(path);
+        data = Compile(path);  // TODO: fall back to loading from file if compilation fails
     }
 
     Reflect(filename, &data, pipeline);
@@ -145,7 +145,7 @@ std::vector<uint32_t> Shader::Compile(const std::filesystem::path& path)
     return {module.cbegin(), module.cend()};
 }
 
-void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, Pipeline* pipeline)
+void Shader::Reflect(const std::string& /*filename*/, std::vector<uint32_t>* data, Pipeline* pipeline)
 {
     spirv_cross::Compiler comp(*data);
 
@@ -220,7 +220,7 @@ void Shader::Reflect(const std::string& filename, std::vector<uint32_t>* data, P
     for(auto& resource : resources.push_constant_buffers)
     {
         spirv_cross::SPIRType type = comp.get_type(resource.type_id);
-        uint32_t size              = comp.get_declared_struct_size(type);
+        size_t size                = comp.get_declared_struct_size(type);
         uint32_t offset            = comp.get_decoration(resource.id, spv::DecorationOffset);
 
         LOG_TRACE(resource.name);
