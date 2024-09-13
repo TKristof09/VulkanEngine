@@ -416,6 +416,7 @@ void Renderer::CreateDevice()
     deviceFeatures.multiDrawIndirect                    = VK_TRUE;
     deviceFeatures.shaderStorageImageReadWithoutFormat  = VK_TRUE;
     deviceFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+    deviceFeatures.pipelineStatisticsQuery              = VK_TRUE;
 
     // deviceFeatures.depthBounds = VK_TRUE; //doesnt work on my surface 2017
 

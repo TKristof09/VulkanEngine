@@ -58,6 +58,10 @@ public:
     {
         m_name = text;
     }
+    void SetText(const std::string& text)
+    {
+        m_text = text;
+    }
     void Update() override
     {
         ImGui::PushID(this);

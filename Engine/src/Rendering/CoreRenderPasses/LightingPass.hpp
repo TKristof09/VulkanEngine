@@ -12,7 +12,8 @@ class LightingPass
 {
 public:
     LightingPass(RenderGraph& rg)
-        : m_ecs(Application::GetInstance()->GetScene()->GetECS())
+        : m_ecs(Application::GetInstance()->GetScene()->GetECS()),
+          m_statsText(std::make_shared<Text>("LightingPass stats"))
     {
         PipelineCreateInfo ci;
         ci.type             = PipelineType::GRAPHICS;
@@ -31,6 +32,26 @@ public:
 
         RegisterPass(rg);
         Application::GetInstance()->GetEventHandler()->Subscribe(this, &LightingPass::OnDirectionalLightAdded);
+
+
+        VkQueryPoolCreateInfo queryPoolInfo = {};
+        queryPoolInfo.sType                 = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        queryPoolInfo.queryType             = VK_QUERY_TYPE_PIPELINE_STATISTICS;
+        queryPoolInfo.pipelineStatistics    = VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
+                                         | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT
+                                         | VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT
+                                         | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT
+                                         | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT;
+
+        m_queryNames = {"Input vertices", "Input primitives", "Vertex shader invocations", "Clipping primitives", "Clipping invocations"};
+        m_queryResults.resize(m_queryNames.size());
+
+        queryPoolInfo.queryCount = NUM_FRAMES_IN_FLIGHT;
+        VK_CHECK(vkCreateQueryPool(VulkanContext::GetDevice(), &queryPoolInfo, nullptr, &m_queryPool), "Failed to create query pool");
+        // vkResetQueryPool(VulkanContext::GetDevice(), m_queryPool, 0, NUM_FRAMES_IN_FLIGHT);
+
+
+        Application::GetInstance()->GetRenderer()->AddDebugUIElement(m_statsText);
     }
 
 
@@ -125,12 +146,12 @@ private:
         lightingPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
+                vkCmdResetQueryPool(cb.GetCommandBuffer(), m_queryPool, imageIndex, 1);
                 vkCmdBeginRendering(cb.GetCommandBuffer(), lightingPass.GetRenderingInfo());
 
 
                 PushConstants pc = {};
 
-                m_pipeline->Bind(cb);
 
                 const auto* mainCamera = m_ecs->GetSingleton<MainCameraData>();
                 pc.viewProj            = mainCamera->viewProj;
@@ -139,15 +160,42 @@ private:
                 pc.shaderDataPtr       = m_pipeline->GetShaderDataBufferPtr(imageIndex);
                 pc.materialDataPtr     = m_pipeline->GetMaterialBufferPtr();
 
-                m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 
                 const auto* drawCmds = m_ecs->GetSingleton<DrawCommandBuffer>();
+
+                vkCmdBeginQuery(cb.GetCommandBuffer(), m_queryPool, imageIndex, 0);
+                m_pipeline->Bind(cb);
+                m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
                 vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), drawCmds->buffer.GetVkBuffer(), 0, drawCmds->count, sizeof(DrawCommand));
 
+                vkCmdEndQuery(cb.GetCommandBuffer(), m_queryPool, imageIndex);
+
                 vkCmdEndRendering(cb.GetCommandBuffer());
+
+                if(m_canQuery)
+                {
+                    uint32_t dataSize = static_cast<uint32_t>(m_queryResults.size() * sizeof(uint64_t));
+                    uint32_t stride   = dataSize;
+
+                    vkGetQueryPoolResults(VulkanContext::GetDevice(), m_queryPool, (imageIndex - 1) % NUM_FRAMES_IN_FLIGHT, 1, dataSize, m_queryResults.data(), stride, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+
+                    std::stringstream stats;
+                    stats << "Lighting Pass Stats:\n";
+                    for(size_t i = 0; i < m_queryResults.size(); ++i)
+                    {
+                        stats << "\t" + m_queryNames[i] + ": " + std::to_string(m_queryResults[i]) + "\n";
+                    }
+                    m_statsText->SetText(stats.str());
+                }
+                m_canQuery = true;
             });
     }
 
     std::unique_ptr<Pipeline> m_pipeline;
     ECS* m_ecs;
+    VkQueryPool m_queryPool;
+    std::shared_ptr<Text> m_statsText;
+    std::vector<uint64_t> m_queryResults;
+    std::vector<std::string> m_queryNames;
+    bool m_canQuery = false;
 };
