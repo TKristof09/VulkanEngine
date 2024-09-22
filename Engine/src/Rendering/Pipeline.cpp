@@ -4,11 +4,11 @@
 #include "Rendering/VulkanContext.hpp"
 #include "Rendering/MaterialSystem.hpp"
 
-Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo m_createInfo, uint16_t priority)
-    : m_name(shaderName),
-      m_createInfo(m_createInfo),
+Pipeline::Pipeline(const std::string& shaderName, PipelineCreateInfo createInfo, uint16_t priority)
+    : m_renderer(Application::GetInstance()->GetRenderer()),
+      m_name(shaderName),
+      m_createInfo(createInfo),
       m_priority(priority),
-      m_renderer(Application::GetInstance()->GetRenderer()),
       m_shaderDataSlots({})
 {
     Setup();

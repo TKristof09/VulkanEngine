@@ -13,6 +13,9 @@ layout (set = 0, binding = 1) uniform uimage2D storageTexturesU[];
 layout(buffer_reference, buffer_reference_align=4) readonly buffer Transforms {
     mat4 m[];
 };
+layout(buffer_reference, buffer_reference_align=4) readonly buffer ObjectIDMap {
+    uint data[];  // 0: count, 1+: maps gl_draw_id-1 to object_id
+};
 // TODO look at alignment
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer ShaderData;
 layout(buffer_reference, std430, buffer_reference_align=4) readonly buffer MaterialData;

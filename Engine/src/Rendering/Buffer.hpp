@@ -159,6 +159,7 @@ public:
     }
 
     [[nodiscard]] VkBuffer GetVkBuffer() const { return m_buffer.GetVkBuffer(); }
+    uint64_t GetSize() const { return m_currentSize / m_elementSize; }
 
 private:
     void Resize();

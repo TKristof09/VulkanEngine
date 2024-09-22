@@ -4,39 +4,142 @@
 #include "bindings.glsl"
 
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(buffer_reference) buffer DrawIdToObjectId {
-    uint v[];
+struct InDrawCommand
+{
+    uint indexCount;
+    // uint instanceCount;
+    uint firstIndex;
+    int vertexOffset;
+    // uint firstInstance;
+    uint objectID;
 };
-struct DrawCommand
+
+struct OutDrawCommand
 {
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
-    uint objectID;
 };
-layout(buffer_reference) buffer DrawCmdBuffer {
-    DrawCommand v[];
+
+struct AABB
+{
+    vec3 min;
+    vec3 max;
 };
-/*layout(buffer_reference) buffer ShaderData {
-    DrawIdToObjectId data;
-    DrawCmdBuffer drawCmdPtr;
-    uint drawCmdCount;
-};*/
+
+layout(buffer_reference) buffer InDrawCmdBuffer {
+    InDrawCommand data[];
+};
+layout(buffer_reference) buffer OutDrawCmdBuffer {
+    OutDrawCommand data[];
+};
+
+layout(buffer_reference) buffer BoundinBoxBuffer {
+    AABB data[];
+};
+
+
+layout(push_constant) uniform PC {
+    uint inDrawCmdCount;
+    InDrawCmdBuffer inDrawCmdPtr;
+    OutDrawCmdBuffer outDrawCmdPtr;
+
+    ObjectIDMap drawObjPtr; // 0: count, 1+: maps gl_draw_id-1 to object_id
+
+    BoundinBoxBuffer boundingBoxes;
+    Transforms transformsPtr; // accessed with objectId
+
+    mat4 viewProj;
+};
+
+
+bool IsVisible(uint objectID, uint index)
+{
+    vec4 frustumPlanes[5];
+    mat4 mvp = viewProj * transformsPtr.m[objectID];
+    // extract model space frustum planes from MVP matrix using Gribb & Hartmann method
+    // left (x > -w)
+    frustumPlanes[0].x = mvp[0].w + mvp[0].x;
+    frustumPlanes[0].y = mvp[1].w + mvp[1].x;
+    frustumPlanes[0].z = mvp[2].w + mvp[2].x;
+    frustumPlanes[0].w = mvp[3].w + mvp[3].x;
+    // right (x < w)
+    frustumPlanes[1].x = mvp[0].w - mvp[0].x;
+    frustumPlanes[1].y = mvp[1].w - mvp[1].x;
+    frustumPlanes[1].z = mvp[2].w - mvp[2].x;
+    frustumPlanes[1].w = mvp[3].w - mvp[3].x;
+    // bottom (y > -w)
+    frustumPlanes[2].x = mvp[0].w + mvp[0].y;
+    frustumPlanes[2].y = mvp[1].w + mvp[1].y;
+    frustumPlanes[2].z = mvp[2].w + mvp[2].y;
+    frustumPlanes[2].w = mvp[3].w + mvp[3].y;
+    // top (y < w)
+    frustumPlanes[3].x = mvp[0].w - mvp[0].y;
+    frustumPlanes[3].y = mvp[1].w - mvp[1].y;
+    frustumPlanes[3].z = mvp[2].w - mvp[2].y;
+    frustumPlanes[3].w = mvp[3].w - mvp[3].y;
+    // near (we use reverse z so near plane is z=1) (z < w)
+    frustumPlanes[4].x = mvp[0].w - mvp[0].z;
+    frustumPlanes[4].y = mvp[1].w - mvp[1].z;
+    frustumPlanes[4].z = mvp[2].w - mvp[2].z;
+    frustumPlanes[4].w = mvp[3].w - mvp[3].z;
+
+
+    AABB aabb = boundingBoxes.data[objectID];
+
+
+    for(int i = 0; i < 5; i++)
+    {
+        bool inside =   (dot(vec4(aabb.min, 1.0),                           frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.max, 1.0),                           frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.min.x, aabb.min.y, aabb.max.z, 1.0), frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.min.x, aabb.max.y, aabb.min.z, 1.0), frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.min.x, aabb.max.y, aabb.max.z, 1.0), frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.max.x, aabb.min.y, aabb.min.z, 1.0), frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.max.x, aabb.min.y, aabb.max.z, 1.0), frustumPlanes[i]) >= 0.0)
+                     || (dot(vec4(aabb.max.x, aabb.max.y, aabb.min.z, 1.0), frustumPlanes[i]) >= 0.0);
+        if(!inside)
+        {
+            return false;
+        }
+
+    }
+
+
+    return true;
+}
+
 
 void main()
 {
-    /*
-    ShaderData shaderData = ShaderData(shaderDataPtr);
-    DrawCmdBuffer drawCmds = DrawCmdBuffer(shaderData.drawCmdPtr);
-    DrawIdToObjectId drawIdToObjectId = DrawIdToObjectId(shaderData.data);
-
-    for (uint i = 0; i < shaderData.drawCmdCount; ++i) {
-        drawIdToObjectId.v[i] = drawCmds.v[i].objectID;
+    uint index = gl_GlobalInvocationID.x;
+    if(index == 0)
+    {
+        drawObjPtr.data[0] = 0; // reset count
     }
-    */
+    barrier();
+
+
+    for(uint i = index; i < inDrawCmdCount; i += gl_NumWorkGroups.x * gl_WorkGroupSize.x)
+    {
+        InDrawCommand inCmd = inDrawCmdPtr.data[i];
+        bool visible = IsVisible(inCmd.objectID, i);
+        if(visible)
+        {
+            uint outIndex = atomicAdd(drawObjPtr.data[0], 1);
+            drawObjPtr.data[outIndex + 1] = inCmd.objectID;
+
+            outDrawCmdPtr.data[outIndex].indexCount = inCmd.indexCount;
+            outDrawCmdPtr.data[outIndex].instanceCount = 1;
+            outDrawCmdPtr.data[outIndex].firstIndex = inCmd.firstIndex;
+            outDrawCmdPtr.data[outIndex].vertexOffset = inCmd.vertexOffset;
+            outDrawCmdPtr.data[outIndex].firstInstance = inCmd.objectID; // TODO temp for debug until we want instanced rendering
+        }
+    }
+
 
 }

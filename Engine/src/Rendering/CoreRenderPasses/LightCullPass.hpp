@@ -56,7 +56,7 @@ private:
                 data.tileNums            = glm::ivec2(ceil(data.viewportSize.x / 16.0f), ceil(data.viewportSize.y / 16.0f));
                 data.visibleLightsBuffer = visibleLightsBuffer.GetBufferPointer()->GetDeviceAddress();
                 data.depthTextureId      = depthTexture.GetImagePointer()->GetSampledSlot();
-                data.debugTextureId      = debugTexture.GetImagePointer()->GetSampledSlot();
+                data.debugTextureId      = debugTexture.GetImagePointer()->GetStorageSlot();
 
                 const auto* lightBuffers = m_ecs->GetSingleton<LightBuffers>();
                 data.lightNum            = lightBuffers->lightNum;

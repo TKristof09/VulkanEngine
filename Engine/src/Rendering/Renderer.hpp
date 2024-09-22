@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Events/CoreEvents.hpp"
+#include "ECS/CoreComponents/BoundingBox.hpp"
 #include "ECS/CoreComponents/InternalTransform.hpp"
 #include "ECS/CoreComponents/Renderable.hpp"
 #include "ECS/CoreEvents/ComponentEvents.hpp"
@@ -34,6 +35,7 @@ struct PipelineCreateInfo;
 struct TransformBuffers;
 
 class DepthPass;
+class DrawcullPass;
 class LightCullPass;
 class LightingPass;
 class SkyboxPass;
@@ -235,6 +237,10 @@ private:
 
     std::unique_ptr<DynamicBufferAllocator> m_shaderDataBuffer;
 
+    // TODO temp
+    bool m_needDrawBufferReupload = false;
+
+
     std::list<int32_t> m_freeTextureSlots;  // i think having it sorted will be better for the gpu so the descriptor set doesnt get so fragmented
     std::list<int32_t> m_freeStorageImageSlots;
 
@@ -246,6 +252,7 @@ private:
 
     // Renderpasses
     std::unique_ptr<DepthPass> m_depthPass;
+    std::unique_ptr<DrawcullPass> m_drawCullPass;
     std::unique_ptr<ShadowPass> m_shadowPass;
     std::unique_ptr<LightCullPass> m_lightCullPass;
     std::unique_ptr<LightingPass> m_lightingPass;
@@ -256,14 +263,12 @@ private:
     std::vector<RenderingTextureResource> m_uiImages;
     std::vector<std::string_view> m_shaderButtons;
 
-    // TODO temp
-    bool m_needDrawBufferReupload = false;
 
     RenderingTextureArrayResource* m_shadowMaps{nullptr};
 
     // ECS queries
     Query<const InternalTransform, const Renderable, TransformBuffers> m_transformsQuery;
-    Query<const Renderable> m_renderablesQuery;
+    Query<const Renderable, const BoundingBox> m_renderablesQuery;
 
     Query<const DirectionalLight, const InternalTransform> m_directionalLightsQuery;
     Query<const PointLight, const InternalTransform> m_pointLightsQuery;

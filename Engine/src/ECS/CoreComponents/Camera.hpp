@@ -18,7 +18,8 @@ struct MainCameraData
     glm::mat4 view;
     glm::vec3 pos;
     float zNear;
-    glm::vec2 clipToViewSpaceConsts;  //(aspect * tan(fov / 2), tan(fov / 2))
+    glm::vec2 clipToViewSpaceConsts;           //(aspect * tan(fov / 2), tan(fov / 2))
+    std::array<glm::vec4, 5> frustumPlanesVS;  // far plane is infinite so we don't need it
 };
 
 inline glm::mat4 GetProjection(const Camera& camera)

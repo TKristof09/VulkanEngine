@@ -61,7 +61,7 @@ void MaterialSystem::OnMaterialComponentAdded(ComponentAdded<Material> e)
 
 
     // add material info to pipeline's material buffer
-    auto materialIt = m_materialDatas.try_emplace(comp->shaderName, 500, sizeof(ShaderMaterial), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 50);
+    auto materialIt = m_materialDatas.try_emplace(comp->shaderName, 1000, sizeof(ShaderMaterial), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 50);
     uint64_t slot   = materialIt.first->second.Allocate(1, nullptr);
     comp->_ubSlot   = slot;  // TODO
 

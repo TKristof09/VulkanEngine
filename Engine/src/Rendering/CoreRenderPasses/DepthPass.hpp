@@ -45,6 +45,7 @@ private:
     {
         uint64_t transformBufferPtr;
         uint64_t shaderDataPtr;
+        uint64_t objectIDMapPtr;
     };
 
     void RegisterPass(RenderGraph& rg)
@@ -56,8 +57,12 @@ private:
         depthPass.AddDepthOutput("depthImage", depthInfo);
         AttachmentInfo colorInfo   = {};
         colorInfo.clear            = true;
-        colorInfo.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+        colorInfo.clearValue.color = {
+            {0.0f, 0.0f, 0.0f, 1.0f}
+        };
         depthPass.AddColorOutput("vsNormals", colorInfo);
+        auto& drawObjBuffer = depthPass.AddDrawCommandBuffer("drawObjBuffer");
+        auto& drawBuffer    = depthPass.AddDrawCommandBuffer("drawBuffer");
         depthPass.SetExecutionCallback(
             [&](CommandBuffer& cb, uint32_t imageIndex)
             {
@@ -73,14 +78,16 @@ private:
 
                 PushConstants pc{
                     .transformBufferPtr = m_ecs->GetSingleton<TransformBuffers>()->buffers[imageIndex].GetDeviceAddress(0),
-                    .shaderDataPtr      = m_depthPipeline->GetShaderDataBufferPtr(imageIndex)};
+                    .shaderDataPtr      = m_depthPipeline->GetShaderDataBufferPtr(imageIndex),
+                    .objectIDMapPtr     = drawObjBuffer.GetBufferPointer()->GetDeviceAddress(),
+                };
 
 
                 m_depthPipeline->Bind(cb);
                 m_depthPipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 
-                const auto* drawCmds = m_ecs->GetSingleton<DrawCommandBuffer>();
-                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), drawCmds->buffer.GetVkBuffer(), 0, drawCmds->count, sizeof(DrawCommand));
+                uint32_t maxCount = static_cast<uint32_t>(drawBuffer.GetBufferPointer()->GetSize() / sizeof(VkDrawIndexedIndirectCommand));
+                vkCmdDrawIndexedIndirectCount(cb.GetCommandBuffer(), drawBuffer.GetBufferPointer()->GetVkBuffer(), 0, drawObjBuffer.GetBufferPointer()->GetVkBuffer(), 0, maxCount, sizeof(VkDrawIndexedIndirectCommand));
 
                 vkCmdEndRendering(cb.GetCommandBuffer());
             });

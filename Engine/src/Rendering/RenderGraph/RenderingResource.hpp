@@ -97,6 +97,7 @@ public:
     RenderingTextureResource(const std::string& name)
         : RenderingResource(Type::Texture, name) {}
 
+    // TODO: This should OR the flags probably
     void SetTextureInfo(const TextureInfo& textureInfo) { m_textureInfo = textureInfo; }
     void SetImagePointer(Image* image) { m_image = image; }
 
@@ -114,6 +115,14 @@ struct BufferInfo
     VkPipelineStageFlags2 stageFlags;
     VkBufferUsageFlags usageFlags;
     VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    void operator|=(const BufferInfo& other)
+    {
+        size         = std::max(size, other.size);
+        stageFlags  |= other.stageFlags;
+        usageFlags  |= other.usageFlags;
+        memoryFlags |= other.memoryFlags;
+    }
 };
 class RenderingBufferResource : public RenderingResource
 {
@@ -121,7 +130,7 @@ public:
     RenderingBufferResource(const std::string& name)
         : RenderingResource(Type::Buffer, name) {}
 
-    void SetBufferInfo(const BufferInfo& bufferInfo) { m_bufferInfo = bufferInfo; }
+    void SetBufferInfo(const BufferInfo& bufferInfo) { m_bufferInfo |= bufferInfo; }
     void SetBufferPointer(Buffer* buffer) { m_buffer = buffer; }
 
     [[nodiscard]] BufferInfo GetBufferInfo() const { return m_bufferInfo; }

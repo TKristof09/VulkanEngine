@@ -10,6 +10,7 @@ layout(location = 2) in vec3 inNormal;
 layout(push_constant) uniform PushConstants {
     Transforms transformsPtr;
     ShaderData shaderDataPtr;
+    ObjectIDMap objectIDMap;
 };
 
 layout(location = 0) out vec3 outNormal;
@@ -21,7 +22,8 @@ SHADER_DATA
 };
 
 void main() {
-    mat4 model = transformsPtr.m[gl_DrawID];
+    uint objectID = objectIDMap.data[gl_DrawID + 1];
+    mat4 model = transformsPtr.m[objectID];
     outNormal = (shaderDataPtr.view * model * vec4(inNormal, 0.0)).xyz;
     gl_Position = shaderDataPtr.viewProj * model * vec4(inPosition, 1.0);
 }

@@ -10,7 +10,7 @@ layout(location = 2) in vec3 inNormal;
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec2 fragTexCoord;
 layout(location = 2) out vec3 worldPos;
-layout(location = 3) out flat int ID;
+layout(location = 3) out flat uint ID;
 
 
 layout(push_constant) uniform PC
@@ -21,13 +21,13 @@ layout(push_constant) uniform PC
 
     ShaderData shaderDataPtr;
     Transforms transformsPtr; // accessed with objectId
-    uint64_t drawIdToObjectIdPtr; // used to access transforms, converts glDrawId to objectId
-    MaterialData materialsPtr; // accessed with glDrawId
+    MaterialData materialsPtr; // accessed with objectid
+    ObjectIDMap objectIDMap;
 };
 
 void main() {
-    ID = int(gl_DrawID);
-    mat4 model = transformsPtr.m[gl_DrawID];
+    ID  = objectIDMap.data[gl_DrawID + 1];
+    mat4 model = transformsPtr.m[ID];
 
     outNormal = normalize(vec3(model * vec4(inNormal, 0.0)));
 

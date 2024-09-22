@@ -1,4 +1,5 @@
 #include "Rendering/Renderer.hpp"
+#include "ECS/CoreComponents/BoundingBox.hpp"
 
 #include <memory>
 #include <numeric>
@@ -39,6 +40,7 @@
 
 
 #include "Rendering/CoreRenderPasses/DepthPass.hpp"
+#include "Rendering/CoreRenderPasses/DrawcullPass.hpp"
 #include "Rendering/CoreRenderPasses/LightCullPass.hpp"
 #include "Rendering/CoreRenderPasses/LightingPass.hpp"
 #include "Rendering/CoreRenderPasses/SkyboxPass.hpp"
@@ -92,8 +94,8 @@ Renderer::Renderer(std::shared_ptr<Window> window)
       m_gpu(VulkanContext::m_gpu),
       m_device(VulkanContext::m_device),
       m_graphicsQueue(VulkanContext::m_graphicsQueue),
-      m_transferQueue(VulkanContext::m_transferQueue),
       m_computeQueue(VulkanContext::m_computeQueue),
+      m_transferQueue(VulkanContext::m_transferQueue),
       m_graphicsCommandPool(VulkanContext::m_graphicsCommandPool),
       m_transferCommandPool(VulkanContext::m_transferCommandPool),
       m_renderGraph(RenderGraph(this)),
@@ -102,7 +104,7 @@ Renderer::Renderer(std::shared_ptr<Window> window)
       m_freeStorageImageSlots(NUM_TEXTURE_DESCRIPTORS)
 {
     m_transformsQuery        = m_ecs->StartQueryBuilder<const InternalTransform, const Renderable, TransformBuffers>("TransformsQuery").term_at(3).singleton().build();
-    m_renderablesQuery       = m_ecs->StartQueryBuilder<const Renderable>("RenderablesQuery").build();
+    m_renderablesQuery       = m_ecs->StartQueryBuilder<const Renderable, const BoundingBox>("RenderablesQuery").build();
     m_directionalLightsQuery = m_ecs->StartQueryBuilder<const DirectionalLight, const InternalTransform>("DirectionalLightsQuery").build();
     m_pointLightsQuery       = m_ecs->StartQueryBuilder<const PointLight, const InternalTransform>("PointLightsQuery").build();
     m_spotLightsQuery        = m_ecs->StartQueryBuilder<const SpotLight, const InternalTransform>("SpotLightsQuery").build();
@@ -160,7 +162,8 @@ Renderer::Renderer(std::shared_ptr<Window> window)
     VK_SET_DEBUG_NAME(m_shaderDataBuffer->GetVkBuffer(), VK_OBJECT_TYPE_BUFFER, "ShaderDataBuffer");
 
 
-    m_ecs->EmplaceSingleton<DrawCommandBuffer>(1000, sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, 0, true);  // TODO change to non mappable and use staging buffer
+    m_ecs->EmplaceSingleton<DrawCommandBuffer>(1000, sizeof(DrawCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0, true);  // TODO change to non mappable and use staging buffer
+    m_ecs->EmplaceSingleton<BoundingBoxBuffer>(1000, sizeof(BoundingBox), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0, true);                                        // TODO change to non mappable and use staging buffer
 
     m_ecs->AddSingleton<TransformBuffers>();
     m_ecs->AddSingleton<ShadowBuffers>();
@@ -338,9 +341,13 @@ void Renderer::CreateInstance()
 
     // Disable sync validation for now because of false positive when using bindless texture array but not actually accessing a texture, workaround to this in the validation layer is coming in a future SDK release, see https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/3450
     std::vector<VkValidationFeatureEnableEXT> enables;
-    enables.push_back(VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT);
     // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);  // TODO reenable sync validation when it gets fixed
-    // enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+#if 1
+    enables.push_back(VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT);
+#else
+    // Better to use Vulkan configurator to enable this because the "Check Draw Indirect Count Buffers and firstInstance values" setting causes weird rendering artifacts (It seems to mess up the coordinate system/VP matrix for some reason) and it is enabled by default by the layer
+    enables.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+#endif
 
 
     VkValidationFeaturesEXT features       = {};
@@ -437,6 +444,7 @@ void Renderer::CreateDevice()
     device12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
     device12Features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
     device12Features.bufferDeviceAddress                          = VK_TRUE;
+    device12Features.drawIndirectCount                            = VK_TRUE;
 
     VkPhysicalDeviceVulkan13Features device13Features = {};
     device13Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
@@ -794,6 +802,7 @@ void Renderer::CreateUniformBuffers()
 void Renderer::InitilizeRenderGraph()
 {
     m_depthPass     = std::make_unique<DepthPass>(m_renderGraph);
+    m_drawCullPass  = std::make_unique<DrawcullPass>(m_renderGraph);
     m_lightCullPass = std::make_unique<LightCullPass>(m_renderGraph);
     m_shadowPass    = std::make_unique<ShadowPass>(m_renderGraph);
     m_lightingPass  = std::make_unique<LightingPass>(m_renderGraph);
@@ -854,36 +863,47 @@ void Renderer::InitilizeRenderGraph()
 
 void Renderer::RefreshDrawCommands()
 {
-    auto* draws = m_ecs->GetSingletonMut<DrawCommandBuffer>();
+    auto* draws             = m_ecs->GetSingletonMut<DrawCommandBuffer>();
+    auto* boundingBoxBuffer = m_ecs->GetSingletonMut<BoundingBoxBuffer>();
     std::vector<DrawCommand> drawCommands;
+    std::vector<BoundingBox> boundingBoxes;
     m_renderablesQuery.each(
-        [&](const Renderable& renderable)
+        [&](const Renderable& renderable, const BoundingBox& boundingBox)
         {
             DrawCommand dc{};
-            dc.indexCount    = renderable.indexCount;
-            dc.instanceCount = 1;
-            dc.firstIndex    = renderable.indexOffset;
-            dc.vertexOffset  = static_cast<int32_t>(renderable.vertexOffset);
-            dc.firstInstance = 0;
-            // dc.objectID      = renderable->objectID;
+            dc.indexCount   = renderable.indexCount;
+            // dc.instanceCount = 1;
+            dc.firstIndex   = renderable.indexOffset;
+            dc.vertexOffset = static_cast<int32_t>(renderable.vertexOffset);
+            // dc.firstInstance = 0;
+            dc.objectID     = renderable.objectID;
 
             drawCommands.push_back(dc);
 
+            boundingBoxes.push_back(boundingBox);
+
             draws->buffer.Allocate(1);
+            boundingBoxBuffer->buffer.Allocate(1);
         });
 
     // TODO: find a nicer wayto do the upload
     std::vector<uint64_t> slots;
-    std::vector<const void*> datas;
+    std::vector<const void*> dcDatas;
+    std::vector<const void*> boundingBoxDatas;
 
-    for(int i = 0; i < drawCommands.size(); ++i)
+    for(uint32_t i = 0; i < drawCommands.size(); ++i)
     {
         slots.push_back(i);
-        datas.push_back(&drawCommands[i]);
+        dcDatas.push_back(&drawCommands[i]);
+        boundingBoxDatas.push_back(&boundingBoxes[i]);
     }
 
-    draws->buffer.UploadData(slots, datas);
-    draws->count = drawCommands.size();
+    draws->buffer.UploadData(slots, dcDatas);
+    draws->count = static_cast<uint32_t>(drawCommands.size());
+
+    boundingBoxBuffer->buffer.UploadData(slots, boundingBoxDatas);
+    boundingBoxBuffer->count = static_cast<uint32_t>(boundingBoxes.size());
+
 
     m_needDrawBufferReupload = false;
 }
@@ -1049,12 +1069,14 @@ void Renderer::CreateEnvironmentMap()
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         attachment.imageView                 = envMap->CreateImageView(0);
-        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
-        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        rendering.pColorAttachments          = &attachment;
-        rendering.colorAttachmentCount       = 1;
+        attachment.clearValue.color          = {
+            {0.0f, 0.0f, 0.0f, 0.0f}
+        };
+        attachment.loadOp              = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp             = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout         = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments    = &attachment;
+        rendering.colorAttachmentCount = 1;
 
         TextureManager::LoadTexture("textures/env.hdr");
         Texture& img = TextureManager::GetTexture("textures/env.hdr");
@@ -1101,12 +1123,14 @@ void Renderer::CreateEnvironmentMap()
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         attachment.imageView                 = convEnvMap.GetImageView();
-        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
-        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        rendering.pColorAttachments          = &attachment;
-        rendering.colorAttachmentCount       = 1;
+        attachment.clearValue.color          = {
+            {0.0f, 0.0f, 0.0f, 0.0f}
+        };
+        attachment.loadOp              = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp             = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout         = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments    = &attachment;
+        rendering.colorAttachmentCount = 1;
 
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
@@ -1205,12 +1229,14 @@ void Renderer::CreateEnvironmentMap()
             VkRenderingAttachmentInfo attachment = {};
             attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             attachment.imageView                 = prefilteredEnvMap.CreateImageView(i);
-            attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
-            attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-            attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-            rendering.pColorAttachments          = &attachment;
-            rendering.colorAttachmentCount       = 1;
+            attachment.clearValue.color          = {
+                {0.0f, 0.0f, 0.0f, 0.0f}
+            };
+            attachment.loadOp              = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachment.storeOp             = VK_ATTACHMENT_STORE_OP_STORE;
+            attachment.imageLayout         = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+            rendering.pColorAttachments    = &attachment;
+            rendering.colorAttachmentCount = 1;
 
 
             vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
@@ -1258,12 +1284,14 @@ void Renderer::CreateEnvironmentMap()
         VkRenderingAttachmentInfo attachment = {};
         attachment.sType                     = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         attachment.imageView                 = BRDFLUT.GetImageView();
-        attachment.clearValue.color          = {0.0f, 0.0f, 0.0f, 0.0f};
-        attachment.loadOp                    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment.imageLayout               = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        rendering.pColorAttachments          = &attachment;
-        rendering.colorAttachmentCount       = 1;
+        attachment.clearValue.color          = {
+            {0.0f, 0.0f, 0.0f, 0.0f}
+        };
+        attachment.loadOp              = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.storeOp             = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.imageLayout         = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        rendering.pColorAttachments    = &attachment;
+        rendering.colorAttachmentCount = 1;
 
 
         vkCmdBeginRendering(cb.GetCommandBuffer(), &rendering);
@@ -1686,7 +1714,7 @@ void Renderer::OnMeshComponentRemoved(ComponentRemoved<Mesh> e)
 }
 
 // TODO what is this
-void Renderer::OnMaterialComponentAdded(ComponentAdded<Material> e)
+void Renderer::OnMaterialComponentAdded(ComponentAdded<Material> /*e*/)
 {
     /*auto it = m_pipelinesRegistry.find(e->component->shaderName);
     if(it == m_pipelinesRegistry.end())
@@ -1764,8 +1792,8 @@ void Renderer::OnDirectionalLightAdded(ComponentAdded<DirectionalLight> e)
     // TODO
 
     light->shadowSlot = slot;
-    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos{};
-    std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF{};
+    // std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfos{};
+    // std::array<VkDescriptorImageInfo, NUM_CASCADES> imageInfosPCF{};
 
     // debugimages
     /*
@@ -1791,7 +1819,7 @@ void Renderer::OnPointLightAdded(ComponentAdded<PointLight> e)
     auto* comp  = e.entity.GetComponentMut<PointLight>();
     comp->_slot = slot;
 
-    m_lightMap[slot] = {1};  // 1 = PointLight
+    m_lightMap[slot] = {LightType::Point};  // 1 = PointLight
     Light* light     = &m_lightMap[slot];
 
     for(auto& dict : m_changedLights)
@@ -1806,12 +1834,12 @@ void Renderer::OnSpotLightAdded(ComponentAdded<SpotLight> e)
     ++lightBuffers->lightNum;
     uint32_t slot = 0;
     for(auto& buffer : lightBuffers->buffers)
-        slot = buffer.Allocate(1);  // slot should be the same for all of these, since we allocate to every buffer every time
+        slot = static_cast<uint32_t>(buffer.Allocate(1));  // slot should be the same for all of these, since we allocate to every buffer every time
 
     auto* comp  = e.entity.GetComponentMut<SpotLight>();
     comp->_slot = slot;
 
-    m_lightMap[slot] = {2};  // 2 = SpotLight
+    m_lightMap[slot] = {LightType::Spot};  // 2 = SpotLight
     Light* light     = &m_lightMap[slot];
 
     for(auto& dict : m_changedLights)

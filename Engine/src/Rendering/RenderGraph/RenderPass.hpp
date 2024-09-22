@@ -35,11 +35,9 @@ constexpr uint32_t MAX_DRAW_COMMANDS = 10000;
 struct DrawCommand
 {
     uint32_t indexCount;
-    uint32_t instanceCount;
     uint32_t firstIndex;
     int32_t vertexOffset;
-    uint32_t firstInstance;
-    // uint32_t objectID;
+    uint32_t objectID;
 };
 class RenderPass
 {

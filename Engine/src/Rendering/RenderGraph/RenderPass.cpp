@@ -190,7 +190,7 @@ RenderingBufferResource& RenderPass::AddStorageBufferReadOnly(const std::string&
         else if(m_type == QueueTypeFlagBits::Compute)
             stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
     }
-    auto& resource = AddBufferInput(name, 1024, stages, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    auto& resource = AddBufferInput(name, 1024, stages, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
     if(external)
         resource.SetLifetime(RenderingResource::Lifetime::External);
 
@@ -211,7 +211,7 @@ RenderingBufferResource& RenderPass::AddStorageBufferOutput(const std::string& n
             stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
     }
     auto& resource = m_graph.GetBufferResource(name);
-    resource.SetBufferInfo({32964000, stages, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT});
+    resource.SetBufferInfo({32964000, stages, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT});
     resource.AddQueueUse(m_type);
     resource.AddUse(m_id, stages, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 

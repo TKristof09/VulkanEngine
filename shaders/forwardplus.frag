@@ -8,7 +8,7 @@
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in vec3 worldPos;
-layout(location = 3) in flat int ID;
+layout(location = 3) in flat uint ID;
 
 layout(location = 0) out vec4 outColor;
 
@@ -63,8 +63,8 @@ layout(push_constant) uniform PC
 
     ShaderData shaderDataPtr;
     Transforms transformsPtr; // accessed with objectId
-    uint64_t drawIdToObjectIdPtr; // used to access transforms, converts glDrawId to objectId
     MaterialData materialsPtr; // accessed with glDrawId
+    ObjectIDMap objectIDMap;
 };
 
 const float HORIZON_FADE_FACTOR = 1.3;

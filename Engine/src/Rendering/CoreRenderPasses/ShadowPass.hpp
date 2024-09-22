@@ -42,11 +42,14 @@ private:
         int32_t lightIndex;
         uint64_t shadowMatricesBuffer;
         uint64_t transformBufferPtr;
+        uint64_t objectIDMapPtr;
     };
     void RegisterPass(RenderGraph& rg)
     {
-        auto& shadowPass = rg.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
+        auto& shadowPass    = rg.AddRenderPass("shadowPass", QueueTypeFlagBits::Graphics);
         // auto& shadowMatricesBuffer = shadowPass.AddStorageBufferReadOnly("shadowMatrices", VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, true);
+        auto& drawObjBuffer = shadowPass.AddDrawCommandBuffer("drawObjBuffer");
+        auto& drawBuffer    = shadowPass.AddDrawCommandBuffer("drawBuffer");
 
         auto& shadowMapRessource = shadowPass.AddTextureArrayOutput("shadowMaps", VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
@@ -57,7 +60,8 @@ private:
                 PushConstants pc        = {};
                 pc.transformBufferPtr   = m_ecs->GetSingleton<TransformBuffers>()->buffers[imageIndex].GetDeviceAddress(0);
                 pc.shadowMatricesBuffer = m_ecs->GetSingleton<ShadowBuffers>()->matricesBuffers[imageIndex].GetDeviceAddress(0);
-                for(int i = 0; i < shadowMapRessource.GetImagePointers().size(); ++i)
+                pc.objectIDMapPtr       = drawObjBuffer.GetBufferPointer()->GetDeviceAddress();
+                for(uint32_t i = 0; i < shadowMapRessource.GetImagePointers().size(); ++i)
                 {
                     const auto* img = shadowMapRessource.GetImagePointers()[i];
 
@@ -84,12 +88,12 @@ private:
 
                     m_pipeline->Bind(cb);
 
-                    pc.lightIndex = i;
+                    pc.lightIndex = static_cast<int32_t>(i);
 
                     m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
 
-                    const auto* drawCmds = m_ecs->GetSingleton<DrawCommandBuffer>();
-                    vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), drawCmds->buffer.GetVkBuffer(), 0, drawCmds->count, sizeof(DrawCommand));
+                    uint32_t maxCount = static_cast<uint32_t>(drawBuffer.GetBufferPointer()->GetSize() / sizeof(VkDrawIndexedIndirectCommand));
+                    vkCmdDrawIndexedIndirectCount(cb.GetCommandBuffer(), drawBuffer.GetBufferPointer()->GetVkBuffer(), 0, drawObjBuffer.GetBufferPointer()->GetVkBuffer(), 0, maxCount, sizeof(VkDrawIndexedIndirectCommand));
                     vkCmdEndRendering(cb.GetCommandBuffer());
                 }
             });

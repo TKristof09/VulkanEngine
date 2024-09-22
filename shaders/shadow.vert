@@ -18,6 +18,8 @@ layout(push_constant) uniform PushConstants {
     int lightIndex;
     ShadowMatricesBuffer shadowMatricesBuffer;
     Transforms transformsPtr;
+    ObjectIDMap objectIDMap;
 };
 void main() {
-    gl_Position = shadowMatricesBuffer.data[lightIndex].lightSpaceMatrices[gl_ViewIndex] * transformsPtr.m[gl_DrawID] * vec4(inPosition, 1.0);}
+    uint objectID = objectIDMap.data[gl_DrawID + 1];
+    gl_Position = shadowMatricesBuffer.data[lightIndex].lightSpaceMatrices[gl_ViewIndex] * transformsPtr.m[objectID] * vec4(inPosition, 1.0);}

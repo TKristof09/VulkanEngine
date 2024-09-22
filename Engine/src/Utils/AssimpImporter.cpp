@@ -5,6 +5,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/DefaultLogger.hpp>
 
+#include "ECS/CoreComponents/BoundingBox.hpp"
 #include "ECS/CoreComponents/Transform.hpp"
 #include "ECS/CoreComponents/Mesh.hpp"
 #include "Rendering/TextureManager.hpp"
@@ -19,7 +20,10 @@ Entity AssimpImporter::LoadFile(const std::string& file, ECS* ecs, Entity* paren
 
 
     s_importer.SetPropertyBool("GLOB_MEASURE_TIME", true);
-    const aiScene* scene = s_importer.ReadFile(file.c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_OptimizeGraph);
+
+    uint32_t flags = static_cast<uint32_t>(aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_OptimizeGraph | aiProcess_GenBoundingBoxes);
+
+    const aiScene* scene = s_importer.ReadFile(file.c_str(), flags);
 
 
     if(!scene)
@@ -158,5 +162,6 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
 
     entity.Print();
     entity.EmplaceComponent<Mesh>(vertices, indices);
+    entity.EmplaceComponent<BoundingBox>(ToGLM(mesh->mAABB.mMin), ToGLM(mesh->mAABB.mMax));
     entity.SetComponent<Material>(mat);
 }

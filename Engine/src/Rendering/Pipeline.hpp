@@ -78,8 +78,8 @@ public:
     Pipeline(const Pipeline& other) = delete;
 
     Pipeline(Pipeline&& other) noexcept
-        : m_priority(other.m_priority),
-          m_name(std::move(other.m_name)),
+        : m_name(std::move(other.m_name)),
+          m_priority(other.m_priority),
           m_shaders(std::move(other.m_shaders)),
           m_pipeline(other.m_pipeline),
           m_layout(other.m_layout),

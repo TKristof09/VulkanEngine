@@ -104,6 +104,9 @@ std::vector<uint32_t> Shader::Compile(const std::filesystem::path& path)
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
     options.SetOptimizationLevel(shaderc_optimization_level_zero);
     options.SetIncluder(std::make_unique<ShaderIncluder>());
+#ifdef VDEBUG
+    options.SetGenerateDebugInfo();
+#endif
 
 
     auto shaderName = path.filename().string();

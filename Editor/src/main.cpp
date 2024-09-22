@@ -207,6 +207,37 @@ void pbr_spheres(ECS* ecs)
     ts->pos  = {3.0f, 1.f, 0.0f};
 }
 
+void cube_grid(ECS* ecs)
+{
+    Entity camera = ecs->CreateEntity("MainCamera");
+    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.GetComponentMut<Transform>()->pos = {0.0f, 0.0f, 0.0f};
+    // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
+
+
+    constexpr int gridSize   = 10;
+    constexpr float cubeSize = 0.5f;
+    auto parent              = ecs->CreateEntity("Cubes");
+    for(int i = 0; i < gridSize; ++i)
+    {
+        for(int j = 0; j < gridSize; ++j)
+        {
+            for(int k = 0; k < gridSize; ++k)
+            {
+                bool isBorder  = i == 0 || i == gridSize - 1 || j == 0 || j == gridSize - 1 || k == 0 || k == gridSize - 1;
+                Entity e       = AssimpImporter::LoadFile("models/cube.obj", ecs, &parent);
+                auto* tt       = e.GetComponentMut<Transform>();
+                tt->pos        = {(i - gridSize / 2.f) * 3, (j - gridSize / 2.f) * 3, (k - gridSize / 2.f) * 3};
+                tt->scale      = {cubeSize, cubeSize, cubeSize};
+                auto* mat      = e.GetComponentMut<Material>();
+                mat->albedo    = isBorder ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+                mat->roughness = 1.f;
+                mat->metallic  = 0.f;
+            }
+        }
+    }
+}
+
 void bistro_ext(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
@@ -293,7 +324,7 @@ int main()
     ECS* ecs = scene->GetECS();
     HierarchyUI hierarchyUi(scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-    int sceneId = 1;
+    int sceneId = 3;
     switch(sceneId)
     {
     case 1:
@@ -303,6 +334,9 @@ int main()
         pbr_spheres(ecs);
         break;
     case 3:
+        cube_grid(ecs);
+        break;
+    case 4:
         bistro_ext(ecs);
     default:
         return -1;

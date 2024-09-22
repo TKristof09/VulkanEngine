@@ -6,19 +6,41 @@
 struct DrawCommandBuffer
 {
     DynamicBufferAllocator buffer;
-    uint32_t count;
+    uint32_t count{};
 
     template<typename... Args,
-             std::enable_if_t<std::is_constructible<DynamicBufferAllocator, Args...>::value, int> = 0>
-    DrawCommandBuffer(Args&&... args) : buffer(std::forward<Args>(args)...), count(0)
+             std::enable_if_t<std::is_constructible_v<DynamicBufferAllocator, Args...>, int> = 0>
+    DrawCommandBuffer(Args&&... args) : buffer(std::forward<Args>(args)...)
     {
     }
+
+    ~DrawCommandBuffer() = default;
 
     DrawCommandBuffer(const DrawCommandBuffer&)            = delete;
     DrawCommandBuffer& operator=(const DrawCommandBuffer&) = delete;
 
     DrawCommandBuffer(DrawCommandBuffer&&)            = default;
     DrawCommandBuffer& operator=(DrawCommandBuffer&&) = default;
+};
+
+struct BoundingBoxBuffer
+{
+    DynamicBufferAllocator buffer;
+    uint32_t count{};
+
+    template<typename... Args,
+             std::enable_if_t<std::is_constructible_v<DynamicBufferAllocator, Args...>, int> = 0>
+    BoundingBoxBuffer(Args&&... args) : buffer(std::forward<Args>(args)...)
+    {
+    }
+
+    ~BoundingBoxBuffer() = default;
+
+    BoundingBoxBuffer(const BoundingBoxBuffer&)            = delete;
+    BoundingBoxBuffer& operator=(const BoundingBoxBuffer&) = delete;
+
+    BoundingBoxBuffer(BoundingBoxBuffer&&)            = default;
+    BoundingBoxBuffer& operator=(BoundingBoxBuffer&&) = default;
 };
 
 struct TransformBuffers

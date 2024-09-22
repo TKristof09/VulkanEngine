@@ -101,8 +101,8 @@ private:
         int32_t debugMode;
         uint64_t shaderDataPtr;
         uint64_t transformBufferPtr;
-        uint64_t objectIdMapPtr;
         uint64_t materialDataPtr;
+        uint64_t objectIdMapPtr;
     };
     void RegisterPass(RenderGraph& rg)
     {
@@ -115,10 +115,11 @@ private:
         lightingPass.AddColorOutput("colorImage", colorInfo);
         lightingPass.AddDepthInput("depthImage");
         lightingPass.AddTextureInput("debugImage");
+        auto& drawObjBuffer       = lightingPass.AddDrawCommandBuffer("drawObjBuffer");
+        auto& drawBuffer          = lightingPass.AddDrawCommandBuffer("drawBuffer");
         auto& visibleLightsBuffer = lightingPass.AddStorageBufferReadOnly("visibleLightsBuffer", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, true);
         auto* lightBuffers        = m_ecs->GetSingletonMut<LightBuffers>();
         visibleLightsBuffer.SetBufferPointer(&lightBuffers->visibleLightsBuffer);
-        lightingPass.AddDrawCommandBuffer("lightingDrawCommands");
         lightingPass.AddTextureArrayInput("shadowMaps", VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
         auto& aoTexture = lightingPass.AddTextureInput("finalAOImage");
 
@@ -166,14 +167,14 @@ private:
                 pc.transformBufferPtr  = m_ecs->GetSingleton<TransformBuffers>()->buffers[imageIndex].GetDeviceAddress(0);
                 pc.shaderDataPtr       = m_pipeline->GetShaderDataBufferPtr(imageIndex);
                 pc.materialDataPtr     = m_pipeline->GetMaterialBufferPtr();
+                pc.objectIdMapPtr      = drawObjBuffer.GetBufferPointer()->GetDeviceAddress();
 
-
-                const auto* drawCmds = m_ecs->GetSingleton<DrawCommandBuffer>();
 
                 vkCmdBeginQuery(cb.GetCommandBuffer(), m_queryPool, m_queryIndex, 0);
                 m_pipeline->Bind(cb);
                 m_pipeline->SetPushConstants(cb, &pc, sizeof(PushConstants));
-                vkCmdDrawIndexedIndirect(cb.GetCommandBuffer(), drawCmds->buffer.GetVkBuffer(), 0, drawCmds->count, sizeof(DrawCommand));
+                uint32_t maxCount = static_cast<uint32_t>(drawBuffer.GetBufferPointer()->GetSize() / sizeof(VkDrawIndexedIndirectCommand));
+                vkCmdDrawIndexedIndirectCount(cb.GetCommandBuffer(), drawBuffer.GetBufferPointer()->GetVkBuffer(), 0, drawObjBuffer.GetBufferPointer()->GetVkBuffer(), 0, maxCount, sizeof(VkDrawIndexedIndirectCommand));
 
                 vkCmdEndQuery(cb.GetCommandBuffer(), m_queryPool, m_queryIndex);
 
