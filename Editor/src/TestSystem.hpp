@@ -28,7 +28,7 @@ public:
             [](auto& builder)
             {
                 builder
-                    .with<PointLight>()
+                    .template with<PointLight>()
                     .term_at(2)
                     .singleton()
                     .each(FixedUpdate);

@@ -160,7 +160,6 @@ void AssimpImporter::LoadMesh(const aiMesh* mesh, const aiScene* scene, Entity e
         mat.textures["metallic"] = texturePath;
     }
 
-    entity.Print();
     entity.EmplaceComponent<Mesh>(vertices, indices);
     entity.EmplaceComponent<BoundingBox>(ToGLM(mesh->mAABB.mMin), ToGLM(mesh->mAABB.mMax));
     entity.SetComponent<Material>(mat);

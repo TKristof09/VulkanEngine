@@ -11,6 +11,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <set>
+#include <list>
 
 #include "Rendering/RenderGraph/RenderGraph.hpp"
 #include "Rendering/Sampler.hpp"

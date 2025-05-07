@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanContext.hpp"
 #include "CommandBuffer.hpp"
-#include <vma/vk_mem_alloc.h>
+#include <vk_mem_alloc.h>
 
 
 class Buffer

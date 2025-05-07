@@ -15,6 +15,8 @@ set (CMAKE_VS_JUST_MY_CODE_DEBUGGING ON)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
 #add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
 #SPIRV CROSS
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/Vulkan-Utility-Libraries)
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/SPIRV-Cross)
 set(SPIRV_CROSS_CLI CACHE OFF FORCE)
 set(SPIRV_CROSS_ENABLE_TESTS CACHE OFF FORCE)
@@ -39,7 +41,10 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/Editor)
 
 set_property(TARGET Engine PROPERTY CXX_STANDARD 20)
 set_property(TARGET Engine PROPERTY CXX_STANDARD_REQUIRED ON)
-set_property(TARGET Engine PROPERTY LINK_FLAGS "/PROFILE")
-set_property(TARGET Editor PROPERTY LINK_FLAGS "/PROFILE")
+
+if(MSVC)
+    set_property(TARGET Engine PROPERTY LINK_FLAGS "/PROFILE")
+    set_property(TARGET Editor PROPERTY LINK_FLAGS "/PROFILE")
+endif()
 
 

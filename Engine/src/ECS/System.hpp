@@ -58,6 +58,9 @@ protected:
     template<class... Components>
     void StartSystemBuilder(SystemPhase phase, void (*buildFn)(SystemBuilder<Components...>& builder));
 
+    // after: Fn can be a generic lambda, captureless or not
+    template<class... Components, typename Fn>
+    void StartSystemBuilder(SystemPhase phase, Fn buildFn);
 
 private:
     virtual const char* GetName() const { return nullptr; };
@@ -183,5 +186,11 @@ void System::RegisterFixed(SystemPhase phase, void (*fn)(Components... args), ui
 template<class... Components>
 void System::StartSystemBuilder(SystemPhase phase, void (*buildFn)(SystemBuilder<Components...>& builder))
 {
+    buildFn(m_world->system<Components...>(GetName()).kind(ConvertPhase(phase)));
+}
+template<class... Components, typename Fn>
+void System::StartSystemBuilder(SystemPhase phase, Fn buildFn)
+{
+    static_assert(std::is_invocable_v<Fn, SystemBuilder<Components...>&>, "buildFn must be invocable with SystemBuilder<Components…>&");
     buildFn(m_world->system<Components...>(GetName()).kind(ConvertPhase(phase)));
 }

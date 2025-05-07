@@ -73,7 +73,7 @@ public:
         return m_transientBuffers[resource.GetPhysicalId()];
     }
 
-    void Execute(CommandBuffer& cb, const uint32_t frameIndex);
+    void Execute(CommandBuffer& cb, const uint32_t frameIndex, const uint32_t imageIndex);
 
 private:
     void ToDOT(const std::string& filename);

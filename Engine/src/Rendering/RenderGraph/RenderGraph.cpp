@@ -1264,7 +1264,7 @@ void RenderGraph::InitialisePasses()
     }
 }
 
-void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
+void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex, const uint32_t imageIndex)
 {
     PROFILE_FUNCTION();
 
@@ -1283,7 +1283,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         barriers[0].newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barriers[0].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         barriers[0].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        barriers[0].image                           = m_swapchainImages[frameIndex].GetImage();
+        barriers[0].image                           = m_swapchainImages[imageIndex].GetImage();
         barriers[0].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         barriers[0].subresourceRange.baseMipLevel   = 0;
         barriers[0].subresourceRange.baseArrayLayer = 0;
@@ -1444,7 +1444,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
     blitRegion.dstOffsets[1].z               = 1;
 
 
-    vkCmdBlitImage(cb.GetCommandBuffer(), renderTarget.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_swapchainImages[frameIndex].GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion, VK_FILTER_LINEAR);
+    vkCmdBlitImage(cb.GetCommandBuffer(), renderTarget.GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_swapchainImages[imageIndex].GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion, VK_FILTER_LINEAR);
 
     // transition swapchain image to present leayout
     {
@@ -1454,7 +1454,7 @@ void RenderGraph::Execute(CommandBuffer& cb, const uint32_t frameIndex)
         barrier.newLayout                       = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image                           = m_swapchainImages[frameIndex].GetImage();
+        barrier.image                           = m_swapchainImages[imageIndex].GetImage();
         barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel   = 0;
         barrier.subresourceRange.baseArrayLayer = 0;

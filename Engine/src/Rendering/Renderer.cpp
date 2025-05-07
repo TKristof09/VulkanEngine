@@ -12,7 +12,7 @@
 #include <utility>
 #include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
-#include <vma/vk_mem_alloc.h>
+#include <vk_mem_alloc.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1602,7 +1602,7 @@ void Renderer::Render(double /*dt*/)
 
     m_vertexBuffer->Bind(m_mainCommandBuffers[imageIndex]);
     m_indexBuffer->Bind(m_mainCommandBuffers[imageIndex]);
-    m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], imageIndex);
+    m_renderGraph.Execute(m_mainCommandBuffers[imageIndex], m_currentFrame, imageIndex);
 
     VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     m_mainCommandBuffers[imageIndex].Submit(m_imageAvailable[m_currentFrame], wait, m_renderFinished[m_currentFrame], m_inFlightFences[m_currentFrame]);
