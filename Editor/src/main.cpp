@@ -21,16 +21,18 @@
 
 #include "TestSystem.hpp"
 
+#define WIDTH  1280
+#define HEIGHT 720
 
 void sponza_test(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
-    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
-    camera.GetComponentMut<Transform>()->pos = {0.0f, 60.0f, -10.0f};
-    // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
+    camera.EmplaceComponent<Camera>(90.f, WIDTH / (float)HEIGHT, 0.1f);
+    camera.GetComponentMut<Transform>()->pos = {-52.0f, 30.0f, -10.0f};
+    camera.GetComponentMut<Transform>()->rot = glm::quat(glm::radians(glm::vec3(-12.f, -90.f, 0.f)));
 
 
-    Entity e2                              = AssimpImporter::LoadFile("models/sponza_smooth.fbx", ecs);
+    Entity e2                              = AssimpImporter::LoadFile("models/sponza_smooth2.fbx", ecs);
     e2.GetComponentMut<Transform>()->scale = {0.1f, 0.1f, 0.1f};
 
     // Entity* dlight                        = ecs->entityManager->CreateEntity();
@@ -44,7 +46,7 @@ void sponza_test(ECS* ecs)
 
     Entity lightParent        = ecs->CreateEntity("point lights");
     std::vector<Color> colors = {Color::Red, Color::Blue, Color::Green, Color::White};
-    constexpr int gridSize    = 0;
+    constexpr int gridSize    = 5;
     for(int i = 0; i < gridSize; ++i)
     {
         for(int j = 0; j < gridSize; ++j)
@@ -79,13 +81,13 @@ void sponza_test(ECS* ecs)
 
     ecs->AddSystem<TestSystem>(5, 5);
 
-    /* Entity dlight = ecs->CreateEntity("DLight");
-     DirectionalLight dl{};
-     dl.color     = Color::White;
-     dl.intensity = 1.0f;
-     dlight.SetComponent<DirectionalLight>(dl);
-     auto* t2 = dlight.GetComponentMut<Transform>();
-     t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));*/
+    Entity dlight = ecs->CreateEntity("DLight");
+    DirectionalLight dl{};
+    dl.color     = Color::White;
+    dl.intensity = 1.0f;
+    dlight.SetComponent<DirectionalLight>(dl);
+    auto* t2 = dlight.GetComponentMut<Transform>();
+    t2->rot  = glm::rotate(t2->rot, glm::radians(-45.f), glm::vec3(1, 0, 0));
 
     Entity slight = ecs->CreateEntity("SLight");
     SpotLight sl{};
@@ -103,7 +105,7 @@ void sponza_test(ECS* ecs)
 void pbr_spheres(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
-    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.EmplaceComponent<Camera>(90.f, WIDTH / (float)HEIGHT, 0.1f);
     camera.GetComponentMut<Transform>()->pos = {0.0f, 4.0f, 10.0f};
     // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
@@ -210,7 +212,7 @@ void pbr_spheres(ECS* ecs)
 void cube_grid(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
-    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.EmplaceComponent<Camera>(90.f, WIDTH / (float)HEIGHT, 0.1f);
     camera.GetComponentMut<Transform>()->pos = {0.0f, 0.0f, 0.0f};
     // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
@@ -241,7 +243,7 @@ void cube_grid(ECS* ecs)
 void bistro_ext(ECS* ecs)
 {
     Entity camera = ecs->CreateEntity("MainCamera");
-    camera.EmplaceComponent<Camera>(90.f, 1920 / 1080.0f, 0.1f);
+    camera.EmplaceComponent<Camera>(90.f, WIDTH / (float)HEIGHT, 0.1f);
     camera.GetComponentMut<Transform>()->pos = {0.0f, 60.0f, -10.0f};
     // t->rot = glm::rotate(t->rot, glm::radians(-90.f), glm::vec3(1,0,0));
 
@@ -317,14 +319,14 @@ void bistro_ext(ECS* ecs)
 }
 int main()
 {
-    Application editor(1920, 1080, 60, "Editor");
+    Application editor(WIDTH, HEIGHT, 60, "Editor");
 
     Scene* scene = editor.GetScene();
 
     ECS* ecs = scene->GetECS();
     HierarchyUI hierarchyUi(scene, editor.GetRenderer(), editor.GetMaterialSystem());
 
-    int sceneId = 3;
+    int sceneId = 1;
     switch(sceneId)
     {
     case 1:
@@ -338,6 +340,7 @@ int main()
         break;
     case 4:
         bistro_ext(ecs);
+        break;
     default:
         return -1;
     }

@@ -14,3 +14,4 @@ A basic renderer using Vulkan and GLSL. This project's main goal is for me to be
 - Frustum culling using a compute shader and `DrawIndexedIndirectCount`
 
   ![Screenshot_2](https://github.com/TKristof09/VulkanEngine/assets/25688981/4a02c935-921f-430f-a8dc-2acdc15616e3)
+  ![Screenshot_4](https://github.com/user-attachments/assets/e4af5a1a-09fc-49e9-a444-709815228042)
